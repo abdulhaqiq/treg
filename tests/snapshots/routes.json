@@ -969,6 +969,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "intent_signals_page",
+    "path": "/intent-signals"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_page",
     "path": "/jev"
   },
