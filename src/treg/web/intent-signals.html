@@ -110,6 +110,7 @@
   .strip .reply s { color: #9A9A9A; text-decoration: none; }
   .strip .cur { display: inline-block; width: 9px; height: 19px; background: #6FCDF0; vertical-align: -3px; animation: blink 1s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
+  .strip [hidden] { display: none; }
 
   /* ---------- the scenes (from the launch film): one prompt strip over one treg panel ---------- */
   .stage {
@@ -370,27 +371,61 @@
   .fresh .new { visibility: visible; }
   .dg-when { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-align: right; }
 
+  /* tablet: every column still fits, just narrower; the radar shrinks beside the feed */
   @media (max-width: 960px) {
-    .feed-body { grid-template-columns: 1fr; }
-    .radar { display: none; }
-    .feed { border-left: 0; }
-    #threadPane { grid-template-columns: 1fr; }
-    .post { display: none; }
-    .co-head, .co-row { grid-template-columns: 34px 1.3fr 1fr 1.2fr; }
-    .c-sig, .co-row .sigs { display: none; }
+    .feed-body { grid-template-columns: 280px 1fr; }
+    .radar { margin: 50px 0 0 calc(50% - 160px); transform: scale(.7); transform-origin: 50% 0; }
+    #threadPane { grid-template-columns: 270px 1fr; }
+    .post { padding: 16px; }
+    .post-card p { font-size: 13.5px; }
+    .co-head, .co-row { grid-template-columns: 34px minmax(0,1.3fr) 1fr 1fr 1.2fr; }
     .dmx-in { padding-left: 16px; }
-    .dm-head, .dm-row { grid-template-columns: 1fr repeat(3, auto); gap: 6px; }
-    .dm-who img { width: 26px; height: 26px; }
+    .dm-head, .dm-row { grid-template-columns: minmax(150px,1.4fr) 1fr repeat(3, 84px); }
+    .dg-body { grid-template-columns: 130px 1fr; }
+    .dg-row { grid-template-columns: minmax(0,1.3fr) minmax(0,1fr) auto 44px; }
+    .dg-when { display: none; }
+  }
+  /* phone: the radar sits above the feed, the post above its thread; secondary columns fold away */
+  @media (max-width: 640px) {
+    .strip { font-size: 13px; padding: 12px 14px; min-height: 66px; align-items: flex-start; }
+    .strip img { width: 20px; height: 20px; }
+    .strip .typed, .strip .reply { white-space: normal; }
+    #heroStage .pane { height: 560px; }
+    .feed-body { display: block; }
+    .radar { margin: 12px 0 -128px calc(50% - 160px); transform: scale(.6); }
+    .feed { border-left: 0; border-top: 1px solid var(--line); }
+    .feed-rows { height: 300px; }
+    .panel-head span, .flike { display: none; }
+    .frow { gap: 10px; padding: 10px 12px; }
+    .verdict { width: auto; }
+    #threadPane { display: block; }
+    .post { border-right: 0; border-bottom: 1px solid var(--line); padding: 12px; }
+    .post-card { padding: 12px; }
+    .post-card p { font-size: 13px; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .post-meta, .post-tag { display: none; }
+    .thread { padding: 10px 12px; }
+    .co-head, .co-row { grid-template-columns: 26px minmax(0,1fr) auto 84px; column-gap: 10px; }
+    .c-sig, .co-row .sigs, .co-head em { display: none; }
+    .co-name { min-width: 0; white-space: nowrap; overflow: hidden; }
+    .faces img { width: 22px; height: 22px; }
+    .score { gap: 8px; }
+    .dm-head, .dm-row { grid-template-columns: minmax(0,1fr) repeat(3, auto); gap: 6px; }
+    .dm-row { height: auto; min-height: 52px; padding: 5px 0; }
+    .dm-who > span { min-width: 0; }
+    .dm-who b, .dm-who s { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dm-mail, .dm-head .mh { display: none; }
     .dm-head .st { font-size: 0; }
+    .dm-st { gap: 3px; }
+    .vend { width: 24px; height: 24px; } .vend img { width: 15px; height: 15px; }
     .loop-flow { flex-direction: column; padding-bottom: 0; }
     .lf-arrow { width: 2px; height: 22px; }
     .lf-arrow::after { right: -5px; top: auto; bottom: -2px; border: 6px solid transparent; border-top: 8px solid var(--green); border-bottom: 0; }
     .lf-loop { display: none; }
     .dg-body { grid-template-columns: 1fr; }
-    .dg-days { display: none; }
-    .dg-row { grid-template-columns: 1fr 1fr 44px; }
-    .dg-row .tag, .dg-when { display: none; }
+    .dg-days, .dg-row .tag, #dailyStage .panel-head span { display: none; }
+    .dg-row { grid-template-columns: minmax(0,1fr) minmax(0,.8fr) auto; padding: 0 12px; }
+    .dg-who > span, .dg-co { min-width: 0; }
+    .dg-who b, .dg-who s, .dg-co { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   }
   @media (prefers-reduced-motion: reduce) {
     .sweep, .lf-radar i, .uc-tick, .uc-strip .c { animation: none; }
@@ -1096,6 +1131,7 @@
       return {
         reset: function () { typed.innerHTML = ''; rep.hidden = true; cur.hidden = false; },
         type: function (at, t0, text, hls) {
+          at(t0, function () { rep.hidden = true; cur.hidden = false; });
           for (var i = 0; i <= text.length; i++) (function (i) { at(t0 + i * 30, function () { typed.innerHTML = hi(text.slice(0, i), hls); }); })(i);
           return t0 + text.length * 30;
         },
