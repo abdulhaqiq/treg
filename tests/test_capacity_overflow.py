@@ -993,3 +993,41 @@ async def test_icypeas_out_of_credits_200_overflows_through_orthogonal(
     assert r.headers["X-Treg-Served-Via"] == "overflow:orthogonal"
     assert before - await _balance(clients) == 20_000, "the aggregator's price once; the empty-pool 200 was released"
     assert len(seen) == 1 and seen[0].json["api"] == "icypeas" and seen[0].json["path"] == "/scrape/profile"
+
+
+async def _sync_icypeas_seed():
+    """The seed as the weekly verify leaves it: every route freshly verified."""
+    from treg.domain.catalog import store as catalog_store
+    now = utcnow_naive()
+    seed = [{**r, "verified_at": now.isoformat()} for r in R.load_seed() if r["provider"] == "icypeas"]
+    async with session_maker() as db:
+        await R.apply_sync(db, seed, catalog=catalog_store.load(), now=now)
+        await db.commit()
+    routes_view.invalidate()
+    capacity_view.invalidate()
+
+
+async def test_icypeas_people_search_overflows_at_orthogonals_flat_fee(clients: AsyncClient, overflow_on, monkeypatch):
+    """We pay per row, Orthogonal a flat cent per request (charged 1 cent for 200 leads live):
+    the fixed-fee exception admits the route, and an empty-pool 200 is served through it."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    await _sync_icypeas_seed()
+    rows = {r.endpoint_id: r for r in await _rows(OverflowRoute)}
+    assert rows["icypeas.people.search"].enabled, rows["icypeas.people.search"].disabled_reason
+    assert not rows["icypeas.people.email.find"].enabled, "the exception names one verified contract, nothing else"
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, ICYPEAS_OUT_OF_CREDITS))
+    page = {"total": 3411, "success": True, "leads": [{"firstname": "hashed"}] * 50}
+    envelope = {"success": True, "data": page, "priceCents": 1, "requestId": "run_p",
+                "billing": {"chargedPriceCents": 1}}
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, envelope)], seen))
+    before = await _balance(clients)
+    body = {"query": {"currentJobTitle": {"include": ["Engineer"]}}, "pagination": {"size": 50}}
+    r = await clients.post("/call/icypeas.people.search", json=body)
+    assert r.status_code == 200 and r.json() == page, r.text
+    assert r.headers["X-Treg-Served-Via"] == "overflow:orthogonal"
+    assert before - await _balance(clients) == 10_000
+    assert seen[0].json == {"api": "icypeas", "path": "/api/find-people", "body": body}
+    assert await _holds() == []

@@ -355,7 +355,9 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   one-creator request was refused with the typed 503 telling the caller to bring their own key
   while a two-creator request was served: a customer's agent read that as "your plan no longer
   allows discovery". Three cents, disclosed through `X-Treg-Cost-Micro` and `X-Treg-Served-Via`,
-  beats a refusal. Other unit mismatches remain disabled. A fallback charges the aggregator's
+  beats a refusal. **Icypeas people search** (`icypeas.people.search`, 0.02 credit per row direct)
+  is the third contract: Orthogonal lists `/api/find-people` at $0.01 per request and charged
+  1 cent live for pages of 50 and 200 leads. Other unit mismatches remain disabled. A fallback charges the aggregator's
   actual flat fee, including an empty page, rather than multiplying by results.
 - **The seed** - `overflow_seed.json` contains candidate mappings and recorded verification evidence.
   Tests pin its historical baseline and expiry behavior. Enabled routes decay after seven days

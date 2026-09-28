@@ -31,23 +31,29 @@ aggregator's price is at most this (disclosed like any other overflow charge).""
 AGGREGATOR_ORDER = ("orthogonal", "monid")
 SEED_PATH = Path(__file__).with_name("overflow_seed.json")
 
-# Orthogonal /details reports a fixed $0.03 per request for these two discovery routes
-# (2026-09-08), while our direct account pays per creator. Admission is the absolute ceiling
+# Orthogonal charges a fixed fee per request for these search routes while our direct account
+# pays per row: Influencers Club discovery $0.03 (/details, 2026-09-08); Icypeas find-people $0.01,
+# charged 1 cent live for 50 and for 200 leads (2026-09-28). Admission is the absolute ceiling
 # below, never a ratio against the request's estimate. Keep this exception confined to the
 # verified contracts; other per-result/per-call mismatches still require their own evidence.
+# endpoint_id -> (provider, agg_slug, our path, aggregator path)
 _FIXED_DISCOVERY_PATHS = {
-    "influencersclub.creators.search": "/public/v1/discovery/",
-    "influencersclub.creators.similar": "/public/v1/discovery/creators/similar/",
+    "influencersclub.creators.search": ("influencersclub", "influencers-club",
+                                        "/public/v1/discovery/", "/public/v1/discovery/"),
+    "influencersclub.creators.similar": ("influencersclub", "influencers-club",
+                                         "/public/v1/discovery/creators/similar/",
+                                         "/public/v1/discovery/creators/similar/"),
+    "icypeas.people.search": ("icypeas", "icypeas", "/find-people", "/api/find-people"),
 }
 _FIXED_DISCOVERY_MAX_MICRO = 30_000
 
 
 def request_priced(route: OverflowRoute) -> bool:
     """Does this exact fixed-fee contract require a request estimate for price admission?"""
-    path = _FIXED_DISCOVERY_PATHS.get(route.endpoint_id)
-    return bool(path and route.aggregator == "orthogonal" and route.provider == "influencersclub"
-                and route.agg_slug == "influencers-club" and route.method == "POST"
-                and route.path == path and route.agg_path == path and route.agg_unit == "call")
+    contract = _FIXED_DISCOVERY_PATHS.get(route.endpoint_id)
+    return bool(contract and route.aggregator == "orthogonal" and route.method == "POST"
+                and (route.provider, route.agg_slug, route.path, route.agg_path) == contract
+                and route.agg_unit == "call")
 
 
 # The vendor path-prefix normalizations the mapping run observed (plan §4.3): the aggregator writes
