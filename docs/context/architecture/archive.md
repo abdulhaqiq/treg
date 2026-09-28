@@ -294,7 +294,7 @@ dict. The call service (`application/call/service.py`) keeps them in `archive_ke
 targets are already indexed). `archive.resolve_result(key_hash, content_hash)` walks
 row → key → newest snapshot with that content hash → `body_of` carrier, and returns the request
 shape (`req_*`, pre-injection) plus the answer; a hash-only version reports `stored: false`.
-`GET /calls/{id}/result` (api.py) exposes it to members of the row's org, with a `note` on every
+`GET /calls/{id}/result` (api.py; `id` is the row id or the `X-Treg-Call-Id`) exposes it to members of the row's org, with a `note` on every
 "nothing on file" branch; `/calls` rows carry `has_result`. The archive stays platform-scoped —
 what makes the read safe is that the row belongs to the team and names the exact bytes that
 team already received. Failure evidence (`error_*`) is untouched and still admin-only.

@@ -688,8 +688,10 @@ still pay the provider twice.
 - Metered successes retain status, body, charge and call id for 24 hours. Uncharged failures
   (every routed failure since routed children defer their holds to the parent, catalog.md), BYOK
   calls and owned free polls release the label immediately, so a retry tries again.
-- Replays return `X-Treg-Idempotent-Replay: true` and the original `X-Treg-Cost-Micro`;
-  MCP returns `replayed: true`. An async submission replay repeats its original reservation.
+- Replays return `X-Treg-Idempotent-Replay: true`, `X-Treg-Cost-Micro: 0` (nothing new was charged,
+  so a client summing the header stays right) and the first call's figure in
+  `X-Treg-Original-Cost-Micro`; MCP returns `replayed: true`. An async submission replay echoes its
+  original reservation there.
 - Refusal and cancellation cleanup return an acquired label. Expired entries are swept lazily,
   scoped to the caller, at claim time.
 
