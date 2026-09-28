@@ -7,6 +7,8 @@ description: >
   → tests → LIVE bogus-key test → core catalog YAML → verify → scrub → validate → evidence
   ledger in the PR. Every listing ships tier-4 wiring and a per-endpoint verification table.
   The vendor-facing doc this skill implements is docs/VENDORS.md.
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # Vendor listing — add a provider to the catalog
