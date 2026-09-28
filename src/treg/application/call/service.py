@@ -583,7 +583,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             status_code=replayed.status_code,
             media_type=replayed.media_type,
             headers={"X-Treg-Idempotent-Replay": "true",
-                     "X-Treg-Cost-Micro": str(replayed.charged_micro),
+                     # A replay charges nothing; the first call's charge is echoed separately so a
+                     # client summing X-Treg-Cost-Micro never counts one call twice.
+                     "X-Treg-Cost-Micro": "0",
+                     "X-Treg-Original-Cost-Micro": str(replayed.charged_micro),
                      **({"X-Treg-Error": "1"} if replayed.status_code >= 400 else {}),
                      **({"X-Treg-Call-Id": replayed.call_ref} if replayed.call_ref else {})},
         )

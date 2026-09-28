@@ -94,7 +94,9 @@ Notes:
   is unchanged). Run a handful and check the parsed results before looping over the whole list: a
   parse bug throws away answers that were already billed.
 - The real charge is the response header `X-Treg-Cost-Micro` (micro-USD), with `X-Treg-Call-Id`
-  as the id to quote. On an asynchronous submission that header is the reserved ceiling; the CLI
+  as the id to quote. An idempotent replay reports `0` there and the first call's charge in
+  `X-Treg-Original-Cost-Micro`. Lost an answer you paid for? `GET /calls/<call id>/result`
+  returns the stored response of a successful catalog call. On an asynchronous submission that header is the reserved ceiling; the CLI
   labels it as a reservation, and the terminal task settles the real charge. The catalog `~$/call`
   figure for a `per_result` route assumes a 20-row page
   when the price is per row; when the catalog `cost.unit` is `target`/`domain`/`keyword` you pay

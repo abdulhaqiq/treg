@@ -958,11 +958,11 @@ def test_show_prints_the_charge_and_call_id_for_a_metered_success(capsys):
     assert err == ""
 
     replay = httpx.Response(200, content=b'{}', headers={
-        "content-type": "application/json", "X-Treg-Cost-Micro": "6667",
+        "content-type": "application/json", "X-Treg-Cost-Micro": "0", "X-Treg-Original-Cost-Micro": "6667",
         "X-Treg-Idempotent-Replay": "true", "X-Treg-Call-Id": "c1"})
     cli._show(replay)
     _, err = capsys.readouterr()
-    assert "replay" in err and "nothing new charged" in err
+    assert "$0.006667 by the original call" in err and "nothing new charged" in err
 
     async_submission = httpx.Response(200, content=b'{"run_id":"r1"}', headers={
         "content-type": "application/json", "X-Treg-Cost-Micro": "2400000",

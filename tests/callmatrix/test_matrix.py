@@ -352,13 +352,14 @@ async def test_d1_same_key_replays_original_response(
         Expect(
             status=200,
             body=first.content,
-            cost_micro=with_margin(EP_MICRO),
+            cost_micro=0,
             audit={"credential_tier": "platform", "cost_charged_micro": with_margin(EP_MICRO)},
             upstream_hits=0,
         ),
     )
     assert replay.headers["X-Treg-Call-Id"] == first.headers["X-Treg-Call-Id"]
     assert replay.headers["X-Treg-Idempotent-Replay"] == "true"
+    assert replay.headers["X-Treg-Original-Cost-Micro"] == str(with_margin(EP_MICRO))
 
 
 async def test_d2_concurrent_same_key_loser_gets_409(

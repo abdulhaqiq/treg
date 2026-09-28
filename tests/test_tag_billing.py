@@ -411,6 +411,10 @@ async def test_one_user_still_replays_their_own_label(clients: AsyncClient, plat
     again = await clients.get(f"/call/{EP}?aweme_id=7", headers=hdr)
     assert first.status_code == 200 and again.status_code == 200
     assert again.headers.get("X-Treg-Idempotent-Replay") == "true"
+    # A client summing the cost header must not count the call twice.
+    assert first.headers["X-Treg-Cost-Micro"] == str(EP_MICRO)
+    assert again.headers["X-Treg-Cost-Micro"] == "0"
+    assert again.headers["X-Treg-Original-Cost-Micro"] == str(EP_MICRO)
     org_id = await _org_id(clients)
     async with session_maker() as db:
         assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == EP_MICRO

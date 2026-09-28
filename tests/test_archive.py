@@ -996,6 +996,9 @@ async def test_a_recorded_call_links_to_its_stored_answer(clients: AsyncClient, 
     assert d["stored"] is True and d["note"] is None and d["cached"] is False
     assert d["endpoint_id"] == EP
     assert d["response"]["body_text"] == r1.text            # the exact bytes the caller got
+    # The X-Treg-Call-Id the call returned reaches the same record as the audit row id.
+    by_ref = await clients.get(f"/calls/{r1.headers['X-Treg-Call-Id']}/result")
+    assert by_ref.status_code == 200 and by_ref.json()["id"] == row["id"]
     assert d["response"]["status_code"] == 200 and d["response"]["origin"] == "caller"
     assert d["request"]["method"] == "GET"
     assert "aweme_id=7" in d["request"]["url"] and "count=5" in d["request"]["url"]

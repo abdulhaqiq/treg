@@ -2061,7 +2061,7 @@
       "HEAD"
     ],
     "name": "get_call_result",
-    "path": "/calls/{call_id:int}/result"
+    "path": "/calls/{call_id}/result"
   },
   {
     "kind": "APIRoute",

@@ -814,7 +814,7 @@ OAuth grants and catalog-only calls are also refused.
 ### Cost and asynchronous-task headers
 
 `X-Treg-Cost-Micro` reports the metered call's charge. On an async submission it reports the
-reservation, repeated by idempotent replay; the CLI labels it "generation reservation".
+reservation (an idempotent replay reports 0 and echoes it as `X-Treg-Original-Cost-Micro`); the CLI labels it "generation reservation".
 Final charge and task status come from `/calls` or `/calls/{ref}`.
 
 An owned free platform poll explicitly returns zero. Own-key/tool calls omit the header because
@@ -828,7 +828,8 @@ caller who omits it sees byte-identical behaviour to before the feature existed.
 
     Idempotency-Key: <caller's label>        → replay if we already answered this label
     X-Treg-Idempotent-Replay: true           → on the response, when it came from store
-    X-Treg-Cost-Micro: <original charge>     → what the FIRST call cost, not a new charge
+    X-Treg-Cost-Micro: 0                     → a replay charges nothing, so client sums stay true
+    X-Treg-Original-Cost-Micro: <charge>     → what the FIRST call cost (or reserved)
 
 Refusals: `422` when a key is reused for a different request (a caller bug, and answering it would
 hand them a response to a question they did not ask), `409` while the first call with that key is
@@ -881,7 +882,7 @@ if returning the hold itself fails, the money comes back when the hold is reaped
 |---|---|
 | `GET /calls?days=&before_id=&limit=` | this team's calls, windowed and pageable. Analytics - **not** an invoice source |
 | `GET /calls/{call_ref}` | one call by its `X-Treg-Call-Id`, plus the ledger entries for it and its `async_task` view when it was a metered generation |
-| `GET /calls/{id}/result` | what one call asked and what came back - the archive's copy; recorded catalog 2xx only (platform or own key), `stored: false` + `note` otherwise |
+| `GET /calls/{id}/result` | `id` is the row id or the `X-Treg-Call-Id`; what one call asked and what came back - the archive's copy; recorded catalog 2xx only (platform or own key), `stored: false` + `note` otherwise |
 | `GET /orgs/{id}/usage/by-tag?key=&days=` | per-value spend for one tag key. **Money from the ledger**; admin+ |
 | `GET/PUT/DELETE /orgs/{id}/budgets[/{dim}/{val}]` | per-tag limits and blocking; admin+ |
 | `PATCH /orgs/{id}` | (admin+) rename the team: `name` and/or `slug`; the old slug stays an alias so existing keys keep working |

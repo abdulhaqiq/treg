@@ -352,7 +352,8 @@ def _show_charge_line(resp: httpx.Response) -> None:
     field is in the provider body, which is all stdout carries. Silent for an unmetered call (no
     header) — a team's own key is never billed — and for every non-call response."""
     headers = getattr(resp, "headers", {}) or {}
-    cost = headers.get("X-Treg-Cost-Micro")
+    # A replay reports 0 and the first call's charge separately; an older registry sent only the latter.
+    cost = headers.get("X-Treg-Original-Cost-Micro") or headers.get("X-Treg-Cost-Micro")
     if cost is None:
         return
     asynchronous = bool(headers.get("X-Treg-Async"))

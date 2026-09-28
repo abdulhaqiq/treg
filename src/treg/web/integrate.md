@@ -49,9 +49,12 @@ GET {BASE}/catalog/endpoints/<id>              # params, method, example
 Two response headers matter on every call:
 
 - **`X-Treg-Cost-Micro`** — what this call cost, in integer micro-USD (1e-6 USD). Present only on a
-  metered call; absent means it ran on the team's own key and was not billed.
+  metered call; absent means it ran on the team's own key and was not billed. An idempotent replay
+  reports `0` and puts the first call's charge in `X-Treg-Original-Cost-Micro`.
 - **`X-Treg-Call-Id`** — a stable id for this call. **Store it on your side.** It is how you join
   treg's records to yours later, and it resolves via `GET {BASE}/calls/<id>`.
+  `GET {BASE}/calls/<id>/result` returns the stored response of a successful catalog call, so an
+  answer your code threw away after paying for it can be recovered.
 
 Neither lives in the provider's body, which treg relays unchanged — including its errors. A 4xx/5xx
 from the provider costs nothing. One request header matters when you resell with a budget:
