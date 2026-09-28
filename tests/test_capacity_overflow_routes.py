@@ -621,3 +621,13 @@ def test_pdl_operation_allowance_does_not_lock_other_pdl_products():
     assert lock_key('pdl', 'pdl.x.person-identify', signal.kind) == 'pdl.x.person-identify'
     assert S.classify('pdl', 402, None, b'{"error":"Insufficient credits"}').kind == 'balance'
     assert S.classify('pdl', 400, None, b'{"error":"email is required"}') is None
+
+
+def test_orthogonal_relaying_icypeas_empty_pool_is_the_aggregators_dry_account():
+    """Orthogonal's own Icypeas pool can run dry too, and relays the same 200: never served, never billed."""
+    import json as _json
+    from treg.infra.upstream.aggregators import VENDOR_DRY, orthogonal, with_vendor_verdict
+    envelope = {"success": True, "data": _json.loads(ICYPEAS_OUT_OF_CREDITS), "priceCents": 1,
+                "requestId": "run_x", "billing": {"chargedPriceCents": 1}}
+    res = with_vendor_verdict(orthogonal.parse(200, _json.dumps(envelope).encode()), "icypeas")
+    assert res.failure == VENDOR_DRY
