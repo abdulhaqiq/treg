@@ -291,9 +291,19 @@ def _tavily_cost_micro(mk: MarketplaceCall, doc: object) -> int | None:
     return min(count, _tavily_requested_result_limit(mk)) * mk.unit_micro
 
 
+def _quickenrich_present(value) -> bool:
+    return isinstance(value, str) and value.strip().lower() not in ("", "n/a", "null", "none")
+
+
 def _quickenrich_cost_micro(mk: MarketplaceCall, doc: dict) -> int | None:
     """Subscription credits at the frozen list rate, independent of the upstream plan fee."""
     if mk.cost_type == "free":
+        return 0
+    data = doc.get("data")
+    if (mk.endpoint_id == "quickenrich.people.email.find" and isinstance(data, dict)
+            and not _quickenrich_present(data.get("email"))):
+        # QuickEnrich takes its credit for a phone-only answer too (meta.credits_used=1), but this
+        # is the pay-per-success EMAIL finder and the adapter calls that a miss: treg absorbs it.
         return 0
     meta = doc.get("meta")
     if isinstance(meta, dict) and "credits_used" in meta:
@@ -306,25 +316,21 @@ def _quickenrich_cost_micro(mk: MarketplaceCall, doc: dict) -> int | None:
     if data is None or data == [] or data == {}:
         return 0
 
-    def present(value):
-        return isinstance(value, str) and value.strip().lower() not in ("", "n/a", "null", "none")
-
     if mk.endpoint_id == "quickenrich.people.search.domain" and isinstance(data, list):
         if not all(isinstance(row, dict) for row in data):
             return None
         title = (mk.request_data.get("queryParams") or {}).get("title", "")
-        credits = (sum(present(row.get("email")) or present(row.get("employee_phone")) for row in data)
+        credits = (sum(_quickenrich_present(row.get("email")) or _quickenrich_present(row.get("employee_phone"))
+                       for row in data)
                    if title else 1)
         return credits * mk.unit_micro
     if mk.endpoint_id == "quickenrich.companies.search" and isinstance(data, list):
         return len(data) * mk.unit_micro if all(isinstance(row, dict) for row in data) else None
     if isinstance(data, dict):
         if mk.endpoint_id == "quickenrich.people.email.find":
-            if "email" not in data and "employee_phone" not in data:
-                return None
-            return int(present(data.get("email")) or present(data.get("employee_phone"))) * mk.unit_micro
+            return mk.unit_micro  # an email is present: the miss returned 0 above
         if mk.endpoint_id == "quickenrich.people.phone.find" and "employee_phone" in data:
-            return int(present(data["employee_phone"])) * mk.unit_micro
+            return int(_quickenrich_present(data["employee_phone"])) * mk.unit_micro
         if mk.endpoint_id == "quickenrich.people.enrich":
             return mk.unit_micro
     return None

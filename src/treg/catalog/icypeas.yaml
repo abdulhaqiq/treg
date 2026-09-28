@@ -54,6 +54,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /email-search
+    resource_ownership:
+      produces: [{kind: search, path: item._id}]
     name: "Find a work email from a name and domain (async)"
     summary: "Find a single email address from a firstname, a lastname and a company domain name"
     input:
@@ -87,6 +89,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /email-verification
+    resource_ownership:
+      produces: [{kind: search, path: item._id}]
     name: "Verify an email address is deliverable (async)"
     summary: "Check whether a specific email address exists and is deliverable, including catch-all detection"
     input:
@@ -118,6 +122,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /domain-search
+    resource_ownership:
+      produces: [{kind: search, path: item._id}]
     name: "Find role-based emails at a domain — contact@, support@"
     summary: "Discover a company's role-based addresses — contact@, support@, info@, admin@ and the rest"
     input:
@@ -149,21 +155,47 @@ endpoints:
     scope: any_account
     method: POST
     path: /bulk-single-searchs/read
-    name: "Read any search's results by id (the poll route)"
-    summary: "Collect the result of any single search, or the rows of a bulk search, by id"
+    name: "Read a single search's result by id (the poll route)"
+    summary: "Collect the result of one email find, verification or domain scan by the id it returned"
+    # The listing modes (mode=single|bulk without a file) enumerate every search on the account,
+    # and on treg's shared key that is every team's searches. Only an id this team produced is read.
+    body_allowlist: true
+    resource_ownership:
+      requires: {kind: search, param: id, in: body}
     input:
       body:
-        id: {type: string, required: false, note: "the _id returned by a single search — the usual way to collect one result", example: "mP6hHKABeMoKaEB1K1HF"}
-        mode: {type: string, required: false, note: "'single' or 'bulk' — list your searches instead of naming one id"}
-        file: {type: string, required: false, note: "with mode=bulk, the file id returned by icypeas.bulk.search — returns that bulk's rows in input order"}
-        type: {type: string, required: false, note: "with mode=single, filter by task: email-search | email-verification | domain-search. Cannot be combined with mode=bulk"}
-        limit: {type: integer, required: false, note: "rows per page, default 10, MAX 100", example: 10}
+        id: {type: string, required: true, note: "the _id returned by icypeas.people.email.find, icypeas.people.email.verify or icypeas.companies.emails.role", example: "mP6hHKABeMoKaEB1K1HF"}
+      note: "THE POLL ROUTE, and free. Each row's `status` says where the search got to; FOUND / DEBITED mean the payload in `results` is final. Rate limited to 30 calls/min, so poll a couple of seconds apart or register a webhook instead. Bulk rows are read with icypeas.bulk.results.read"
+    test_request:
+      body: {id: "mP6hHKABeMoKaEB1K1HF"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api-doc.icypeas.com/how-works/credit-cost", checked: '2026-08-20', confidence: documented, note: "the rate card prices the search routes; every other route including this one is free"}
+    verified: '2026-08-20'
+    example_response: examples/icypeas.search.results.read.json
+    docs_url: https://api-doc.icypeas.com/fetch-results/search-item
+
+  - id: icypeas.bulk.results.read
+    domain: contacts
+    capability: people.job.results
+    platform: people
+    scope: any_account
+    method: POST
+    path: /bulk-single-searchs/read
+    name: "Read a bulk job's rows"
+    summary: "Collect the rows of a bulk search by the file id icypeas.bulk.search returned"
+    body_allowlist: true
+    resource_ownership:
+      requires: {kind: bulk_file, param: file, in: body}
+    input:
+      body:
+        mode: {type: string, required: true, enum: [bulk], note: "always 'bulk'", example: "bulk"}
+        file: {type: string, required: true, note: "the file id returned by icypeas.bulk.search — returns that job's rows in input order", example: "L3mhHKAB9iupLhv96W-F"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "rows per page, default 10, MAX 100", example: 10}
         next: {type: boolean, required: false, note: "true = next page, false = previous page, used with `sorts`"}
         sorts: {type: "array", required: false, note: "the pagination cursor echoed by the previous response — pass it back to page further"}
-      note: "THE POLL ROUTE, and free. Each row's `status` says where the search got to; FOUND / DEBITED mean the payload in `results` is final. Rate limited to 30 calls/min, so poll a couple of seconds apart or register a webhook instead"
+      note: "Free. Watch icypeas.search.files.read for `finished`, then page through the rows here. Rate limited to 30 calls/min"
     test_request:
-      body: {mode: "single", type: "email-search", limit: 1}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api-doc.icypeas.com/how-works/credit-cost", checked: '2026-08-20', confidence: documented, note: "the rate card prices the search routes; every other route including this one is free"}
+      body: {mode: "bulk", file: "L3mhHKAB9iupLhv96W-F", limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api-doc.icypeas.com/how-works/credit-cost", checked: '2026-08-20', confidence: documented, note: "the rows were billed when the job ran; reading them is free"}
     verified: '2026-08-20'
     example_response: examples/icypeas.search.results.read.json
     docs_url: https://api-doc.icypeas.com/fetch-results/search-item
@@ -175,6 +207,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /bulk-search
+    resource_ownership:
+      produces: [{kind: bulk_file, path: file}]
     name: "Start a bulk email job (up to 5,000 rows)"
     summary: "Queue up to 5,000 rows of email discovery, email verification or domain scanning in one call"
     input:
@@ -183,7 +217,7 @@ endpoints:
         task: {type: string, required: true, note: "one of email-search | email-verification | domain-search", example: "email-search"}
         data: {type: "array[array[string]]", required: true, note: "one array per row. email-search rows are [firstname, lastname, domainOrCompany] (one of the two names may be empty); email-verification and domain-search rows hold a single value. MAX 5,000 rows", example: [["Patrick", "Collison", "stripe.com"]]}
         custom: {type: object, required: false, note: "{webhookUrlItem, webhookUrlBulkDone, externalIds, includeResultsInWebhook} — per-row and end-of-job callbacks, your own row ids, and whether results ride in the final webhook"}
-      note: "Returns {file, status: 'in_progress'} immediately. Track it with icypeas.search.files.read and collect rows with icypeas.search.results.read using mode=bulk and that file id. Rate limited to 1 call/sec"
+      note: "Returns {file, status: 'in_progress'} immediately. Track it with icypeas.search.files.read and collect rows with icypeas.bulk.results.read using that file id. Rate limited to 1 call/sec"
     test_request:
       body: {name: "treg catalog verification", task: "email-search", data: [["Patrick", "Collison", "stripe.com"]]}
     cost:
@@ -210,16 +244,16 @@ endpoints:
     path: /search-files/read
     name: "Check bulk job progress"
     summary: "Progress and stats for your bulk searches — how many rows are done, found, aborted or short of credits"
+    # Without `file` this lists every bulk job on the account (every team's, on treg's shared key).
+    body_allowlist: true
+    resource_ownership:
+      requires: {kind: bulk_file, param: file, in: body}
     input:
       body:
-        limit: {type: integer, required: false, note: "files per request, default 10, MAX 50", example: 2}
-        file: {type: string, required: false, note: "a single file id, to get just that job's stats"}
-        status: {type: string, required: false, note: "'in_progress' or 'done'"}
-        next: {type: boolean, required: false, note: "true = next page, false = previous page"}
-        sorts: {type: "array", required: false, note: "the cursor echoed by the previous response — [{creationDate}] tuples"}
-      note: "An empty body {} lists every job. Watch `finished` (or status='done'), then collect the rows with icypeas.search.results.read. Rate limited to 15 calls/min"
+        file: {type: string, required: true, note: "the file id returned by icypeas.bulk.search", example: "L3mhHKAB9iupLhv96W-F"}
+      note: "Watch `finished` (or status='done'), then collect the rows with icypeas.bulk.results.read. Rate limited to 15 calls/min"
     test_request:
-      body: {limit: 2}
+      body: {file: "L3mhHKAB9iupLhv96W-F"}
     cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api-doc.icypeas.com/how-works/credit-cost", checked: '2026-08-20', confidence: documented}
     verified: '2026-08-20'
     example_response: examples/icypeas.search.files.read.json

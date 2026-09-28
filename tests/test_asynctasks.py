@@ -767,6 +767,42 @@ async def test_legacy_platform_async_utilities_deny_unknown_ids_before_relay(
     assert response.json()["detail"]["error"] == "async_resource_not_owned"
 
 
+async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncClient, monkeypatch):
+    """The listing modes enumerate every search on treg's one Icypeas account: every team's."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "test-platform-token")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    responses = [{"success": True, "item": {"_id": "search-owned", "status": "NONE"}},
+                 {"success": True, "status": "in_progress", "file": "file-owned"}]
+
+    async def fake_relay(*args, **kwargs):
+        return _response(200, responses.pop(0) if responses else {"success": True, "items": []})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    assert (await clients.post("/call/icypeas.people.email.find", json={
+        "firstname": "A", "lastname": "B", "domainOrCompany": "example.com"})).status_code == 200
+    assert (await clients.post("/call/icypeas.bulk.search", json={
+        "name": "x", "task": "email-verification", "data": [["a@example.com"]]})).status_code == 200
+    owned = [("icypeas.search.results.read", {"id": "search-owned"}),
+             ("icypeas.bulk.results.read", {"mode": "bulk", "file": "file-owned"}),
+             ("icypeas.search.files.read", {"file": "file-owned"})]
+    for endpoint, body in owned:
+        assert (await clients.post(f"/call/{endpoint}", json=body)).status_code == 200, endpoint
+
+    for endpoint, body in [("icypeas.search.results.read", {"mode": "single", "type": "email-search"}),
+                           ("icypeas.search.results.read", {"id": "search-owned", "mode": "single"}),
+                           ("icypeas.bulk.results.read", {"mode": "bulk"}),
+                           ("icypeas.search.files.read", {}),
+                           ("icypeas.search.results.read", {"id": "someone-elses"})]:
+        response = await clients.post(f"/call/{endpoint}", json=body)
+        assert response.status_code in (400, 403), (endpoint, body, response.status_code)
+    other = await clients.post("/users", json={"email": "icypeas-stranger@example.com"})
+    stranger = {"X-Treg-Token": other.json()["token"]}
+    for endpoint, body in owned:
+        assert (await clients.post(f"/call/{endpoint}", json=body, headers=stranger)).status_code == 403
+    get_settings.cache_clear()
+
+
 async def test_apify_actor_start_needs_own_key(
     clients: AsyncClient, monkeypatch, legacy_async_platform,
 ):

@@ -1864,6 +1864,8 @@ def test_tomba_settles_at_the_estimate_without_countable_evidence(fields, body):
     *[(endpoint, {'success': True, 'data': data, 'meta': {'credits_used': credits}}, expected)
       for endpoint, data, credits, expected in [
           ('people.email.find', {'email': 'person@example.com'}, 1, 4834),
+          # QuickEnrich bills a phone-only answer, but an email finder without an email is a free miss
+          ('people.email.find', {'email': 'N/A', 'employee_phone': '+15550101000'}, 1, 0),
           ('people.phone.find', {'employee_phone': '+15550101000'}, 1, 4834),
           ('people.enrich', {'email': 'person@example.com'}, 1, 4834),
           ('people.email.find', [], 0, 0),
@@ -1882,6 +1884,7 @@ def test_quickenrich_settles_reported_credits_at_frozen_rate(endpoint, doc, expe
 @pytest.mark.parametrize('endpoint,data,title,credits', [
     ('people.email.find', {'email': 'a@example.com'}, '', 1),
     ('people.email.find', {'email': None, 'employee_phone': 'N/A'}, '', 0),
+    ('people.email.find', {'email': None, 'employee_phone': '+15550101000'}, '', 0),
     ('people.phone.find', {'employee_phone': '+15550101000'}, '', 1),
     ('people.phone.find', {'employee_phone': 'N/A'}, '', 0),
     ('people.enrich', {'first_name': 'Example'}, '', 1),
@@ -2415,6 +2418,17 @@ def test_icypeas_profile_url_miss_settles_at_zero():
         assert call_settle._observed_cost_micro(mk, b'{"success":true,"result":null,"status":"NOT_FOUND"}') == 0
         assert call_settle._observed_cost_micro(
             mk, b'{"success":true,"result":"https://www.linkedin.com/in/x","status":"FOUND"}') is None
+
+
+@pytest.mark.parametrize("task,rows,credits", [
+    ("email-verification", 3, 0.3), ("email-search", 3, 3), ("domain-search", 1, 1)])
+def test_icypeas_bulk_search_bills_its_rows_at_the_task_rate(task, rows, credits):
+    """The start answer has no rows, so the reserve is the bill: never the 20-row default."""
+    body = {"name": "x", "task": task, "data": [["a@example.com"]] * rows}
+    mk, estimate, credit = _priced("icypeas.bulk.search", None, body, request_data={"body": body})
+    assert estimate == round(credits * credit)
+    assert call_settle._observed_cost_micro(
+        mk, b'{"success":true,"status":"in_progress","file":"f"}') in (None, estimate)
 
 
 def test_icypeas_company_scrape_bills_the_company_rate():

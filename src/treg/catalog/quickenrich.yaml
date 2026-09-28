@@ -57,8 +57,8 @@ endpoints:
     source_url: https://app.quickenrich.io/docs
     checked: '2026-09-08'
     confidence: documented
-    note: One credit for a contact with email and/or phone; observed email hit 1 and miss 0. Prefer meta.credits_used;
-      verification date is not a fresh SMTP verification.
+    note: One credit when an email is returned. QuickEnrich also bills a phone-only answer; treg absorbs that
+      credit, so a no-email answer is free here. Verification date is not a fresh SMTP verification.
   docs_url: https://app.quickenrich.io/docs
   verified: '2026-09-08'
   example_response: examples/quickenrich.people.email.find.json
