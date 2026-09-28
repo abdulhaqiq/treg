@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude for Signal Monitor: buyer intent signals for agents | treg.to</title>
+<title>Claude for Monitor Leads Signal: buyer intent signals for agents | treg.to</title>
 <meta name="description" content="Your agent watches for buyer signals: hiring, funding, tech stack, job changes, LinkedIn engagers, Reddit and X complaints. Pay per check, no plan. Real run: 4 sources, 4,710 posts and profiles, $0.98.">
 <link rel="canonical" href="https://treg.to/intent-signals"/>
-<meta property="og:title" content="Claude for Signal Monitor: buyer intent signals for agents | treg.to"/>
+<meta property="og:title" content="Claude for Monitor Leads Signal: buyer intent signals for agents | treg.to"/>
 <meta property="og:description" content="Your agent watches for buyer signals: hiring, funding, tech stack, job changes, LinkedIn engagers, Reddit and X complaints. Pay per check, no plan. Real run: 4 sources, 4,710 posts and profiles, $0.98."/>
 <meta property="og:url" content="https://treg.to/intent-signals"/>
 <meta property="og:type" content="website"/>
@@ -14,7 +14,7 @@
 <link rel="icon" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Geist+Pixel&display=swap">
 <style>
   :root {
     --bg: #FDFCFB;
@@ -28,6 +28,7 @@
     --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
     --text: "Inter", ui-sans-serif, system-ui, sans-serif;
     --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --pixel: "Geist Pixel", "Geist Mono", ui-monospace, monospace;
   }
   * { box-sizing: border-box; }
   #signals, #daily, #bench, #pricing, #tools { scroll-margin-top: 70px; }
@@ -76,7 +77,8 @@
     font-family: var(--display); font-weight: 500; letter-spacing: -.03em;
     font-size: clamp(42px, 7vw, 78px); line-height: 1.04; margin: 0 auto 22px; max-width: 16ch; text-wrap: balance;
   }
-  .hero h1 .hl { color: var(--green); font-weight: 600; }
+  .hero h1 { font-family: var(--pixel); font-weight: 400; letter-spacing: -.01em; max-width: 21ch; }
+  .hero h1 .hl { color: var(--green); font-weight: 400; }
   .hero p.sub { max-width: 54ch; margin: 0 auto 34px; color: var(--muted); font-size: 18px; text-wrap: balance; }
   .hero p.sub strong { color: var(--ink); font-weight: 500; }
   .ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
@@ -646,7 +648,7 @@
 </nav>
 
 <header class="hero">
-  <h1 id="heroA"><span class="hw ag-line"><span class="ag" id="agWrap"><img id="agLogo" src="media/people-search/claude-code.png" alt=""><span id="agName">Claude</span></span> for</span><br><span class="hw hl">Signal Monitor.</span></h1>
+  <h1 id="heroA"><span class="hw ag-line"><span class="ag" id="agWrap"><img id="agLogo" src="media/people-search/claude-code.png" alt=""><span id="agName">Claude</span></span> for</span><br><span class="hw hl">Monitor Leads Signal</span></h1>
   <p class="sub">Describe your buyer in one sentence. Your agent checks <strong>hiring, funding, tech stack, job changes, LinkedIn engagers, Reddit and X</strong> on a schedule, and tells you only who's new. Pay per check, no plan. <a href="#pricing" style="color:var(--green);text-decoration:underline;text-underline-offset:3px">Real run: 4 sources, 4,710 posts and profiles, $0.98</a></p>
   <div class="ctas">
     <a class="pill dark" href="/app?ref=intent-signals" id="ctaHero">Setup treg</a>
@@ -994,7 +996,7 @@
   var nav = document.getElementById('nav');
   addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
 
-  /* hero: the rotating agent in "Claude for Signal Monitor." */
+  /* hero: the rotating agent in "Claude for Monitor Leads Signal" */
   var AGENTS = [
     ['media/people-search/claude-code.png', 'Claude'],
     ['media/people-search/codex.png', 'Codex'],

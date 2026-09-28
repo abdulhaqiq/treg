@@ -3732,7 +3732,7 @@ async def people_search_page(request: Request):
 
 @app.get("/intent-signals", include_in_schema=False)
 async def intent_signals_page():
-    """Landing page for the buyer-signals launch ("Claude for Signal Monitor"). Built from the
+    """Landing page for the buyer-signals launch ("Claude for Monitor Leads Signal"). Built from the
     /people-search page and served the same way: canonical, in the sitemap, relative asset paths,
     no-cache so edits land on refresh."""
     page = _WEB_DIR / "intent-signals.html"
@@ -3826,7 +3826,7 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
-    ("/intent-signals", "Claude for Signal Monitor", "2026-09-28",
+    ("/intent-signals", "Claude for Monitor Leads Signal", "2026-09-28",
      "Your agent checks hiring, funding, job changes and social chatter on a schedule, and reports what's new."),
     ("/jev", "How to use Jev", "2026-09-20",
      "What Jev is and how to use it: live examples, use cases, code, and GTM automation recipes."),
