@@ -20,7 +20,7 @@ from treg.application import connect as connect_use_cases
 from treg.application.connect import _backfill_provider_extra_tools
 from treg.config import get_settings
 from treg.infra.db import session_maker
-from treg.models import Secret, Tool
+from treg.models import HubTool, Membership, Secret, Tool
 
 # The test upstream serves /token, standing in for Google's token endpoint.
 BYO = {
@@ -830,6 +830,61 @@ async def test_revoke_removes_the_extra_tool_too(clients: AsyncClient, treg_goog
     names = {t["name"] for t in (await clients.get("/tools")).json()}
     assert "google-analytics" not in names
     assert "google-analytics-admin" not in names
+
+
+# ---- renaming a connected account renames the tool an agent calls ---------------------------
+async def test_rename_moves_the_tool_its_companions_and_member_access(clients: AsyncClient, treg_google_app):
+    """With several accounts, `-2` tells nobody which account it is. A rename moves every name the
+    connection owns together, or the agent is left calling a tool whose credential went elsewhere."""
+    await _connect_byo(clients, provider="google-analytics", name="")
+    second = await _connect_byo(clients, provider="google-analytics", name="")
+    sid = second["secret_id"]
+    async with session_maker() as db:
+        member = (await db.execute(select(Membership))).scalars().first()
+        member.tool_access = ["google-analytics-2", "google-analytics-2-admin", "other"]
+        await db.commit()
+
+    r = await clients.patch(f"/connections/{sid}", json={"name": "Google-Analytics-Acme"})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "google-analytics-acme"
+
+    tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
+    assert "google-analytics-2" not in tools and "google-analytics-2-admin" not in tools
+    assert tools["google-analytics-acme"]["bindings"][0]["secret_id"] == sid
+    assert tools["google-analytics-acme-admin"]["bindings"][0]["secret_id"] == sid
+    assert "google-analytics" in tools, "the other account is untouched"
+    async with session_maker() as db:
+        member = await db.get(Membership, member.id)
+        assert member.tool_access == ["google-analytics-acme", "google-analytics-acme-admin", "other"]
+
+    # Reconnecting the renamed account rebinds the renamed tool rather than resurrecting the old name.
+    await _connect_byo(clients, provider="google-analytics", name="", connection_id=sid)
+    names = {t["name"] for t in (await clients.get("/tools")).json()}
+    assert "google-analytics-2" not in names and "google-analytics-acme" in names
+
+
+async def test_rename_refuses_bad_taken_and_hub_used_names(clients: AsyncClient, treg_google_app):
+    first = await _connect_byo(clients, provider="google-search-console", name="")
+    second = await _connect_byo(clients, provider="google-search-console", name="")
+    sid = second["secret_id"]
+    assert (await clients.patch(f"/connections/{sid}", json={"name": "a/b"})).status_code == 422
+    assert (await clients.patch(f"/connections/{sid}", json={"name": "google-search-console"})).status_code == 409
+
+    async with session_maker() as db:
+        org_id = (await db.get(Secret, first["secret_id"])).org_id
+        db.add(HubTool(org_id=org_id, tool_id="t.report", name="report", kind="steps", status="live",
+                       summary="s", manifest={"uses": ["google-search-console-2"]}))
+        await db.commit()
+    r = await clients.patch(f"/connections/{sid}", json={"name": "gsc-acme"})
+    assert r.status_code == 409 and "report" in r.json()["detail"]
+
+
+async def test_secret_patch_cannot_strand_a_connections_tool(clients: AsyncClient, treg_google_app):
+    """Renaming only the secret used to leave its tool under the old name; the next reconnect then
+    minted a second tool under the new one."""
+    st = await _connect_byo(clients, provider="google-search-console", name="")
+    r = await clients.patch(f"/secrets/{st['secret_id']}", json={"name": "renamed"})
+    assert r.status_code == 409, r.text
 
 
 # ---- picking a resource stamps a ready-made call onto the tool -----------------------------

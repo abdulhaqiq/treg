@@ -680,7 +680,13 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   and finishes the tool with BOTH bindings - the primary half built by `_provider_bindings`, so it
   follows the provider's own auth shape (pasted key or OAuth) rather than assuming a bearer token. `revoke_connection` (`DELETE /connections/{id}`) deletes the credential and
   cleans up: it removes the tool treg auto-provisioned for the provider and drops the dead binding from
-  any user-built tool, leaving that tool's other bindings intact. All `require_can_register`
+  any user-built tool, leaving that tool's other bindings intact. `rename_connection`
+  (`PATCH /connections/{id}`) renames a connected account, which is the tool name an agent calls
+  (`instagram-2` → `instagram-acme`): the secret, the main tool and `{name}-{suffix}` companion tools
+  bound to it, and member/invite `tool_access` lists move in one transaction; the old name stops
+  resolving (no alias). A taken name is a 409, and so is a live/unchecked hub recipe whose `uses`
+  names the old tool (a published version is never rewritten). `PATCH /secrets/{id}` refuses a name
+  change on a provider connection for the same reason. All `require_can_register`
   (member+). Helpers: `_owned_connection`, `_dig` (dotted-path walk).
 - **Health:** `run_health` (`POST /health/run`) → `health.run_all`; `get_health` (`GET /health`) now
   returns `health._view(s)` plus a `needs_reconnect` flag (`health.needs_reconnect`) so a credential treg

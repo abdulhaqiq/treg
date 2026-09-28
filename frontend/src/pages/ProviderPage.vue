@@ -77,6 +77,7 @@ export default { components: { ToolDrawer }, setup: useDashboard }
                           :title="'Ask for '+c.missing_capabilities.join(', ')+' as well'">Add {{c.missing_capabilities.join(' + ')}}</button>
                   <button v-if="c.supports_discovery" class="btn sm" @click="openResources(c)"
                           :title="'Choose which '+(c.resource_label||'account')+' this connection uses'">Choose {{c.resource_label||'account'}}</button>
+                  <button class="btn sm" @click="renameConnection(c)" title="Change the tool name an agent calls for this account">Rename</button>
                   <button class="btn sm" @click="reconnect(c)" title="Re-consent to refresh this account">Reconnect</button>
                   <button class="btn sm ico" :class="{danger:confirmDisc===c.id}" @click="disconnect(c)" :title="confirmDisc===c.id?'Click again to disconnect':'Disconnect'">✕</button>
                 </td>

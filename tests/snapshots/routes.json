@@ -2197,6 +2197,14 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "PATCH"
+    ],
+    "name": "rename_connection",
+    "path": "/connections/{secret_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "DELETE"
     ],
     "name": "revoke_connection",

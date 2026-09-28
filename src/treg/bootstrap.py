@@ -307,6 +307,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/connections/token', ('POST',), 'connect_with_token'),
     ('/connections/{secret_id}/extra-credential', ('POST',), 'set_extra_credential'),
     ('/connections/{secret_id}', ('DELETE',), 'revoke_connection'),
+    ('/connections/{secret_id}', ('PATCH',), 'rename_connection'),
     ('/oauth/status/{state}', ('GET',), 'oauth_status'),
     ('/health/run', ('POST',), 'run_health'),
     ('/health', ('GET',), 'get_health'),

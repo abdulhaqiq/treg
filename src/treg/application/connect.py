@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 import json
 import logging
+import re
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from sqlalchemy import or_
@@ -21,7 +22,7 @@ from ..infra.db import session_maker
 from ..infra.oauth_exchange import HTTPXOAuthExchangePort
 from ..infra.oauth_refresh import HTTPXOAuthRefreshPort
 from ..infra.upstream.injectors import ensure_base64
-from ..models import PendingOAuth, Secret, Tool
+from ..models import HubTool, Invite, Membership, PendingOAuth, Secret, Tool
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 
@@ -772,7 +773,7 @@ async def list_connections(*, org_id: int) -> list[dict]:
                 # credential has been supplied and the connection is callable.
                 if profile.needs_extra_credential and not profile.extra_credential_is_platform:
                     built = (await db.execute(
-                        select(Tool).where(Tool.org_id == org_id, Tool.name == provider.service)
+                        select(Tool).where(Tool.org_id == org_id, Tool.name == (s.name or provider.service))
                     )).scalars().first()
                     view["needs_extra_credential"] = built is None
             out.append(view)
@@ -1163,10 +1164,10 @@ async def supply_extra_credential(
              "name": provider.extra_credential_name, "format": "{secret}"},
         ]
         tool = (await db.execute(
-            select(Tool).where(Tool.org_id == org_id, Tool.name == provider.service)
+            select(Tool).where(Tool.org_id == org_id, Tool.name == (secret.name or provider.service))
         )).scalars().first()
         if tool is None:
-            tool = Tool(org_id=org_id, name=provider.service, owner=owner,
+            tool = Tool(org_id=org_id, name=secret.name or provider.service, owner=owner,
                         base_url=provider.base_url, host=_host_of(provider.base_url), bindings=bindings)
             db.add(tool)
         else:
@@ -1200,6 +1201,64 @@ async def revoke_connection(*, secret_id: int, org_id: int) -> dict:
         await db.delete(secret)
         await db.commit()
         return {"deleted": secret_id, "removed_tools": removed_tools}
+
+
+_CONNECTION_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
+
+
+async def rename_connection(*, secret_id: int, name: str, org_id: int) -> dict:
+    """Rename a connected account, which renames the tool an agent types: instagram-2 -> instagram-acme.
+
+    The connection's secret, the tools bound to it under its name (the main one and any companion
+    `{name}-{suffix}`), and every member/invite tool_access list naming them move together in one
+    transaction. The old name stops resolving; nothing aliases it. A live hub recipe that `uses` the
+    old name blocks the rename, because a published version is a contract and is never rewritten."""
+    name = name.strip().lower()
+    if not _CONNECTION_NAME.fullmatch(name):
+        raise ConnectError(
+            "invalid_name", "a name is 1-64 lowercase letters, digits and dashes, not starting or ending with a dash")
+    async with session_maker() as db:
+        secret = await _owned_connection(secret_id, org_id, db)
+        old = secret.name
+        if name == old:
+            return connection_refresh.connection_view(secret)
+        provider = oauth_providers.get(secret.provider) if secret.provider else None
+        suffixes = [e["suffix"] for e in (getattr(provider, "extra_tools", ()) or ())]
+        tools = (await db.execute(select(Tool).where(Tool.org_id == org_id))).scalars().all()
+        # Only tools this credential actually powers move; an unrelated tool that happens to share
+        # the name is the user's own and stays put.
+        renames = {
+            t.name: name + t.name[len(old):]
+            for t in tools
+            if t.name in {old, *(f"{old}-{s}" for s in suffixes)}
+            and any(b.get("secret_id") == secret.id for b in (t.bindings or []))
+        }
+        taken = {t.name for t in tools if t.name not in renames} | set((await db.execute(
+            select(Secret.name).where(Secret.org_id == org_id, Secret.id != secret.id)
+        )).scalars().all())
+        if clash := sorted({name, *renames.values()} & taken):
+            raise ConnectError("name_taken", f"{clash[0]!r} is already used in this team")
+        recipes = (await db.execute(select(HubTool).where(
+            HubTool.org_id == org_id, HubTool.status.in_(("live", "unchecked"))
+        ))).scalars().all()
+        if blocking := sorted({r.name for r in recipes if set(r.manifest.get("uses") or []) & set(renames)}):
+            raise ConnectError("name_in_use", (
+                f"hub tool {blocking[0]!r} calls {old!r}; publish a version that uses the new name first"))
+
+        secret.name = name
+        for t in tools:
+            if t.name in renames:
+                t.name = renames[t.name]
+        for model in (Membership, Invite):
+            rows = (await db.execute(select(model).where(
+                model.org_id == org_id, model.tool_access.is_not(None)  # type: ignore[union-attr]
+            ))).scalars().all()
+            for row in rows:
+                if set(row.tool_access) & set(renames):
+                    row.tool_access = [renames.get(n, n) for n in row.tool_access]  # reassign: JSON column
+        await db.commit()
+        await db.refresh(secret)
+        return connection_refresh.connection_view(secret)
 
 
 async def run_connection_health(

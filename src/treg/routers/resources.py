@@ -130,6 +130,10 @@ async def update_secret(
         raise HTTPException(status_code=403, detail="only the creator or an admin can edit this secret")
     _require_not_live_demo_secret(caller, secret)
     fields = body.model_dump(exclude_unset=True)
+    # A connection's name is also its tools' names; renaming only the secret strands them.
+    if secret.provider and fields.get("name", secret.name) != secret.name:
+        raise HTTPException(status_code=409, detail=(
+            f"{secret.name!r} is a connected account; rename it with PATCH /connections/{secret_id}"))
     for k in ("name", "value", "kind"):  # these map to NOT-NULL columns; explicit null is a 422, not a 500
         if k in fields and fields[k] is None:
             raise HTTPException(status_code=422, detail=f"{k} cannot be null")

@@ -198,6 +198,17 @@ async chooseResource(r){
         this.resPick=null; await this.loadConnections();
       }catch(e){ this.connErr=String(e.message||e); }
     },
+async renameConnection(c){
+      // The name is what agents type, so say plainly what a rename breaks before doing it.
+      const name=window.prompt('New tool name for this account. Scripts and agents that call "'+c.name+'" will need the new name.', c.name);
+      if(!name || name.trim()===c.name) return;
+      this.connErr='';
+      try{
+        await this.api('/connections/'+c.id,{method:'PATCH',headers:{'content-type':'application/json'},
+          body:JSON.stringify({name:name.trim()})});
+        await this.loadConnections(); await this.loadAll();
+      }catch(e){ this.connErr=(e.detail||e.message||e); }
+    },
 async disconnect(c){
       if(this.confirmDisc!==c.id){ this.confirmDisc=c.id; setTimeout(()=>{ if(this.confirmDisc===c.id) this.confirmDisc=null; },4000); return; }
       this.confirmDisc=null;
