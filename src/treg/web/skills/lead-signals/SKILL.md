@@ -1,6 +1,6 @@
 ---
 name: lead-signals
-description: Find people and companies that are ready to buy, from public signals - posts and complaints on LinkedIn, X and Reddit, engagement on a post, reviews, hiring, job changes, funding, tech adoption, headcount, news and ads. Qualify them, score them, find the decision maker's work email, and optionally re-run on a schedule that reports only what is new. Every call goes through treg. Use when asked for buyers, warm or hot leads, in-market accounts, buying or intent signals, trigger events, or to monitor a topic, a competitor or an account list.
+description: Use when the user wants to find buyers, warm or hot leads, or in-market accounts; asks about buying signals, intent signals or trigger events; wants to know who is complaining about a problem, engaging with a post, hiring for a role, changing jobs, raising money or adopting a tool; or wants to monitor a topic, a competitor or a list of accounts for people ready to buy.
 ---
 
 # Lead signals
@@ -24,18 +24,21 @@ company and score → decision makers and emails at the top companies.
 
 ## Signals
 
-| Signal | Search the catalog for | Keep | Drop |
-| --- | --- | --- | --- |
-| Posts and complaints | "search linkedin posts", "search reddit posts", "search x posts" | first-person pain, last 7 days, names you or a competitor | vendors, recruiters, consultants selling to the same crowd |
-| Post engagers | "linkedin post comments", "post reactions" | commented beats reacted; title fits | the author's colleagues, "great post" |
-| Reviews | "google reviews" | low stars about the job you do | reviews older than a quarter |
-| Hiring | "job postings" | a role that implies your product, last 30 days, several roles | staffing firms, evergreen reposts |
-| Job change | "job change" | moved in the last 90 days into a company that fits; a former user | moves inside the same group |
-| Funding | "funding rounds" | last 90 days, stage fits your price | debt read as growth |
-| Tech adoption | "technology users", "tech stack" | a tool added or removed recently: a competitor or an integration | tags every site has |
-| Headcount | "headcount", "workforce" | direction and rate in your buyer's team | jumps from an acquisition |
-| News | "company news" | launch, acquisition, exec hire, last 30 days | syndicated duplicates |
-| Ads | "ads library" | live campaigns: budget and an offer to position against | |
+The vendors are examples of who answers today, not a list to stick to: search, and take whatever
+the catalog ranks best now.
+
+| Signal | Search the catalog for | Example vendors | Keep | Drop |
+| --- | --- | --- | --- | --- |
+| Posts and complaints | "search linkedin posts", "search reddit posts", "search x posts" | HarvestAPI, AnyAPI, ScrapeCreators | first-person pain, last 7 days, names you or a competitor | vendors, recruiters, consultants selling to the same crowd |
+| Post engagers | "linkedin post comments", "post reactions" | HarvestAPI, Fetchin | commented beats reacted; title fits | the author's colleagues, "great post" |
+| Reviews | "google reviews" | Serper, AnyAPI | low stars about the job you do | reviews older than a quarter |
+| Hiring | "job postings" | HarvestAPI, PredictLeads, Apollo | a role that implies your product, last 30 days, several roles | staffing firms, evergreen reposts |
+| Job change | "job change" | Datagma, LeadMagic | moved in the last 90 days into a company that fits; a former user | moves inside the same group |
+| Funding | "funding rounds" | PredictLeads, Aviato | last 90 days, stage fits your price | debt read as growth |
+| Tech adoption | "technology users", "tech stack" | PredictLeads, Tomba | a tool added or removed recently: a competitor or an integration | tags every site has |
+| Headcount | "headcount", "workforce" | CompanyEnrich, Akta | direction and rate in your buyer's team | jumps from an acquisition |
+| News | "company news" | PredictLeads, Akta | launch, acquisition, exec hire, last 30 days | syndicated duplicates |
+| Ads | "ads library" | Meta Ad Library, Adyntel | live campaigns: budget and an offer to position against | |
 
 Anything else is a composition. A page change: scrape the page, keep a hash, compare next run. Custom
 intent: a Google search such as `"migrating from <competitor>"`. Repo stars: GitHub with the team's own
