@@ -79,6 +79,11 @@ _TABLE: list[tuple[str, int, str, str]] = [
     # when the operator raises its dashboard limit. Neither is a transient 429 burst.
     ("tavily", 432, r"exceeds your plan's set usage limit", "quota"),
     ("tavily", 433, r"exceeds the pay-as-you-go limit", "quota"),
+    # Icypeas answers an empty credit pool with a 200: {"validationErrors": [{"message":
+    # "insufficient_credits", "type": "InsufficientCredits", ...}], "success": false}, on every paid
+    # route (read from archived answers, 2026-09-27). The only 2xx row: callers of `classify` that
+    # gate on >= 400 would never see it.
+    ("icypeas", 200, r'"message"\s*:\s*"insufficient_credits"', "balance"),
     ("*", 402, r"", "balance"),
 ]
 

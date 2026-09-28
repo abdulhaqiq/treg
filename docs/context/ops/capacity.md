@@ -282,8 +282,9 @@ smoothing becomes endpoint-aware.
   `overflow:monid`** (aggregators are prepaid accounts that run dry too). `ensure_policies` inserts
   missing rows only — a hand-edited row is never overwritten — and returns the providers still
   `unknown`, which a person must classify; code never guesses. `latest_state()` is the pure rule:
-  no/failed/old (> 6 h) observation → `stale` (never refuses a call); `remaining ≤ 0` on an exact
-  observation → `exhausted` until `resets_at`, or until the next sweep can prove otherwise.
+  no/failed/old (> 6 h) observation → `stale` (never refuses a call); `remaining < 0.01` on an exact
+  observation (`EMPTY_BELOW`: a spent float pool can read a few millionths, never zero) →
+  `exhausted` until `resets_at`, or until the next sweep can prove otherwise.
 - **`sweep.py`** — `run_sweep(db)`: import policies → collect all providers in parallel (DB idle
   while the network is in flight) → one `CapacitySnapshot` per provider → publish each
   `LatestState` to ratestore as `capacity:state:<provider>` (24 h TTL) → one commit. A note that
@@ -383,7 +384,11 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   documented HTTP 429 `Discovery API credit limit reached` is an endpoint quota signal; ordinary
   per-minute 429s with Retry-After remain bursts. reAPI's empty prepaid balance is a **402**
   `error.code 30001 "Insufficient credits. Required: N"` (observed 2026-09-14); PiAPI's wallet
-  exhaustion is acknowledged unobserved. HTTP 402 still uses the shared balance signature.
+  exhaustion is acknowledged unobserved. Icypeas is the one **200**: an empty pool answers
+  `{"validationErrors": [{"message": "insufficient_credits", ...}], "success": false}` on every
+  paid route. The call path reads a platform 2xx through the table too, so such an answer is
+  released rather than settled, never archived, counted as a strike, and eligible for overflow.
+  HTTP 402 still uses the shared balance signature.
   Two guards against
   the next such vendor: `unrecorded`,
   a signal kind for a 4xx no row matched whose body still names credits/quota/balance (pattern =

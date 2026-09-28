@@ -281,6 +281,15 @@ def _burst_retry_after(provider: str, response: UpstreamResponse, body: bytes) -
     return float(signal.retry_after_s)
 
 
+def _account_out_2xx(mk: MarketplaceCall, response: UpstreamResponse, body: bytes) -> bool:
+    """A vendor that says "out of credits" inside a 2xx (Icypeas) is OUR account failing, not a
+    served answer: never archived, released by the settle, and treated by the breaker, the error
+    evidence and overflow as the error it is."""
+    return (mk.tier == "platform" and 200 <= response.status < 300
+            and capacity_signatures.is_exhausting(capacity_signatures.classify(
+                mk.provider, response.status, httpx.Headers(response.raw_headers), body[:4096])))
+
+
 def _refusal_kind(status_code: int) -> str | None:
     if status_code >= 500:
         return None
@@ -1262,7 +1271,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # TREG_ARCHIVE_MODE says otherwise; record() is fire-and-forget and never raises.
                 # `own_credential` here means billed OAuth: the org's token, treg's bill.
                 if (mk.metered and archive.recording() and 200 <= response.status < 300
-                        and not (own_credential and _echoes_own_credential(tool, secrets, body))):
+                        and not (own_credential and _echoes_own_credential(tool, secrets, body))
+                        and not _account_out_2xx(mk, response, body)):
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
                                 if k.lower() == b"content-type"), "")
                     body_observation = archive.archive_bodies.StorageReport(
@@ -1381,6 +1391,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         and 200 <= response.status < 300)
         rejected = _submission_rejected(mk, body) if terminal_2xx else ""
         deferred = terminal_2xx and not rejected
+        account_out_2xx = _account_out_2xx(mk, response, body)
         try:
             request.context.finalization = FinalizationState.FINALIZING
             if deferred:
@@ -1443,7 +1454,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             await _finish_cancelled_call(request, mk, call_ref, response)
             raise
         capacity_signal = None
-        if response.status >= 400:
+        if response.status >= 400 or account_out_2xx:
             # Did the provider just say OUR account is out? Mark it for the next caller (plan
             # §4.1). After the settle on purpose: the hold is closed, no connection is held.
             try:
@@ -1452,7 +1463,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             except asyncio.CancelledError:
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
-        elif response.status < 300:
+        elif response.status < 300:  # a 2xx that says the account is out is no recovery
             try:
                 await _note_capacity_recovery(mk)
             except asyncio.CancelledError:
@@ -1462,7 +1473,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # (see _refusal_kind). So this is where the provider's own explanation is captured, and the
         # only place it exists: nothing downstream keeps the body.
         err_request = err_response = None
-        if response.status >= 400:
+        if response.status >= 400 or account_out_2xx:
             _renderings = _safe_secret_renderings(tool, secrets)
             if _renderings is None:
                 err_request = err_response = _ERROR_MASKING_FAILED
@@ -1473,7 +1484,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     tool, caller_body, _renderings)
                 err_response = _error_response_evidence(
                     response.raw_headers, body, _renderings)
-        may_overflow = response.status >= 400 and mk.tier == "platform"
+        may_overflow = (response.status >= 400 or account_out_2xx) and mk.tier == "platform"
         from ...domain.catalog.results import classify, has_result_rules
 
         result = classify(mk.endpoint_id, response.status, body)

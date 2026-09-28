@@ -73,6 +73,11 @@ def test_latest_state_rules():
     assert st.health == "exhausted" and st.exhausted_until == reset and st.is_exhausted(now)
     assert not st.is_exhausted(reset + timedelta(seconds=1))
     assert LatestState.from_json(st.to_json()) == st
+    # Icypeas' spent pool read 1.9987e-05 credits for hours: float dust is empty, a real remainder is not.
+    dust = CapacitySnapshot(provider="icypeas", observed_at=now, remaining=1.9986932203931718e-05, unit="credits")
+    assert latest_state(pol, dust, now).health == "exhausted"
+    assert latest_state(pol, CapacitySnapshot(provider="icypeas", observed_at=now, remaining=0.5,
+                                              unit="credits"), now).health == "ok"
 
 
 async def test_sweep_one_failing_collector_does_not_stop_the_others(monkeypatch):

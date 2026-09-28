@@ -221,6 +221,19 @@ def test_apollo_says_out_of_credits_with_a_422():
     assert S.classify("hunter", 422, None, APOLLO_OUT_OF_CREDITS).kind == "unrecorded"
 
 
+# Icypeas, every paid route, an empty pool: HTTP 200 (read from archived answers, 2026-09-27).
+ICYPEAS_OUT_OF_CREDITS = (b'{"validationErrors":[{"field":"user","message":"insufficient_credits",'
+                          b'"humanReadableMessage":"Insufficient credits to run the search",'
+                          b'"type":"InsufficientCredits","expected":null,"actual":null}],"success":false}')
+
+
+def test_icypeas_says_out_of_credits_with_a_200():
+    sig = S.classify("icypeas", 200, None, ICYPEAS_OUT_OF_CREDITS)
+    assert sig.kind == "balance" and S.is_exhausting(sig)
+    assert S.classify("icypeas", 200, None, b'{"total":3,"success":true,"leads":[]}') is None
+    assert S.classify("hunter", 200, None, ICYPEAS_OUT_OF_CREDITS) is None, "a 2xx is only ever read per provider"
+
+
 def test_every_recorded_phrase_arms_the_tripwire():
     """Recording one vendor's wording must arm the tripwire for every other: each literal body
     phrase in `_TABLE` (the 429 rows carry period words, not capacity phrases) is in CAPACITY_PHRASES."""
@@ -262,7 +275,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 _UNRECORDED_SIGNATURE = {
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
-    "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "justoneapi", "marketstack",
+    "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it

@@ -235,13 +235,17 @@ class LatestState:
 
 
 STALE_AFTER = timedelta(hours=6)
+# A balance below a hundredth of the account's own unit is float dust, not a balance: a spent
+# fractional-credit pool (Icypeas) reads a few millionths while every paid route refuses, and
+# `<= 0` never fires. No route bills that little, in credits or in USD.
+EMPTY_BELOW = 0.01
 
 
 def latest_state(policy: CapacityPolicy, snap: CapacitySnapshot | None,
                  now: datetime | None = None) -> LatestState:
     """Pure: the state one snapshot implies. A missing/failed/old snapshot is `stale`, never
     exhausted — stale must not refuse calls (plan §4.1: blocking fires on confirmed signals only).
-    `remaining <= 0` on an exact observation IS a confirmed signal: exhausted until `resets_at`
+    `remaining < EMPTY_BELOW` on an exact observation IS a confirmed signal: exhausted until `resets_at`
     when the meter resets, else until the next sweep can prove otherwise (STALE_AFTER)."""
     now = now or utcnow_naive()
     rl = policy.rate_limit
@@ -259,7 +263,7 @@ def latest_state(policy: CapacityPolicy, snap: CapacitySnapshot | None,
     if now - snap.observed_at > STALE_AFTER:
         return LatestState(policy.provider, snap.remaining, snap.unit, snap.observed_at, "stale",
                            health="stale", note="last observation older than 6h", rate_limit=rl)
-    if snap.remaining <= 0:
+    if snap.remaining < EMPTY_BELOW:
         until = snap.resets_at or (snap.observed_at + STALE_AFTER)
         return LatestState(policy.provider, snap.remaining, snap.unit, snap.observed_at,
                            snap.confidence, exhausted_until=until, health="exhausted",

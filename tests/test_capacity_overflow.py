@@ -27,7 +27,7 @@ from treg.domain.capacity.view import view as capacity_view
 from treg.models import Hold, LedgerEntry, OverflowRoute, OverflowSpend
 from treg.timeutil import utcnow_naive
 
-from test_capacity_overflow_routes import APOLLO_OUT_OF_CREDITS, APOLLO_VALIDATION
+from test_capacity_overflow_routes import APOLLO_OUT_OF_CREDITS, APOLLO_VALIDATION, ICYPEAS_OUT_OF_CREDITS
 from test_marketplace_call import EP, EP_MICRO, EP_PATH, _balance, _fake_relay, platform_on  # noqa: F401
 
 VENDOR_BODY = {"data": {"comments": [{"id": "1", "text": "hashed"}], "cursor": 20}}
@@ -943,3 +943,53 @@ async def test_caller_ceiling_checks_actual_overflow_reserve(
         async with session_maker() as db:
             rows = (await db.execute(select(OverflowSpend))).scalars().all()
             assert all(row.cost_micro == 0 for row in rows)
+
+
+# --- Icypeas: "out of credits" is a 200 (2026-09-27) ------------------------------------------
+
+@pytest.fixture
+def icypeas_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_icypeas_out_of_credits_200_is_never_billed_and_strikes_the_breaker(
+        clients: AsyncClient, icypeas_on, monkeypatch):
+    """A 200 that says treg's pool is empty is not a served answer: the hold is released, the
+    breaker counts a strike."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, ICYPEAS_OUT_OF_CREDITS))
+    before = await _balance(clients)
+    r = await clients.post("/call/icypeas.people.search",
+                           json={"query": {"currentJobTitle": {"include": ["CEO"]}}, "pagination": {"size": 50}})
+    assert r.status_code == 200 and r.content == ICYPEAS_OUT_OF_CREDITS, "the vendor's answer, relayed as is"
+    assert await _balance(clients) == before and await _holds() == []
+    entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
+    assert sorted(e.kind for e in entries) == ["release", "reserve"]
+    assert next(e for e in entries if e.kind == "release").meta.get("reason") == "capacity_balance"
+    async with session_maker() as db:
+        lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "icypeas"))
+    assert lock.strikes == 1
+
+
+async def test_icypeas_out_of_credits_200_overflows_through_orthogonal(
+        clients: AsyncClient, overflow_on, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    await _route(endpoint_id="icypeas.people.enrich", provider="icypeas", path="/scrape/profile",
+                 price_micro=20_000, ratio=0.7)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, ICYPEAS_OUT_OF_CREDITS))
+    profile = {"success": True, "result": {"firstname": "hashed"}}
+    envelope = {"success": True, "data": profile, "priceCents": 2.0, "requestId": "run_i",
+                "billing": {"chargedPriceCents": 2.0}}
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, envelope)], seen))
+    before = await _balance(clients)
+    r = await clients.get("/call/icypeas.people.enrich?url=https://www.linkedin.com/in/x")
+    assert r.status_code == 200 and r.json() == profile, r.text
+    assert r.headers["X-Treg-Served-Via"] == "overflow:orthogonal"
+    assert before - await _balance(clients) == 20_000, "the aggregator's price once; the empty-pool 200 was released"
+    assert len(seen) == 1 and seen[0].json["api"] == "icypeas" and seen[0].json["path"] == "/scrape/profile"
