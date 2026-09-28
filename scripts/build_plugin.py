@@ -351,6 +351,22 @@ def main() -> int:
         target.write_text(generated, encoding="utf-8")
         print(f"wrote {rel}  ({len(generated.splitlines())} lines)")
 
+    # The workflow skills (make-ugc, lead-signals…) as real files under skills/: `npx skills add
+    # superdesigndev/treg` (skills.sh) reads that folder and skips symlinks, so a link would hide them.
+    for src in sorted((ROOT / "src/treg/web/skills").glob("*/SKILL.md")):
+        target = ROOT / "skills" / src.parent.name / "SKILL.md"
+        generated = src.read_text(encoding="utf-8").replace("{BASE}", PUBLIC_BASE)
+        current = target.read_text(encoding="utf-8") if target.exists() else None
+        rel = target.relative_to(ROOT)
+        if check:
+            if current != generated:
+                print(f"STALE — {rel} does not match {src.relative_to(ROOT)}", file=sys.stderr)
+                stale = True
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(generated, encoding="utf-8")
+        print(f"wrote {rel}  ({len(generated.splitlines())} lines)")
+
     if stale:
         print("  regenerate with: python3 scripts/build_plugin.py", file=sys.stderr)
         return 1

@@ -1,6 +1,8 @@
 ---
 name: ads-conversion-tracking
 description: Use when setting up, changing or debugging treg's own conversion tracking — the ad-click capture, the AdConversion outbox, or the Data Manager uploader — and whenever asked whether conversions are "working", "live" or "verified". Also use before claiming any part of the pipeline is proven.
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # treg's ad conversion tracking — what breaks, and what "verified" actually means

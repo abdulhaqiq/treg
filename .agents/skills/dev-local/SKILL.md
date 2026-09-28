@@ -1,6 +1,8 @@
 ---
 name: dev-local
 description: One-command local dev stack for tools-registry. Use when asked to "start the dev server", "run treg locally", "test login locally", "bring the stack up", or before any manual/browser test against localhost.
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # dev-local — the local treg stack in one command

@@ -1,6 +1,8 @@
 ---
 name: add-oauth-provider
 description: Add a provider to treg's OAuth registry (the ones treg holds its own approved app for). Use when asked to "add YouTube/Notion/Meta OAuth", "support connecting X", "add a new OAuth provider", or when a connect flow, capability picker, channel/account picker, or provider health probe needs building. Covers the code changes, the platform-side approval steps, and the pitfalls that don't announce themselves.
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # Adding an OAuth provider

@@ -2,6 +2,8 @@
 name: treg-page
 description: Write a treg.to agent page (/agents/<client>) or use-case page (/use-cases/<category>/<job>). Researches the real problem on Reddit and X with agent-reach BEFORE writing, so the page targets the words buyers actually use and quotes their own questions. Use when adding a page from marketing/pseo-ship-plan.md, or when asked to "write the <job> page" / "add the <agent> page".
 argument-hint: "[use-case <category>/<job> | agent <slug>]"
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # treg-page — research first, then fill in the spec
