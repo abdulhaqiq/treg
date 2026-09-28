@@ -3541,6 +3541,13 @@ async def make_ugc_skill_md():
     return _serve_md("skills/make-ugc/SKILL.md")
 
 
+@app.get("/skills/lead-signals/SKILL.md", include_in_schema=False)
+async def lead_signals_skill_md():
+    """The lead-signals skill: the /intent-signals workflow (detect, qualify, contact, keep watching)
+    as a file an agent can follow. Bundled like make-ugc; `.agents/skills/lead-signals` links to it."""
+    return _serve_md("skills/lead-signals/SKILL.md")
+
+
 @app.get("/feedback.md", include_in_schema=False)
 async def feedback_md():
     return _serve_md("feedback.md")
@@ -4172,9 +4179,11 @@ async def well_known_skills_index():
     """
     fm = _skill_frontmatter()
     ugc = _skill_frontmatter("skills/make-ugc/SKILL.md")
+    sig = _skill_frontmatter("skills/lead-signals/SKILL.md")
     return JSONResponse({"skills": [
         {"name": fm.get("name", "treg"), "description": fm.get("description", ""), "files": ["SKILL.md"]},
         {"name": ugc.get("name", "make-ugc"), "description": ugc.get("description", ""), "files": ["SKILL.md"]},
+        {"name": sig.get("name", "lead-signals"), "description": sig.get("description", ""), "files": ["SKILL.md"]},
     ]})
 
 
@@ -4191,6 +4200,12 @@ async def well_known_skill_md(request: Request, db: AsyncSession = Depends(get_s
 async def well_known_make_ugc_md():
     """The second entry `index.json` promises; the same file as /skills/ugc/SKILL.md."""
     return _serve_md("skills/make-ugc/SKILL.md")
+
+
+@app.get("/.well-known/skills/lead-signals/SKILL.md", include_in_schema=False)
+async def well_known_lead_signals_md():
+    """The third entry `index.json` promises; the same file as /skills/lead-signals/SKILL.md."""
+    return _serve_md("skills/lead-signals/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)

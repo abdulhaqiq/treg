@@ -18,7 +18,7 @@ async def test_well_known_skills_index_advertises_the_skill(clients):
     r = await clients.get("/.well-known/skills/index.json")
     assert r.status_code == 200
     skills = r.json()["skills"]
-    assert [s["name"] for s in skills] == ["treg", "make-ugc"]
+    assert [s["name"] for s in skills] == ["treg", "make-ugc", "lead-signals"]
     entry = skills[0]
     assert entry["name"] == "treg"
     assert entry["files"] == ["SKILL.md"]
@@ -51,3 +51,12 @@ async def test_make_ugc_skill_is_served_and_advertised(clients):
     assert f"description: {idx['description']}" in r.text
 
 
+async def test_lead_signals_skill_is_served_and_advertised(clients):
+    """The /intent-signals workflow as a skill, served and indexed exactly like make-ugc."""
+    r = await clients.get("/skills/lead-signals/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: lead-signals")
+    assert "{BASE}" not in r.text
+    wk = await clients.get("/.well-known/skills/lead-signals/SKILL.md")
+    assert wk.text == r.text
+    idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"][2]
+    assert f"description: {idx['description']}" in r.text
