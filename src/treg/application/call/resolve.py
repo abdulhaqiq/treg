@@ -797,9 +797,10 @@ def _marketplace_pricing(
     else:
         unit = (_usd_to_micro(cost["usd"])
                 if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
-    if endpoint_id == "icypeas.bulk.search" and credit_rate:
-        # The start answer is {file, status} with no rows, so this reserve IS the bill: one row per
-        # `data` entry at its task's rate. Without it the 20-row default billed a 3-row job $0.38.
+    if endpoint_id in ("icypeas.bulk.search", "icypeas.people.email.find") and credit_rate:
+        # The answer is an id ({file} / {item: {_id}}) with no rows, so this reserve IS the bill: one
+        # row per bulk `data` entry at its task's rate, one for a single search. Without it the
+        # 20-row default billed a 3-row job, and a single email lookup, $0.38.
         # ponytail: a search row is billed as if found; per-found billing needs a settle on job end.
         doc = _json_object(body)
         rows = doc.get("data") if isinstance(doc.get("data"), list) else []

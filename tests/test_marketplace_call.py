@@ -2431,6 +2431,14 @@ def test_icypeas_bulk_search_bills_its_rows_at_the_task_rate(task, rows, credits
         mk, b'{"success":true,"status":"in_progress","file":"f"}') in (None, estimate)
 
 
+def test_icypeas_single_email_search_bills_one_credit_not_a_page():
+    body = {"firstname": "A", "lastname": "B", "domainOrCompany": "example.com"}
+    mk, estimate, credit = _priced("icypeas.people.email.find", None, body, request_data={"body": body})
+    assert estimate == credit
+    assert call_settle._observed_cost_micro(
+        mk, b'{"success":true,"item":{"_id":"x","status":"NONE"}}') in (None, estimate)
+
+
 def test_icypeas_company_scrape_bills_the_company_rate():
     body = {"type": "company", "data": ["https://www.linkedin.com/company/a", "https://www.linkedin.com/company/b"]}
     mk, estimate, per_row = _priced("icypeas.scrape.bulk", None, body, request_data={"body": body})
