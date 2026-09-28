@@ -8,7 +8,8 @@ description: Use when the user wants to find buyers, warm or hot leads, or in-ma
 A signal is a public fact that makes a conversation timely: someone complained about the problem you
 solve, engaged with a post about it, hired for it, raised money, switched tools.
 
-Needs the treg CLI. If `treg --version` fails: `curl -fsSL {BASE}/install.sh | sh && treg login`.
+Runs on treg. If it isn't set up (`treg --version` fails), read {BASE}/llms.txt and follow it to
+install and sign in, then come back here.
 
 ## The run
 
