@@ -3958,9 +3958,31 @@ def cmd_skill_bootstrap(args, cfg) -> None:
                 print(f"    (removed the old tools-registry skill folder — renamed to treg)")
         except OSError:
             pass
+    # The other public skills this registry advertises (make-ugc, lead-signals, …): the same well-known
+    # index `npx skills add` reads, so that one list decides what ships. Best-effort: the treg skill is
+    # already in place, so a miss here never fails the install.
+    extra = []
+    try:
+        idx = httpx.get(f"{base_url}/.well-known/skills/index.json", timeout=15, follow_redirects=True).json()
+        for entry in idx.get("skills", []):
+            name = str(entry.get("name", ""))
+            # the name becomes a directory: only a plain slug, never a path the server could steer
+            if name == "treg" or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name):
+                continue
+            r = httpx.get(f"{base_url}/.well-known/skills/{name}/SKILL.md", timeout=15, follow_redirects=True)
+            if r.status_code == 200 and r.text.startswith("---"):
+                extra.append((name, r.text))
+    except Exception:  # noqa: BLE001 — optional extras; the treg skill already installed
+        pass
+    for name, text in extra:
+        for b in bases:
+            (b / name).mkdir(parents=True, exist_ok=True)
+            (b / name / "SKILL.md").write_text(text)
+        print(f"  ✓ {name} → {len(bases)} location(s)")
     detected = _agents.detect_installed()
     tail = f"detected: {', '.join(detected)}" if detected else "no agents detected — used sensible defaults"
-    print(f"\nInstalled the treg skill into {n} location(s)  ({tail}).")
+    names = ", ".join(["treg"] + [nm for nm, _ in extra])
+    print(f"\nInstalled {names} into {n} location(s)  ({tail}).")
 
 
 def cmd_agents_ls(args, cfg) -> None:

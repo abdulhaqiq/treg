@@ -59,3 +59,30 @@ def test_detect_installed_reads_markers(monkeypatch, tmp_path):
 def test_claude_config_dir_override(monkeypatch, tmp_path):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cc"))
     assert ag.global_dir("claude-code") == tmp_path / "cc" / "skills"
+
+
+def test_skill_bootstrap_installs_every_advertised_skill(monkeypatch, tmp_path, capsys):
+    """`treg skill bootstrap` (what install.sh runs) drops the treg skill AND every other skill the
+    registry's well-known index advertises, and never turns a hostile name into a path."""
+    from types import SimpleNamespace
+
+    from treg import cli
+
+    pages = {
+        "/skill.md": "---\nname: treg\n---\n",
+        "/.well-known/skills/index.json": {"skills": [{"name": "treg"}, {"name": "lead-signals"}, {"name": "../evil"}]},
+        "/.well-known/skills/lead-signals/SKILL.md": "---\nname: lead-signals\n---\n",
+    }
+
+    def fake_get(url, **_):
+        body = pages.get(url.removeprefix("https://reg.example"), "")
+        return SimpleNamespace(status_code=200 if body else 404, text=body if isinstance(body, str) else "",
+                               json=lambda: body, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(cli.httpx, "get", fake_get)
+    monkeypatch.setattr(ag, "resolve_targets", lambda **_: [tmp_path / "skills"])
+    monkeypatch.delenv("TREG_TOKEN", raising=False)
+    cli.cmd_skill_bootstrap(SimpleNamespace(project=False, all_agents=False), {"base_url": "https://reg.example"})
+    installed = sorted(p.parent.name for p in (tmp_path / "skills").glob("*/SKILL.md"))
+    assert installed == ["lead-signals", "treg"]
+    assert not (tmp_path / "evil").exists()
