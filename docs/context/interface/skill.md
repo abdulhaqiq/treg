@@ -77,7 +77,10 @@ served**, because a second copy of the product's most-read page is a copy that r
 | a workflow skill | `GET /skills/lead-signals/SKILL.md` (also `/.well-known/skills/lead-signals/SKILL.md`, third entry in the index): `lead-signals`, the `/intent-signals` workflow as a file to follow: detect, qualify, contact, keep watching. It names signal families and the words to search the catalog with, never endpoint ids, because the catalog changes weekly; the schedule and the diff against the last list are the agent's, not treg's. Source `src/treg/web/skills/lead-signals/SKILL.md`; `.agents/skills/lead-signals` is a symlink to it. | anyone pointed at the URL |
 
 `scripts/build_plugin.py` renders every plugin copy from the one source and `--check` fails if any is
-stale (`tests/test_plugin.py`). The variants differ **only** in their prepended bootstrap, because they arrive in opposite worlds: the Codex plugin ships an MCP connector, so its
+stale (`tests/test_plugin.py`). It also writes real copies of the workflow skills (`src/treg/web/skills/*`) to
+`skills/<name>/SKILL.md`, because `npx skills add superdesigndev/treg` (skills.sh) reads `skills/` and
+skips symlinks; repo-tooling skills under `.agents/skills` and `.claude/skills` carry
+`metadata.internal: true` so that command offers only what a user should install. The variants differ **only** in their prepended bootstrap, because they arrive in opposite worlds: the Codex plugin ships an MCP connector, so its
 bootstrap says *use the tools, not the terminal*; the Claude plugin declares **no connector in its
 manifest** — so it installs with no token and nothing waits on a directory review — and its bootstrap
 does the opposite, walking the agent through `install.sh` → `treg login` → `treg mcp install` so the

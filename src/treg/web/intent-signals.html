@@ -606,7 +606,7 @@
   /* ---- final CTA + command card ---- */
   .cta-final { text-align: center; padding: 120px 24px 50px; }
   .cmd {
-    max-width: 620px; margin: 0 auto 26px; display: flex; align-items: center; gap: 14px;
+    max-width: 720px; margin: 0 auto 26px; display: flex; align-items: center; gap: 14px;
     background: #1B1B1A; border-radius: 12px; padding: 18px 22px; text-align: left;
   }
   .cmd .ps { color: #7FDCAE; font-family: var(--mono); font-size: 16px; flex: none; }
@@ -617,6 +617,8 @@
     font-size: 12px; border-radius: 8px; padding: 7px 12px; cursor: pointer;
   }
   .cmd button:hover { background: #313130; }
+  .cta-final .cmd + .cmd { margin-top: -14px; }
+  @media (max-width: 640px) { .cmd { padding: 14px 16px; } .cmd .cline { white-space: normal; overflow-wrap: anywhere; font-size: 13.5px; } }
   /* ---- the site footer, mirrored from the home page ---- */
   .bigfoot { border-top: 1px solid var(--line); margin-top: 100px; padding: 46px 24px 40px; background: #FBFAF8; text-align: left; }
   .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
@@ -918,7 +920,12 @@
   <div class="cmd">
     <span class="ps">$</span>
     <span class="cline" id="cmdLine">set up treg — <a href="https://treg.to/llms.txt">treg.to/llms.txt</a></span>
-    <button id="copyBtn" type="button">copy</button>
+    <button type="button" data-copy="set up treg — treg.to/llms.txt">copy</button>
+  </div>
+  <div class="cmd">
+    <span class="ps">$</span>
+    <span class="cline">npx skills add superdesigndev/treg --skill lead-signals</span>
+    <button type="button" data-copy="npx skills add superdesigndev/treg --skill lead-signals">copy</button>
   </div>
   <div class="ctas">
     <a class="pill dark" href="/app?ref=intent-signals" id="ctaFinal">Get started</a>
@@ -1511,18 +1518,19 @@
   }, { passive: true });
   benchScrub();
 
-  /* ---------- copy the install command ---------- */
-  var copyBtn = document.getElementById('copyBtn');
-  copyBtn.addEventListener('click', function () {
-    var txt = 'set up treg — treg.to/llms.txt';
-    function copied() {
-      copyBtn.textContent = 'copied ✓';
-      setTimeout(function () { copyBtn.textContent = 'copy'; }, 1600);
-    }
-    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(copied, function () {
-      var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-      copied();
+  /* ---------- copy the install commands ---------- */
+  arr(document.querySelectorAll('.cmd button[data-copy]')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var txt = btn.getAttribute('data-copy');
+      function copied() {
+        btn.textContent = 'copied ✓';
+        setTimeout(function () { btn.textContent = 'copy'; }, 1600);
+      }
+      (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(copied, function () {
+        var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        copied();
+      });
     });
   });
 })();
