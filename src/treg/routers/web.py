@@ -3738,14 +3738,10 @@ async def people_search_page(request: Request):
 
 
 @app.get("/leads-signals", include_in_schema=False)
-async def leads_signals_page():
+async def leads_signals_page(request: Request):
     """Landing page for the buyer-signals launch ("Claude for Monitor Leads Signal"). Built from the
-    /people-search page and served the same way: canonical, in the sitemap, relative asset paths,
-    no-cache so edits land on refresh."""
-    page = _WEB_DIR / "leads-signals.html"
-    if not page.exists():
-        raise HTTPException(status_code=404, detail="leads-signals.html not bundled")
-    return FileResponse(page, headers={"Cache-Control": "no-cache"})
+    /people-search page and served the same way: canonical, in the sitemap, relative asset paths."""
+    return _static_page("leads-signals.html", request)
 
 
 @app.get("/jev", include_in_schema=False)
