@@ -204,6 +204,17 @@ def _icypeas_bulk_found_count(endpoint_id: str, doc: object) -> int | None:
     return sum(1 for item in data if isinstance(item, dict) and item.get("status") == "FOUND")
 
 
+def _icypeas_search_row_count(endpoint_id: str, doc: object) -> int | None:
+    """Rows in an Icypeas lead-database search page (0.02 credit each), while the reserve is the
+    requested `pagination.size`: an empty page, or `success: false`, bills nothing."""
+    if endpoint_id not in ("icypeas.people.search", "icypeas.companies.search") or not isinstance(doc, dict):
+        return None
+    if doc.get("success") is False:
+        return 0
+    leads = doc.get("leads")
+    return len(leads) if isinstance(leads, list) else None
+
+
 def _serpstat_result_count(doc: object) -> int | None:
     """Credits a Serpstat JSON-RPC answer bills, in rows. HTTP 200 carries both outcomes: an `error`
     envelope (bad token, exhausted limit, "Data not found") bills nothing; a `result` bills per row
@@ -424,7 +435,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
       - apify: DERIVED by counting the dataset rows a run-sync call returns, plus the row's flat
         `call_fee` for the actor start or compute the run bills regardless of rows.
-      - companyenrich / icypeas bulk / serpstat / thecompaniesapi search / findymail employees:
+      - companyenrich / icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
     Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
@@ -495,6 +506,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # The scrape row carries the dearer profile rate; a company batch is 0.5 credit a hit.
         company = mk.endpoint_id == "icypeas.scrape.bulk" and isinstance(body, dict) \
             and body.get("type") == "company"
+        search_rows = _icypeas_search_row_count(mk.endpoint_id, doc)
+        if search_rows is not None:
+            return _rows_billed_micro(mk, ep, search_rows)
         return _rows_billed_micro(mk, ep, _icypeas_bulk_found_count(mk.endpoint_id, doc),
                                   Decimal("0.5") if company else None)
     if provider == "serpstat" and mk.cost_type == "per_result" and mk.unit_micro > 0:

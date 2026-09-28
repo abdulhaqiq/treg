@@ -2352,6 +2352,15 @@ def _usd_to_micro_for_test(usd) -> int:
     ("icypeas.people.identity.resolve.bulk", None, {"data": [["a@x.io"], ["b@x.io"], ["c@x.io"]]},
      b'{"data":[{"status":"FOUND"},{"status":"NOT_FOUND"},{"status":"FOUND"}]}', 2),
     ("icypeas.profile.url.bulk", None, {"data": [["a"], ["b"]]}, b'{"data":[{"status":"NOT_FOUND"}]}', 0),
+    # Icypeas lead-database search: 0.02 credit per lead returned, never the requested page.
+    ("icypeas.people.search", None, {"query": {}, "pagination": {"size": 5}},
+     b'{"success":true,"leads":[],"total":0}', 0),
+    ("icypeas.people.search", None, {"query": {}, "pagination": {"size": 5}},
+     b'{"success":true,"leads":[{},{}],"total":2}', 2),
+    ("icypeas.people.search", None, {"query": {}, "pagination": {"size": 5}},
+     b'{"validationErrors":[{"field":"query"}],"success":false}', 0),
+    ("icypeas.companies.search", None, {"query": {}, "pagination": {"size": 5}},
+     b'{"success":true,"leads":[{}],"total":1}', 1),
     # Serpstat: an error envelope is free, rows bill with a 1-credit minimum, unknown shapes estimate.
     ("serpstat.web.backlinks.list", None, {"params": {"size": 50}},
      b'{"id":"1","error":{"code":-32600,"message":"Data not found"}}', 0),
