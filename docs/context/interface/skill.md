@@ -66,7 +66,7 @@ served**, because a second copy of the product's most-read page is a copy that r
 
 | door | artifact | who reaches it |
 |---|---|---|
-| the installer | `install.sh` → `treg skill bootstrap` → every detected agent's skills dir | people who ran the curl one-liner |
+| the installer | `install.sh` → `treg skill bootstrap` → every detected agent's skills dir, the treg skill plus every workflow skill in `/.well-known/skills/index.json` | people who ran the curl one-liner |
 | Claude Code plugin | `.claude-plugin/` + generated `skills/treg/SKILL.md` (repo root) | `/plugin marketplace add superdesigndev/treg` |
 | Codex/ChatGPT plugin | `plugin/.codex-plugin/` + generated `plugin/skills/treg/SKILL.md` | the directory ChatGPT and Codex share. Submission runbook: [docs/PLUGIN-SUBMISSION.md](../../PLUGIN-SUBMISSION.md), test cases: [skill-openai-test-cases.md](skill-openai-test-cases.md), per-tool justifications: [skill-openai-tool-justifications.md](skill-openai-tool-justifications.md) |
 | Cursor plugin | `.cursor-plugin/marketplace.json` + generated `plugins/treg/skills/treg/SKILL.md` | the Cursor marketplace (plugin root is never the repo root) |
