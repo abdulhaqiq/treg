@@ -978,8 +978,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "intent_signals_page",
-    "path": "/intent-signals"
+    "name": "leads_signals_page",
+    "path": "/leads-signals"
   },
   {
     "kind": "APIRoute",

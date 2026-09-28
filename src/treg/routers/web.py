@@ -3304,7 +3304,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/support", "support.html", "0.4"),
     ("/connectors/claude", "claude-connector.html", "0.6"),
     ("/people-search", "people-search.html", "0.8"),
-    ("/intent-signals", "intent-signals.html", "0.8"),
+    ("/leads-signals", "leads-signals.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
@@ -3543,7 +3543,7 @@ async def make_ugc_skill_md():
 
 @app.get("/skills/lead-signals/SKILL.md", include_in_schema=False)
 async def lead_signals_skill_md():
-    """The lead-signals skill: the /intent-signals workflow (detect, qualify, contact, keep watching)
+    """The lead-signals skill: the /leads-signals workflow (detect, qualify, contact, keep watching)
     as a file an agent can follow. Bundled like make-ugc; `.agents/skills/lead-signals` links to it."""
     return _serve_md("skills/lead-signals/SKILL.md")
 
@@ -3737,14 +3737,14 @@ async def people_search_page(request: Request):
     return _static_page("people-search.html", request)
 
 
-@app.get("/intent-signals", include_in_schema=False)
-async def intent_signals_page():
+@app.get("/leads-signals", include_in_schema=False)
+async def leads_signals_page():
     """Landing page for the buyer-signals launch ("Claude for Monitor Leads Signal"). Built from the
     /people-search page and served the same way: canonical, in the sitemap, relative asset paths,
     no-cache so edits land on refresh."""
-    page = _WEB_DIR / "intent-signals.html"
+    page = _WEB_DIR / "leads-signals.html"
     if not page.exists():
-        raise HTTPException(status_code=404, detail="intent-signals.html not bundled")
+        raise HTTPException(status_code=404, detail="leads-signals.html not bundled")
     return FileResponse(page, headers={"Cache-Control": "no-cache"})
 
 
@@ -3833,7 +3833,7 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
-    ("/intent-signals", "Claude for Monitor Leads Signal", "2026-09-28",
+    ("/leads-signals", "Claude for Monitor Leads Signal", "2026-09-28",
      "Your agent checks hiring, funding, job changes and social chatter on a schedule, and reports what's new."),
     ("/jev", "How to use Jev", "2026-09-20",
      "What Jev is and how to use it: live examples, use cases, code, and GTM automation recipes."),

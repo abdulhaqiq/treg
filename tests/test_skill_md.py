@@ -52,7 +52,7 @@ async def test_make_ugc_skill_is_served_and_advertised(clients):
 
 
 async def test_lead_signals_skill_is_served_and_advertised(clients):
-    """The /intent-signals workflow as a skill, served and indexed exactly like make-ugc."""
+    """The /leads-signals workflow as a skill, served and indexed exactly like make-ugc."""
     r = await clients.get("/skills/lead-signals/SKILL.md")
     assert r.status_code == 200 and r.text.startswith("---\nname: lead-signals")
     assert "{BASE}" not in r.text
