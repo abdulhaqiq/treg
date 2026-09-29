@@ -1250,11 +1250,10 @@ async def rename_connection(*, secret_id: int, name: str, org_id: int) -> dict:
             if t.name in renames:
                 t.name = renames[t.name]
         for model in (Membership, Invite):
-            rows = (await db.execute(select(model).where(
-                model.org_id == org_id, model.tool_access.is_not(None)  # type: ignore[union-attr]
-            ))).scalars().all()
-            for row in rows:
-                if set(row.tool_access) & set(renames):
+            # No SQL filter on tool_access: "all tools" is stored as JSON null, which IS NOT NULL
+            # does not exclude.
+            for row in (await db.execute(select(model).where(model.org_id == org_id))).scalars().all():
+                if row.tool_access and set(row.tool_access) & set(renames):
                     row.tool_access = [renames.get(n, n) for n in row.tool_access]  # reassign: JSON column
         await db.commit()
         await db.refresh(secret)

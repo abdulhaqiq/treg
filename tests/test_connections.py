@@ -863,6 +863,14 @@ async def test_rename_moves_the_tool_its_companions_and_member_access(clients: A
     assert "google-analytics-2" not in names and "google-analytics-acme" in names
 
 
+async def test_rename_with_unrestricted_members(clients: AsyncClient, treg_google_app):
+    """An owner's "all tools" is a JSON null in tool_access; the rewrite must skip it, not 500."""
+    await _connect_byo(clients, provider="google-search-console", name="")
+    second = await _connect_byo(clients, provider="google-search-console", name="")
+    r = await clients.patch(f"/connections/{second['secret_id']}", json={"name": "gsc-acme"})
+    assert r.status_code == 200, r.text
+
+
 async def test_rename_refuses_bad_taken_and_hub_used_names(clients: AsyncClient, treg_google_app):
     first = await _connect_byo(clients, provider="google-search-console", name="")
     second = await _connect_byo(clients, provider="google-search-console", name="")
