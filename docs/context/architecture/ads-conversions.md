@@ -41,11 +41,7 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    tutorial, catalog) also load `web/gtag.js`, which sends pageviews to Google Ads for attribution
    modeling — this is the only browser-side Google request. The signed-in dashboard does not load
    gtag.js.
-   Which pages load `adtrack.js` is the whole feature's blast radius and it has been wrong twice —
-   once for everything off `_page()` (2026-08-30), once for the standalone landing pages
-   `/people-search`, `/grokbot` and `/fable` (2026-09-06, after 4,892 Demand Gen clicks landed on
-   the first of them). Both escapes were the same shape: a guard that only covered the pages
-   someone had listed. `tests/test_adsconv.py` now holds two — the named ad destinations in
+   Every public landing surface must load `adtrack.js`. Tests cover named destinations in
    `test_every_public_landing_surface_loads_the_capture_script`, and
    `test_every_public_html_route_carries_the_capture_script`, which sweeps every flat GET route and
    requires the tag on anything answering `200 text/html`, so a new page is in scope the moment its
@@ -169,20 +165,11 @@ double; the value that reaches it is computed from the already-integral micro am
 way around. The outbox stores the original USD amount, never AUD, so a future FX correction doesn't
 need to rewrite history — conversion happens once, at upload time.
 
-## The three conversion actions
+## Conversion configuration
 
-Created live on Google Ads account `5149790776` (type `UPLOAD_CLICKS`):
-
-| Action | id | Marked |
-|---|---|---|
-| `signup` | `7723667014` | SECONDARY |
-| `first_call` | `7723667017` | PRIMARY |
-| `paid` (first top-up) | `7723667020` | PRIMARY |
-
-`signup` is deliberately **secondary**, not primary: `marketing/landing/_measurement.md` argues a
-signup measures curiosity, not commercial intent, so it should inform Google's targeting without
-being a bidding goal. `first_call` and `paid` are the two events the campaign should actually bid
-toward — an agent successfully calling a tool, and a team paying for more balance.
+The uploader records `signup`, `first_call` and `paid`. Operators supply their own destination
+account and action configuration. Hosted account IDs, bidding goals and verification evidence live
+in the private [conversion runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/marketing/ads-conversions.md).
 
 ## API version
 

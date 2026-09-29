@@ -1,6 +1,6 @@
 ---
 name: treg-page
-description: Write a treg.to agent page (/agents/<client>) or use-case page (/use-cases/<category>/<job>). Researches the real problem on Reddit and X with agent-reach BEFORE writing, so the page targets the words buyers actually use and quotes their own questions. Use when adding a page from marketing/pseo-ship-plan.md, or when asked to "write the <job> page" / "add the <agent> page".
+description: Write a treg.to agent page (/agents/<client>) or use-case page (/use-cases/<category>/<job>). Researches the real problem on Reddit and X with agent-reach BEFORE writing, so the page targets the words buyers actually use and quotes their own questions. Use when adding a page from https://github.com/superdesigndev/treg-internal/blob/main/docs/marketing/pseo-ship-plan.md, or when asked to "write the <job> page" / "add the <agent> page".
 argument-hint: "[use-case <category>/<job> | agent <slug>]"
 metadata:
   internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
@@ -12,7 +12,7 @@ Both page types are **templates fed by one dict entry**. No HTML is written by h
 `api.py` renders titles, prices, provider rows, reliability and schema from `catalog_store` at
 request time. Your job is the copy, and the copy is only as good as the research behind it.
 
-Read `marketing/pseo-ship-plan.md` for what to write next and `docs/context/interface/seo.md` for
+Use the requested page brief and read `docs/context/interface/seo.md` for
 how the pages work. Never invent a number: if it is not in the catalog, it does not go on the page.
 
 ## The order matters. Do not skip step 1.
@@ -80,7 +80,7 @@ uv run --frozen treg catalog get <endpoint-id>          # params, cost, verified
 
 Every capability id you name must exist (`tests/test_agent_pages.py` enforces it). **A job the
 catalog cannot do does not get a page.** If the research surfaced a job we cannot serve, add it to
-the gap list in `marketing/pseo-ship-plan.md` instead of writing around it.
+the gap list in `https://github.com/superdesigndev/treg-internal/blob/main/docs/marketing/pseo-ship-plan.md` instead of writing around it.
 
 ### 4. Write the entry
 

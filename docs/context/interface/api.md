@@ -447,7 +447,7 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   token provides the same human and team attribution as an older hash-backed membership token.
   Sources distinguish HTTP, team MCP and the Claude connector. Tool requests may attach a token
   or same-origin session identity; cross-origin cookie submissions remain anonymous.
-  `scripts/usage_report.py` reports this unserved demand.
+  The private usage report summarizes this unserved demand.
 
 - **Identity doors:** GitHub, Google and email OTP share first-proof user provisioning. They create
   a user without an automatic org; new users name their first team through onboarding or the CLI

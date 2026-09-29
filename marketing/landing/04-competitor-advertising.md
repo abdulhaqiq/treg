@@ -17,17 +17,8 @@ seo_terms:
     - "google ads transparency api"
     - "ad creative research for agents"
     - "tiktok ad library api"
-ad_keywords:
-  - "ad spy tool"
-  - "meta ad library api"
-  - "competitor ad research"
-  - "facebook ads scraper api"
-  - "google ads transparency center api"
 capabilities: [meta-ads.library.search, google.ads.transparency, tiktok-ads.library.search, linkedin.ads.search]
-facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-23, F-60, F-80, F-91]
-hypothesis: "Narrowest audience, sharpest pain. Predict the highest Copy-Prompt-to-first-call rate of the five, on the lowest volume. NARROWNESS NOW CONFIRMED by telemetry: the Meta ad library is 303 calls / 1.2% of all traffic, the smallest job of the five. Spend last, and only if the Copy-Prompt-to-first-call rate justifies the CPC."
-verify_after: 2026-08-31
-status: proof populated from real runs 2026-08-17 ($0.00752) · 4 of 4 platforms · ready for build · revised against 30-day telemetry 2026-08-17
+facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-23, F-60, F-80]
 ---
 
 # Page 4: Competitor advertising
@@ -285,49 +276,4 @@ search by advertiser domain and get back creatives, spend estimates and targetin
 
 # Ad and creator kit
 
-### Responsive search ad headlines
-| Headline | Chars |
-|---|---|
-| `See Competitor Ads Live` | 23 |
-| `Ad Library Data Per Call` | 24 |
-| `No Ad Spy Subscription` | 22 |
-
-### Search ad descriptions
-| Description | Chars |
-|---|---|
-| `Pull competitors' live ads across four platforms. One key, from $0.00188 a call.` | 80 |
-| `Group ads by offer, hook and format in one agent run. $1.00 free, no subscription.` | 82 |
-
-### Creator video hooks
-1. "I pulled every ad five competitors are running, across four platforms, for under a dollar."
-2. "Ad spy tools cost $99 a month. Here's the same research as one prompt."
-3. "The ad that's been running 94 days is the brief. Here's how to find it in a minute."
-
-### X post hook
-`Ad spy tools charge monthly for research you do four times a year. Here's the same sweep: Meta, Google, TikTok, LinkedIn ad libraries: as one agent prompt, priced per call.`
-
-### High-intent keyword phrases
-`meta ad library api` · `google ads transparency api` · `competitor ad research api` ·
-`tiktok ad library api access` · `ad creative research for agents`
-
-### Negative keywords
-`free ad spy` · `jobs` · `course` · `how to advertise` · `ad blocker` · `report an ad` · `ad revenue` ·
-`google ads certification` · `ad manager login` · `create an ad`
-
-### Demonstration a creator can reproduce
-Pick five well-known competitors in a category the audience knows, run the prompt, and show the grouped
-output next to the cost. Land on the longest-running ad: "this one has been live 94 days, that's the
-one that's working": then show the balance.
-
-### Measurable hypothesis
-Narrowest audience of the five and the sharpest pain, so predict the **highest Copy-Prompt-to-first-call
-rate on the lowest traffic**. If that holds, this vertical is worth spending on even at a high CPC, and
-the constraint is reach rather than conversion: which points at creator distribution rather than more
-search budget.
-
----
-
-## Numbers used on this page
-
-`F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-23` `F-60` `F-80`
-Defined in `_facts.md`, verified 2026-08-17.
+Campaign material is maintained in treg-internal.

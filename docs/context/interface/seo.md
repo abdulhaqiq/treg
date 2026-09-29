@@ -157,23 +157,14 @@ this shell — agent pages, programmatic use-case pages, the hubs, `/docs` — w
 attribution. The failure is silent and total: no `adtrack.js` means no `treg_ad` cookie, so
 `signup._ad_attribution_from()` returns empty, `org.ad_gclid` stays NULL, and `adsconv.queue()`
 no-ops by design, so a paid click could sign up and make its first call with Google never hearing
-about it. Nothing errors and nothing logs. It surfaced from the ads side: the Agent × job campaign
-spent A$125 over three days landing every click on `/agents/*` for zero recorded conversions, while
-campaigns pointing at the static use-case pages recorded normally.
+about it. Nothing errors and nothing logs.
 
 The scope is **`_page()` callers**, not "every server-rendered page". `_legal_page()` (`/terms`,
 `/privacy`, `/support`, `/contact`), `/dashboard-tour/` and the FastAPI Swagger shell at `/docs/api`
 render their own HTML and remain uninstrumented — none is an ad destination. `/tutorial` is likewise
 out of scope; it is slated for removal. The `.md` variants are `text/plain` and cannot run scripts.
 
-That scope left a third class uncovered, and the same failure repeated on it (2026-09-06).
-`/people-search`, `/grokbot` and `/fable` are standalone hand-written HTML behind their own routes:
-off the shell, so `_page()` does not reach them, and absent from the hand-kept list in
-`test_every_public_landing_surface_loads_the_capture_script`, so nothing failed. All three are ad
-destinations — the Demand Gen campaign pointed S1, S2 and S3 at `/people-search` — and for three
-days 4,892 clicks landed on a page that could not capture a click id. The DB holds no GCLID from
-that window at all, which reads identically to an audience that simply does not convert: the
-measurement failure and the outcome it was meant to measure are indistinguishable from the numbers.
+Standalone HTML routes (`/people-search`, `/grokbot` and `/fable`) also need capture coverage.
 All three now carry the tag, and the guard no longer depends on anyone remembering:
 `test_every_public_html_route_carries_the_capture_script` sweeps every flat GET route on the app,
 keeps whatever answers `200 text/html`, and requires the tag on all of it. Adding a route that
@@ -370,7 +361,7 @@ points at the shared one.
 
 "I use ChatGPT — what can it do now?" answered on one server-rendered URL per client. The first is
 `/agents/chatgpt`; the set is the keys of `agent_pages.AGENTS`, and nothing else (an unknown agent
-404s). They came out of the programmatic-SEO plan in `marketing/pseo-build-spec.md`: the measured
+404s). They came out of the programmatic-SEO plan in `https://github.com/superdesigndev/treg-internal/blob/main/docs/marketing/pseo-build-spec.md`: the measured
 demand is for the *agent* ("chatgpt connectors") and the *platform* ("linkedin api pricing"), never
 for "how to <job> in chatgpt", so the job list lives on the agent page as rows, not as URLs.
 

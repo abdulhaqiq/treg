@@ -18,7 +18,6 @@ Regenerate via `scripts/build-map.py`.
 | `alembic.ini` | architecture/data-model.md |
 | `assets/brand/og-card.html` | interface/seo.md |
 | `deploy/render.example.yaml` | ops/deploy.md |
-| `docs/CLAUDE-CONNECTOR-SUBMISSION.md` | architecture/mcp-oauth.md |
 | `docs/hub-recipes/data-csv/run.js` | architecture/hub.md |
 | `docs/hub-recipes/data-sheets/run.js` | architecture/hub.md |
 | `docs/hub-recipes/engineering-team-size/run.js` | architecture/hub.md |
@@ -566,7 +565,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/instagram-oauth.md` | `catalog_ingest.py`, `access.py`, `resolve.py`, `service.py`, `instagram.yaml`, `instagram.extended.yaml`, `cli.py`, `store.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `mcp.py`, `call.py`, `connections.js`, `ProviderPage.vue`, `0010_oauth_authorization_method.py`, `test_instagram_oauth_architecture.py` |
 | `architecture/local-proxy.md` | `localproxy.py`, `server.js` |
 | `architecture/local-run.md` | `localrun.py`, `egress.py`, `fsjail.py` |
-| `architecture/mcp-oauth.md` | `auth.py`, `mcp.py`, `health.py`, `mcp_oauth.py`, `session.py`, `access.py`, `api_keys.py`, `api_keys.py`, `auth.py`, `claude-connector.html`, `connect-demo.html`, `CLAUDE-CONNECTOR-SUBMISSION.md`, `test_mcp.py`, `test_mcp_oauth.py`, `test_mcp_directory.py`, `test_marketplace_call.py` |
+| `architecture/mcp-oauth.md` | `auth.py`, `mcp.py`, `health.py`, `mcp_oauth.py`, `session.py`, `access.py`, `api_keys.py`, `api_keys.py`, `auth.py`, `claude-connector.html`, `connect-demo.html`, `test_mcp.py`, `test_mcp_oauth.py`, `test_mcp_directory.py`, `test_marketplace_call.py` |
 | `architecture/media.md` | `media.py`, `media.py`, `models.py`, `0037_media_hosting.py`, `test_media.py` |
 | `architecture/money.md` | `tavily.yaml`, `tinyfish.yaml`, `test_tinyfish.py`, `__init__.py`, `settlement.py`, `__init__.py`, `models.py`, `billing.py`, `idempotency.py`, `intake.py`, `resolve.py`, `octen.py`, `service.py`, `async_bridge.py`, `route.py`, `reserve.py`, `settle.py`, `tomba.yaml`, `asynctasks.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `referrals.py`, `budgets.py`, `__init__.py`, `stripe.py`, `reconcile.py`, `referrals.py`, `api.py`, `signup.py`, `promotions.py`, `0033_signup_promo_eligibility.py`, `admin.py`, `billing.py`, `call.py`, `orgs.py`, `referrals.py`, `test_call_architecture.py`, `test_marketplace_call.py`, `test_asynctasks.py` |
 | `architecture/multi-tenancy.md` | `access.py`, `0042_pinned_read_scope.py`, `test_pinned_read_scope.py`, `models.py`, `api.py`, `caller_metadata.py`, `auth.py`, `asynctasks.py`, `resolve.py`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0043_provider_resources.py`, `signup.py`, `access.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `access.py`, `api_keys.py`, `session.py`, `promotions.py`, `test_team_limit.py`, `test_auth.py`, `test_token_revocation.py`, `auth.py`, `orgs.py`, `resources.py`, `bundles.py`, `db.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `test_asynctasks.py` |

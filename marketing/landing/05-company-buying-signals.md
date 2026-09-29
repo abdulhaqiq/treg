@@ -17,17 +17,8 @@ seo_terms:
     - "funding data api without subscription"
     - "company funding data api"
     - "firmographic api per call"
-ad_keywords:
-  - "crunchbase api alternative"
-  - "company data api"
-  - "funding data api"
-  - "firmographic data api"
-  - "buying intent data api"
 capabilities: [companies.search, companies.enrich, people.enrich]
 facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-21, F-42, F-50, F-51, F-80, F-92]
-hypothesis: "Sits on the catalog's strongest data: 11 providers, 200x spread. Predict the highest week-2 repeat-call rate of the five."
-verify_after: 2026-08-31
-status: proof populated from real runs 2026-08-17 ($0.10188) · funding proven, activity signals blocked by a platform bug · revised against 30-day telemetry 2026-08-17
 ---
 
 # Page 5: Company and buying-signal intelligence
@@ -275,49 +266,4 @@ models, no.
 
 # Ad and creator kit
 
-### Responsive search ad headlines
-| Headline | Chars |
-|---|---|
-| `Company Data, Per Record` | 24 |
-| `11 Providers, One Key` | 21 |
-| `Funding + Hiring Signals` | 24 |
-
-### Search ad descriptions
-| Description | Chars |
-|---|---|
-| `Funding, hiring, headcount and leadership through one key. From free to $0.38 a record.` | 87 |
-| `Compare 11 company data providers before you buy one. $1.00 free, no subscription.` | 82 |
-
-### Creator video hooks
-1. "Eleven providers sell company data. Three of them are free. Here's the price table nobody publishes."
-2. "Before you pay $99 a month for company data, test whether it covers your market for eight cents."
-3. "I asked my agent which AI companies raised or hired this quarter, and who to talk to."
-
-### X post hook
-`"Search companies by size and funding" is one job with 11 providers behind it: free, $0.0019, $0.026, $0.38 a record. Same job, 200x spread. Most people buy the first one they hear of.`
-
-### High-intent keyword phrases
-`company data api pay per record` · `funding data api` · `firmographic api for developers` ·
-`crunchbase api alternative pricing`
-
-### Negative keywords
-`free company lookup` · `companies house` · `register a company` · `jobs` · `stock` · `ticker` ·
-`annual report` · `credit score` · `whois` · `business plan`
-
-### Demonstration a creator can reproduce
-Run `treg catalog get apollo.companies.search` on camera and let the sibling table render: eleven
-providers, prices, success rates, sample sizes. That single screen is the most persuasive thing treg.to
-has, and no competitor can film it.
-
-### Measurable hypothesis
-This vertical sits on the catalog's strongest and best-measured data, and company research is recurring
-work rather than a one-off. Predict the **highest week-2 repeat-call rate** of the five. Repeat calls
-matter more than first calls here: a page that produces one call and silence is worse than a page with
-half the signups and a second call in week two.
-
----
-
-## Numbers used on this page
-
-`F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-21` `F-42` `F-50`
-`F-51` `F-80`: defined in `_facts.md`, verified 2026-08-17.
+Campaign material is maintained in treg-internal.

@@ -1388,7 +1388,7 @@ async def _note_capacity_recovery(mk: MarketplaceCall) -> None:
 
 async def _record_first_call(org_id: int) -> None:
     """Set Org.first_call_at once — the metric that decides whether a marketing channel is real (see
-    marketing/landing/_measurement.md). A CONDITIONAL UPDATE, not read-then-write: concurrent first
+    docs/context/architecture/ads-conversions.md). A CONDITIONAL UPDATE, not read-then-write: concurrent first
     calls would both see NULL and both fire. Set for EVERY org (it is a product metric in its own
     right); adsconv.queue() itself no-ops for orgs with no ad_gclid, so the conversion side stays
     ad-attributed-only.

@@ -964,3 +964,6 @@ Lookup takes the minimum of the learned TTL, vendor ceiling, operator ceiling an
 80% due threshold. It does not reset or rewrite historical learning counters. `/admin/archive`
 reports `serve_max_age_s` so operators can verify the running configuration. The global team cohort
 percentage is unchanged. Production pilot values and rollback live in treg-internal.
+
+The legacy archive-link backfill takes an explicit database connection (`--dsn` or
+`TREG_DATABASE_URL`). It does not provision network access or read cloud credentials.

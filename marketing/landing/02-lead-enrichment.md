@@ -17,17 +17,8 @@ seo_terms:
     - "company search api per record"
     - "email verification api without subscription"
     - "prospecting api for developers"
-ad_keywords:
-  - "apollo api alternative"
-  - "hunter io api pricing"
-  - "email finder api"
-  - "b2b data enrichment api"
-  - "clearbit alternative api"
 capabilities: [people.email.find, people.email.verify, people.enrich, companies.search, companies.enrich]
-facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-21, F-40, F-41, F-42, F-50, F-80, F-90, F-92, F-43]
-hypothesis: "Highest commercial intent of the five. Predict the lowest cost per first successful call."
-verify_after: 2026-08-31
-status: proof populated from the 50-company workflow run 2026-08-26 ($3.62) · ready for build · revised against 30-day telemetry 2026-08-17
+facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-21, F-40, F-41, F-42, F-50, F-80, F-92, F-43]
 ---
 
 # Page 2: Lead enrichment
@@ -256,48 +247,4 @@ Run the complete lead generation workflow that produced the numbers on this page
 
 # Ad and creator kit
 
-### Responsive search ad headlines
-| Headline | Chars |
-|---|---|
-| `Verified Emails, Per Call` | 25 |
-| `Find Buyers From One Key` | 24 |
-| `No Seat. No Credit Pool.` | 24 |
-
-### Search ad descriptions
-| Description | Chars |
-|---|---|
-| `Find companies, identify buyers, verify emails. One key, pay per lookup. $1.00 free.` | 84 |
-| `A found email is $0.0245. A miss costs nothing. No seat, no monthly credit pool.` | 80 |
-
-### Creator video hooks
-1. "Eleven providers sell company data. One charges 200 times what another charges for the same row."
-2. "I built a verified 50-lead list in one prompt. Here's the actual bill."
-3. "Stop paying for leads you never contact. Pay for the lookups that found someone."
-
-### X post hook
-`Same job: "find companies matching this profile": priced across 11 providers: free, $0.0019, $0.025, $0.38 a record. Your agent can see that table before it calls. Most sales tools can't.`
-
-### High-intent keyword phrases
-`work email finder api` · `company search api pay per record` · `email verification api pricing` ·
-`lead enrichment api for developers` · `b2b prospecting api no subscription`
-
-### Negative keywords
-`free email finder` · `gmail` · `personal email lookup` · `jobs` · `resume` · `linkedin scraper free` ·
-`email marketing software` · `newsletter` · `spam` · `phone number lookup`
-
-### Demonstration a creator can reproduce
-Run the workflow prompt on a real ICP, then open the Activity page and show the per-call costs next to the
-list. The strongest beat is the miss: show a lookup that found nothing and cost $0.00.
-
-### Measurable hypothesis
-Highest commercial intent of the five, so this page should produce the **lowest cost per first successful
-call** at day 14. If it does, it is the vertical to concentrate spend on. Watch the second-order signal
-too: enrichment buyers are the most likely to connect their own existing key, which lowers revenue per
-account while raising retention: worth knowing before scaling.
-
----
-
-## Numbers used on this page
-
-`F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-21` `F-40` `F-41`
-`F-42` `F-50` `F-80`: defined in `_facts.md`, verified 2026-08-17.
+Campaign material is maintained in treg-internal.

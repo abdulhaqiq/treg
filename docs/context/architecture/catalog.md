@@ -2122,3 +2122,13 @@ before any example is committed, all learned the hard way:
 Credentials are NEVER written into catalog files, examples, scripts, or docs — the verifier reads
 `TREG_CATALOG_CRED` from the environment only. Captured examples are truncated (arrays → 2 items,
 long strings clipped, ~10 KB cap) by the verifier, then human-reviewed for PII before commit.
+
+## Operator-supplied pricing evidence
+
+`catalog_ingest.py` requires `TREG_CATALOG_EVIDENCE_DIR` for AnyAPI and JustOneAPI imports.
+The directory supplies `anyapi_measured_charges.json` (`skus`, `as_of`, `window_days`) and
+`justoneapi_prices.json` (`prices`). Missing files fail before catalog output is written, rather
+than silently replacing measured prices with estimates or dropping dashboard prices. Other
+providers do not require these files. Published catalog prices remain part of the public product;
+private ledger exports and account evidence do not. Hosted operators maintain the inputs in
+`treg-internal/tools/catalog-evidence/`.

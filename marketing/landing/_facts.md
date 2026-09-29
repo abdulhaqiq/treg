@@ -159,41 +159,9 @@ E-commerce 81 · Reviews & Apps 55 · Market data 40 · Community 16 · Develope
 
 ---
 
-## Production telemetry — 30 days to 2026-08-17 (`F-90`)
+## Public endpoint observations
 
-Swept from the live registry's public endpoint view, which attaches cross-tenant `observed` stats. Source:
-the "What Agents Call treg For" artifact. **24,921 catalog calls across every team.**
-
-**Publishable vs internal — read this before using anything here.**
-
-- ✅ **Per-endpoint `calls served`, `ok` rate and `p50`** are fine to publish. `catalog_get` already shows
-  these cross-tenant numbers to any user, so they are public information, and they are the strongest
-  reliability evidence we have.
-- ❌ **The aggregates are internal**: total platform volume (24,921), the 82%-of-catalog-dark figure, the
-  provider revenue split, the never-used counts. Those describe our business, not a caller's experience.
-  Keep them in this file and out of the pages.
-
-### Where the traffic actually goes (`F-91` — internal, for targeting only)
-
-| Job | Calls | Share |
-|---|---|---|
-| Google SERP (maps + organic + news + trends) | 7,559 | 30.3% |
-| X / Twitter | 4,351 | 17.5% |
-| People enrichment | 3,657 | 14.7% |
-| TikTok | 1,849 | 7.4% |
-| Company data | 1,164 | 4.7% |
-| LinkedIn | 1,077 | 4.3% |
-| Instagram | 1,060 | 4.3% |
-| Web scraping | 961 | 3.9% |
-| Reddit | 886 | 3.6% |
-| AI answer engines | 376 | 1.5% |
-| **Meta ad library** | **303** | **1.2%** |
-| YouTube | 162 | 0.7% |
-
-Two findings that change page targeting:
-- **Keyword research is not what people do.** No keyword endpoint appears in the top 20. Serpstat totals
-  334 calls (1.3%). The real "SEO" job is **scraping result pages** — Maps alone is 2,646.
-- **Local/Maps is the biggest uncovered job**, and no page in this cluster addresses it.
+These historical per-endpoint figures were exposed by the public catalog. Refresh before reuse.
 
 ### Measured endpoint stats — use these, they beat the old sample sizes (`F-92`)
 
@@ -237,7 +205,7 @@ Two findings that change page targeting:
 
 ### The caveat that limits all of the above
 
-The stats pool every org deliberately: **there is no per-tenant breakdown, so 24,921 calls could be forty
+The stats pool every org deliberately: **there is no per-tenant breakdown, so the observed calls could be forty
 teams or four.** Our own `superdesign` org contributes under 40 of them, so the demand is genuinely
 external — but its concentration is unknown. Treat this as directional for targeting, not as proof of a
 market. The team count needs `TREG_ADMIN_TOKEN` and one `/admin/*` call.

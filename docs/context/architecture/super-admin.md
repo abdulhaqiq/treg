@@ -97,3 +97,6 @@ of the Alembic baseline schema; a live DB picks up schema changes through the ex
 `admin grant|revoke|suspend-user|rm-user|suspend-org|rm-org`, and
 `admin credit <org_id> --amount-usd <n> --ref <ticket> --reason <text>`. `_admin_client` sends the saved
 `admin_token` if present, else the active org token (works for an `is_superadmin` user).
+
+The standalone grant script uses the configured database session and does not manage hosted
+network access. Operators must use a checkout matching the target schema.

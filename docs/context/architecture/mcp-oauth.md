@@ -13,7 +13,6 @@ sources:
   - src/treg/routers/auth.py
   - src/treg/web/claude-connector.html
   - src/treg/web/connect-demo.html
-  - docs/CLAUDE-CONNECTOR-SUBMISSION.md
   - tests/test_mcp.py
   - tests/test_mcp_oauth.py
   - tests/test_mcp_directory.py

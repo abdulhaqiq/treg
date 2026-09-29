@@ -346,7 +346,7 @@ uses this metadata, never the encrypted token's shape.
   signal one step before a `ToolRequest`: most agents that miss never file, so the query text is all
   they leave. Written fire-and-forget through `audit.record_search_miss` (dropped rows cost
   analytics, never a search) from both search paths - `GET /catalog/search` and the in-process MCP
-  `catalog_search` tool. Deliberately identity-free; surfaced by `scripts/usage_report.py`, which
+  `catalog_search` tool. Deliberately identity-free; surfaced by the private usage report, which
   reads misses against the catalog to split coverage gaps from naming/discovery failures.
 - **`SearchLog`** (0041) - one MCP catalog search under the **discovery experiment** (see
   [search-experiment](search-experiment.md)): `query`, `source`, the caller's `org_id`/`user_email`

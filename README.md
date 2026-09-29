@@ -131,7 +131,7 @@ catalog endpoints and separates read calls from write calls so Claude receives a
 signals. The existing `/mcp/` surface remains available for catalog endpoints, team-owned tools,
 and imported skills. See the [MCP and OAuth architecture](docs/context/architecture/mcp-oauth.md)
 for the boundary and implementation, and the
-[submission runbook](docs/CLAUDE-CONNECTOR-SUBMISSION.md) for release gates.
+[submission runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/distribution/CLAUDE-CONNECTOR-SUBMISSION.md) for release gates.
 
 ## Call a tool you don't have a key for
 

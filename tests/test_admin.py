@@ -241,3 +241,30 @@ async def test_admin_credit_org_missing_ref_or_reason_is_400(c):
     })
     assert r.status_code == 400
     assert "reason" in r.json()["detail"]
+
+
+async def test_manual_grant_uses_configured_database_without_cloud_credentials(c, monkeypatch):
+    """The standalone tool still grants once after removing hosted connection helpers."""
+    import importlib.util
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    path = Path(__file__).parents[1] / "scripts/manual_grant.py"
+    spec = importlib.util.spec_from_file_location("manual_grant_test", path)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    monkeypatch.delenv("RENDER_API_KEY", raising=False)
+    _, org, *_ = await _seed(c)
+    args = SimpleNamespace(email="a@x.dev", org_id=org["org_id"], amount_usd="1.25",
+                           ref="maintenance-test", reason="test", by="test", confirm=False)
+    assert await script.run(args) == 0
+    args.confirm = True
+    assert await script.run(args) == 0
+    assert await script.run(args) == 1
+    async with session_maker() as db:
+        entries = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.org_id == org["org_id"], LedgerEntry.kind == "grant",
+        ))).scalars().all()
+        credits = [entry for entry in entries if entry.meta.get("ref") == "maintenance-test"]
+        assert len(credits) == 1
+        assert credits[0].amount_micro == 1_250_000

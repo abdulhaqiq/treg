@@ -41,6 +41,17 @@ ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
 CACHE = Path(os.environ.get("TREG_INGEST_CACHE") or (Path.home() / ".cache" / "treg-catalog-ingest"))
 
+def pricing_evidence_file(name: str) -> Path:
+    """Read operator-supplied evidence without depending on a private checkout."""
+    directory = os.environ.get("TREG_CATALOG_EVIDENCE_DIR")
+    if not directory:
+        raise ValueError("Set TREG_CATALOG_EVIDENCE_DIR to your pricing evidence directory")
+    path = Path(directory).expanduser() / name
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing pricing evidence: {path}")
+    return path
+
+
 CJK = re.compile("[　-鿿＀-￯]")
 
 
@@ -932,9 +943,8 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
         specs = dict(pool.map(load, todo))
 
     skip = core_routes("justoneapi")
-    # Prices are dashboard-only (no public price API); scripts/data/justoneapi_prices.json is a
-    # hand-exported snapshot of the dashboard's Pricing page — re-export + rerun to refresh.
-    prices_file = Path(__file__).parent / "data" / "justoneapi_prices.json"
+    # Dashboard prices are supplied explicitly by the operator.
+    prices_file = pricing_evidence_file("justoneapi_prices.json")
     joa_prices: dict[str, float] = {}
     if prices_file.is_file():
         joa_prices = json.loads(prices_file.read_text()).get("prices", {})
@@ -993,7 +1003,7 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
         "at /openapi/<platform>/<endpoint>-en.json, enumerated here from the English sitemap.",
         "`platform` comes from the spec's own x-platform-id tag, falling back to the docs URL segment.",
         "Endpoints whose docs page carries a `-deprecated` slug are kept — the provider still serves",
-        "them — and are visible as such in the id. Prices come from scripts/data/justoneapi_prices.json,",
+        "them — and are visible as such in the id. Prices come from the operator-supplied pricing evidence,",
         "a hand-exported snapshot of the logged-in dashboard's Pricing page (CNY per successful request);",
         "an endpoint without a cost was absent from that export (e.g. not activated for the account).",
     ]
@@ -1338,22 +1348,13 @@ ANYAPI_OPENAPI = "https://api.getanyapi.com/openapi.json"
 # Bumped by hand when the rate card is re-read, so a re-run with no price change is byte-identical.
 ANYAPI_CHECKED = "2026-09-11"
 
-# What AnyAPI actually billed, per SKU, over the trailing 60 days: a hand-exported snapshot of the
-# vendor's own request ledger (calls, p50, p90, max USD), the same arrangement as
-# scripts/data/justoneapi_prices.json. It needs the vendor's production database, so it cannot be
-# fetched here; re-export it and re-run to refresh. Only SKUs with at least 5 charged calls in the
-# window are in it - the rest fall back to the live rate card. See _anyapi_cost.
-ANYAPI_MEASURED_FILE = Path(__file__).parent / "data" / "anyapi_measured_charges.json"
+# Measured pricing evidence is supplied by the operator, outside the public checkout.
 _ANYAPI_MEASURED: dict[str, dict] | None = None
 
 # CORE-TIER SHELF ROWS WHOSE SOURCES CHARGE DIFFERENT PRICES FOR THE SAME RESULT COUNT.
 #
 # For these the p90 measures lane spread, not work done, so it is not the price a buyer will pay.
-# maps.search, measured per source over the same 60 days: scrapertech $0.00175 flat (312 calls),
-# serper $0.00297 flat (743 calls), apify $0.06005 median (485 calls) - and all three average
-# 11-12 items per response. The p90 of the blend is $0.07734, which is only ever paid when the
-# dearest source serves; the cheapest source serves the same query for $0.00175. Listing $0.07734
-# on the price-sorted google.serp.maps shelf misrepresents the endpoint by a factor of 44.
+# A blended percentile can overstate the cheapest advertised source for the same result count.
 #
 # So these rows list the CHEAPEST ADVERTISED price instead - `pricing.from.maxUsd`, the cheapest
 # source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
@@ -1377,8 +1378,8 @@ ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE = {
 def _anyapi_measured() -> dict[str, dict]:
     global _ANYAPI_MEASURED
     if _ANYAPI_MEASURED is None:
-        _ANYAPI_MEASURED = (json.loads(ANYAPI_MEASURED_FILE.read_text()).get("skus", {})
-                            if ANYAPI_MEASURED_FILE.is_file() else {})
+        path = pricing_evidence_file("anyapi_measured_charges.json")
+        _ANYAPI_MEASURED = json.loads(path.read_text()).get("skus", {})
     return _ANYAPI_MEASURED
 
 
@@ -1389,7 +1390,7 @@ def _anyapi_measured_window() -> tuple[str, int]:
     the ledger is re-exported. Reusing one date for both made a re-read silently restate every
     measured price as covering days it never saw.
     """
-    blob = json.loads(ANYAPI_MEASURED_FILE.read_text()) if ANYAPI_MEASURED_FILE.is_file() else {}
+    blob = json.loads(pricing_evidence_file("anyapi_measured_charges.json").read_text())
     return blob.get("as_of", ANYAPI_CHECKED), blob.get("window_days", 60)
 
 
@@ -1589,7 +1590,7 @@ def ingest_anyapi(refresh: bool = False):
         "anyapi.yaml and the SKUs AnyAPI excludes from this listing (ANYAPI_KEEP_PLATFORMS and",
         "ANYAPI_EXCLUDE in scripts/catalog_ingest.py).",
         "Prices are MEASURED: cost.value is the p90 of what AnyAPI actually billed for that SKU",
-        "over the 60 days to the ingest date (scripts/data/anyapi_measured_charges.json), so it is",
+        "over the 60 days to the ingest date (operator-supplied pricing evidence), so it is",
         "what nine calls in ten settle at or below rather than the cheapest source's list price. A",
         "SKU with too few charged calls to measure keeps the rate card's cheapest-source price and",
         "says so in its note (cost.source: rate_card_api vs observed). One call in ten settles",
