@@ -28,6 +28,7 @@ sources:
 
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
+  - src/treg/alembic/versions/0052_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0034_managed_api_keys.py
   - src/treg/alembic/versions/0035_default_key_generation.py
   - src/treg/alembic/versions/0036_activity_key_indexes.py
@@ -312,6 +313,8 @@ uses this metadata, never the encrypted token's shape.
   the membership is revoked there is no valid caller that can replay it. `delete_membership` removes
   it explicitly and the `membership_id` foreign key uses `ON DELETE CASCADE` as the schema backstop
   (Alembic `0015`), so a cached paid response can never turn token revocation into a 500.
+  The per-call expired-label sweep reads `(membership_id, expires_at)` (Alembic `0052`), so its
+  cost is the expired rows, not every label the caller holds.
 - **`ToolRequest`** - a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty -
   auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |
