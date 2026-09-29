@@ -53,9 +53,10 @@ export default { components: { ToolDrawer }, setup: useDashboard }
             <div class="ttable-wrap" v-else><table class="ttable">
               <tr v-for="c in mkConns" :key="c.id">
                 <td class="tn">
-                  <b>{{c.identity_label || c.name}}</b>
-                  <span class="sub" style="display:block;font-size:11px;overflow-wrap:anywhere" :title="c.resource_ref">
-                    {{c.resource_name || c.resource_ref || (c.supports_discovery ? 'no '+(c.resource_label||'account')+' chosen yet' : 'whole account')}}
+                  <!-- Which account this is; the tool name has its own column, so it is not repeated here. -->
+                  <b :title="c.resource_ref">{{c.resource_name || c.name}}</b>
+                  <span v-if="!c.resource_name" class="sub" style="display:block;font-size:11px;overflow-wrap:anywhere">
+                    {{c.resource_ref || (c.supports_discovery ? 'no '+(c.resource_label||'account')+' chosen yet' : 'whole account')}}
                   </span>
                 </td>
                 <td class="th">
