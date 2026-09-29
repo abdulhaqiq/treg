@@ -5,12 +5,14 @@ sources:
   - src/treg/application/auth.py
   - src/treg/application/onboard/__init__.py
   - src/treg/application/onboard/demo.py
+  - src/treg/application/signup_profile.py
   - src/treg/cli.py
   - src/treg/routers/auth.py
   - src/treg/routers/onboard.py
   - frontend/src/state/onboarding.js
   - frontend/src/dialogs/WelcomeDialog.vue
   - frontend/src/pages/GettingStartedPage.vue
+  - frontend/src/state/onboardingComputed.js
 related:
   - interface/api.md
   - interface/cli.md
@@ -167,7 +169,34 @@ alone so someone mid-signup from a platform page stays on it. `/onboard/seed-too
 `/onboard/accept-teammate` no longer have a dashboard caller (the CLI/demo paths don't use them either);
 **"Remove demo"** (`resetDemo` → `/onboard/reset`) remains in Help. A clay **`demo` chip** marks a demo org.
 
-Getting Started's key is the active team's signed Default key. It is intentionally revealable again:
+## Picked for you (`src/treg/application/signup_profile.py`)
+
+Getting started opens step 2 with three **plays** written for the signed-in person: prompts to copy to
+their agent that name their own company, domain or market. `GET /onboard/profile` starts a background
+build on first read and answers `pending`; the dashboard polls it. The build is treg calling itself on
+the `jev_treg_token` team (the same member token as the `/jev` demo), so every step is an ordinary,
+metered, logged call:
+
+1. **Enrich** a work address: `treg.people.enrich` (capped by `X-Treg-Max-Cost-Usd`) and
+   `thecompaniesapi.companies.enrich` in parallel; the company falls back to the summary the person
+   answer carries, and is dropped when its domain is not the address's. A personal mailbox
+   (`FREE_MAIL`) is never enriched: it mostly misses every provider, and a routed miss can still bill.
+2. **Classify** with jev through `openrouter.ai-judge.decide`: one Choice over `USE_CASES`, one over
+   `PERSONAS`. Skipped when there is no evidence to judge.
+3. **Write plays** with a small model on the AI Gateway (`signup_play_model`, key
+   `ai_gateway_api_key`), grounded in the capability ids the use case lists. A play naming any other
+   capability is dropped; missing plays come from the use case's templates, which are also the whole
+   answer when the model fails or no key is set.
+
+With nothing to go on, or a top use case under `ASK_BELOW`, the status is `ask`: the use cases come
+back ranked and the page shows them as chips. The welcome modal asks the same question up front for a
+personal address (step 0, optional), and the pick is posted after the team is created.
+`POST /onboard/profile/use-case` stores a pick (rate limited per user) and rebuilds the plays,
+reusing the enrichment already paid for. The profile lives in the key-value store (`Ephemeral`,
+namespace `signup_profile`), is regenerable and holds no money; costs and raw probabilities stay
+server-side. `signup_profile_enabled` is off by default, and `off` hides the block entirely.
+
+ It is intentionally revealable again:
 the server derives it from signed identity, team, and Default generation, while additional and agent
 keys are random secrets whose plaintext is shown once and then discarded. A disabled Default hides
 the token and exposes only **Enable key**; rotating it changes this team's generation and revealable
