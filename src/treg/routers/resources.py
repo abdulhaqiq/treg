@@ -18,6 +18,7 @@ from .. import convert as _convert
 from .. import crypto, health, sandbox as demo_sandbox
 from .. import providers as _providers
 from .. import skills as _skills
+from ..application import connect as connect_use_cases
 from ..config import get_settings
 from ..infra.db import get_session
 from ..domain.governance import access as access_policy
@@ -219,6 +220,7 @@ class ToolIn(BaseModel):
 
 
 class ToolUpdate(BaseModel):
+    name: str | None = None  # a rename; a connection's tool renames the connection with it
     base_url: str | None = None
     bindings: list[dict] | None = None
     health_check: dict | None = None
@@ -420,6 +422,17 @@ async def update_tool(
     if "cli" in fields:  # explicit null clears the profile (turns local runs off entirely)
         _validate_cli_profile(fields["cli"])
         await _validate_cli_secrets(fields["cli"], caller, db, grandfather)
+    if "name" in fields:
+        name = fields.pop("name")
+        if name is None:
+            raise HTTPException(status_code=422, detail="name cannot be null")
+        await db.commit()  # end this read transaction; the rename commits in its own session
+        try:
+            await connect_use_cases.rename_tool(tool_id=tool.id, name=name, org_id=caller.org_id)
+        except connect_use_cases.ConnectError as exc:
+            raise HTTPException(status_code=409 if exc.kind.startswith("name_") else 422,
+                                detail=exc.detail) from exc
+        await db.refresh(tool)
     if "project" in fields:  # slug/id in, column out; explicit null = back to org-wide
         project = await _resolve_project(fields.pop("project"), caller.org_id, db)
         tool.project_id = project.id if project else None

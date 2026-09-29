@@ -1203,20 +1203,56 @@ async def revoke_connection(*, secret_id: int, org_id: int) -> dict:
         return {"deleted": secret_id, "removed_tools": removed_tools}
 
 
-_CONNECTION_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
+_TOOL_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
+
+
+def _valid_tool_name(name: str) -> str:
+    name = name.strip().lower()
+    if not _TOOL_NAME.fullmatch(name):
+        raise ConnectError(
+            "invalid_name", "a name is 1-64 lowercase letters, digits and dashes, not starting or ending with a dash")
+    return name
+
+
+async def _rename_tools(
+    db: AsyncSession, *, org_id: int, tools: list[Tool], renames: dict[str, str], keep: set[int],
+    also: frozenset[str] = frozenset(),
+) -> None:
+    """Rename `tools` per `renames` (old -> new) and every member/invite tool_access naming them.
+
+    `keep` is the secret ids whose own names may collide (the connection being renamed); `also` is a
+    new name that must be free even though no tool takes it (that connection's secret name).
+    The old names stop resolving; nothing aliases them. A live hub recipe that `uses` an old name
+    blocks the rename, because a published version is a contract and is never rewritten."""
+    taken = {t.name for t in tools if t.name not in renames} | set((await db.execute(
+        select(Secret.name).where(Secret.org_id == org_id, Secret.id.not_in(keep))  # type: ignore[union-attr]
+    )).scalars().all())
+    if clash := sorted((set(renames.values()) | also) & taken):
+        raise ConnectError("name_taken", f"{clash[0]!r} is already used in this team")
+    recipes = (await db.execute(select(HubTool).where(
+        HubTool.org_id == org_id, HubTool.status.in_(("live", "unchecked"))  # type: ignore[attr-defined]
+    ))).scalars().all()
+    for r in recipes:
+        if used := sorted(set(r.manifest.get("uses") or []) & set(renames)):
+            raise ConnectError("name_in_use", (
+                f"hub tool {r.name!r} calls {used[0]!r}; publish a version that uses the new name first"))
+    for t in tools:
+        if t.name in renames:
+            t.name = renames[t.name]
+    for model in (Membership, Invite):
+        # No SQL filter on tool_access: "all tools" is stored as JSON null, which IS NOT NULL
+        # does not exclude.
+        for row in (await db.execute(select(model).where(model.org_id == org_id))).scalars().all():
+            if row.tool_access and set(row.tool_access) & set(renames):
+                row.tool_access = [renames.get(n, n) for n in row.tool_access]  # reassign: JSON column
 
 
 async def rename_connection(*, secret_id: int, name: str, org_id: int) -> dict:
     """Rename a connected account, which renames the tool an agent types: instagram-2 -> instagram-acme.
 
-    The connection's secret, the tools bound to it under its name (the main one and any companion
-    `{name}-{suffix}`), and every member/invite tool_access list naming them move together in one
-    transaction. The old name stops resolving; nothing aliases it. A live hub recipe that `uses` the
-    old name blocks the rename, because a published version is a contract and is never rewritten."""
-    name = name.strip().lower()
-    if not _CONNECTION_NAME.fullmatch(name):
-        raise ConnectError(
-            "invalid_name", "a name is 1-64 lowercase letters, digits and dashes, not starting or ending with a dash")
+    The connection's secret and the tools bound to it under its name (the main one and any companion
+    `{name}-{suffix}`) move together, in one transaction, through `_rename_tools`."""
+    name = _valid_tool_name(name)
     async with session_maker() as db:
         secret = await _owned_connection(secret_id, org_id, db)
         old = secret.name
@@ -1224,7 +1260,7 @@ async def rename_connection(*, secret_id: int, name: str, org_id: int) -> dict:
             return connection_refresh.connection_view(secret)
         provider = oauth_providers.get(secret.provider) if secret.provider else None
         suffixes = [e["suffix"] for e in (getattr(provider, "extra_tools", ()) or ())]
-        tools = (await db.execute(select(Tool).where(Tool.org_id == org_id))).scalars().all()
+        tools = list((await db.execute(select(Tool).where(Tool.org_id == org_id))).scalars().all())
         # Only tools this credential actually powers move; an unrelated tool that happens to share
         # the name is the user's own and stays put.
         renames = {
@@ -1233,31 +1269,35 @@ async def rename_connection(*, secret_id: int, name: str, org_id: int) -> dict:
             if t.name in {old, *(f"{old}-{s}" for s in suffixes)}
             and any(b.get("secret_id") == secret.id for b in (t.bindings or []))
         }
-        taken = {t.name for t in tools if t.name not in renames} | set((await db.execute(
-            select(Secret.name).where(Secret.org_id == org_id, Secret.id != secret.id)
-        )).scalars().all())
-        if clash := sorted({name, *renames.values()} & taken):
-            raise ConnectError("name_taken", f"{clash[0]!r} is already used in this team")
-        recipes = (await db.execute(select(HubTool).where(
-            HubTool.org_id == org_id, HubTool.status.in_(("live", "unchecked"))
-        ))).scalars().all()
-        if blocking := sorted({r.name for r in recipes if set(r.manifest.get("uses") or []) & set(renames)}):
-            raise ConnectError("name_in_use", (
-                f"hub tool {blocking[0]!r} calls {old!r}; publish a version that uses the new name first"))
-
+        await _rename_tools(db, org_id=org_id, tools=tools, renames=renames, keep={secret.id},
+                            also=frozenset({name}))
         secret.name = name
-        for t in tools:
-            if t.name in renames:
-                t.name = renames[t.name]
-        for model in (Membership, Invite):
-            # No SQL filter on tool_access: "all tools" is stored as JSON null, which IS NOT NULL
-            # does not exclude.
-            for row in (await db.execute(select(model).where(model.org_id == org_id))).scalars().all():
-                if row.tool_access and set(row.tool_access) & set(renames):
-                    row.tool_access = [renames.get(n, n) for n in row.tool_access]  # reassign: JSON column
         await db.commit()
         await db.refresh(secret)
         return connection_refresh.connection_view(secret)
+
+
+async def rename_tool(*, tool_id: int, name: str, org_id: int) -> None:
+    """Rename one of the team's own tools from its edit form.
+
+    A connection's main tool renames through its connection, so the secret and companion tools
+    follow; otherwise only this tool moves."""
+    name = _valid_tool_name(name)
+    async with session_maker() as db:
+        tools = list((await db.execute(select(Tool).where(Tool.org_id == org_id))).scalars().all())
+        tool = next((t for t in tools if t.id == tool_id), None)
+        if tool is None or tool.name == name:
+            return
+        bound = {b.get("secret_id") for b in (tool.bindings or [])}
+        connection = (await db.execute(select(Secret.id).where(
+            Secret.org_id == org_id, Secret.id.in_(bound), Secret.name == tool.name,  # type: ignore[union-attr]
+            or_(Secret.kind == "oauth", Secret.provider != ""),
+        ))).scalars().first()
+        if connection is None:
+            await _rename_tools(db, org_id=org_id, tools=tools, renames={tool.name: name}, keep=set())
+            await db.commit()
+            return
+    await rename_connection(secret_id=connection, name=name, org_id=org_id)
 
 
 async def run_connection_health(

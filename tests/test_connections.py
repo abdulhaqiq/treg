@@ -887,6 +887,48 @@ async def test_rename_refuses_bad_taken_and_hub_used_names(clients: AsyncClient,
     assert r.status_code == 409 and "report" in r.json()["detail"]
 
 
+async def test_renaming_a_connections_tool_renames_the_connection(clients: AsyncClient, treg_google_app):
+    """The tool page's edit form is where people look for a rename. A connection's tool renamed
+    there must take its connection and companions along, as if renamed from the provider page."""
+    await _connect_byo(clients, provider="google-analytics", name="")
+    second = await _connect_byo(clients, provider="google-analytics", name="")
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "google-analytics-2")
+
+    r = await clients.patch(f"/tools/{tool['id']}", json={"name": "ga-acme", "base_url": tool["base_url"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "ga-acme"
+    names = {t["name"] for t in (await clients.get("/tools")).json()}
+    assert {"ga-acme", "ga-acme-admin"} <= names and "google-analytics-2" not in names
+    conn = {c["id"]: c for c in (await clients.get("/connections")).json()}[second["secret_id"]]
+    assert conn["name"] == "ga-acme"
+
+
+async def test_renaming_a_user_built_tool(clients: AsyncClient):
+    key = (await clients.post("/secrets", json={"name": "shared-key", "value": "k"})).json()
+    for n in ("mine", "theirs"):
+        await clients.post("/tools", json={"name": n, "base_url": "http://upstream",
+                                           "bindings": [{"secret_id": key["id"]}]})
+    mine = next(t for t in (await clients.get("/tools")).json() if t["name"] == "mine")
+    async with session_maker() as db:
+        member = (await db.execute(select(Membership))).scalars().first()
+        member.tool_access = ["mine"]
+        await db.commit()
+
+    assert (await clients.patch(f"/tools/{mine['id']}", json={"name": "theirs"})).status_code == 409
+    assert (await clients.patch(f"/tools/{mine['id']}", json={"name": "shared-key"})).status_code == 409
+    assert (await clients.patch(f"/tools/{mine['id']}", json={"name": "a b"})).status_code == 422
+    r = await clients.patch(f"/tools/{mine['id']}", json={"name": "renamed"})
+    assert r.status_code == 200 and r.json()["name"] == "renamed"
+    async with session_maker() as db:
+        assert (await db.get(Membership, member.id)).tool_access == ["renamed"]
+    assert (await db_secret_name(key["id"])) == "shared-key", "a plain key shared by tools is not renamed"
+
+
+async def db_secret_name(secret_id: int) -> str:
+    async with session_maker() as db:
+        return (await db.get(Secret, secret_id)).name
+
+
 async def test_secret_patch_cannot_strand_a_connections_tool(clients: AsyncClient, treg_google_app):
     """Renaming only the secret used to leave its tool under the old name; the next reconnect then
     minted a second tool under the new one."""

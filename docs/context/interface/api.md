@@ -685,7 +685,9 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   (`instagram-2` → `instagram-acme`): the secret, the main tool and `{name}-{suffix}` companion tools
   bound to it, and member/invite `tool_access` lists move in one transaction; the old name stops
   resolving (no alias). A taken name is a 409, and so is a live/unchecked hub recipe whose `uses`
-  names the old tool (a published version is never rewritten). `PATCH /secrets/{id}` refuses a name
+  names the old tool (a published version is never rewritten). `PATCH /tools/{id}` also takes `name`
+  (`rename_tool`): a connection's tool renames through `rename_connection`, any other tool alone under the
+  same checks. `PATCH /secrets/{id}` refuses a name
   change on a provider connection for the same reason. All `require_can_register`
   (member+). Helpers: `_owned_connection`, `_dig` (dotted-path walk).
 - **Health:** `run_health` (`POST /health/run`) → `health.run_all`; `get_health` (`GET /health`) now

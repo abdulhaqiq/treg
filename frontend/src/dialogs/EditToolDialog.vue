@@ -9,7 +9,8 @@ export default { setup: useDashboard }
         <div style="padding:16px 18px">
           <template v-if="tForm.mode!=='cli'">
             <p class="explain">An endpoint = an upstream base URL + one or more credential bindings (how treg injects each key). Need a key? Close this and open <b>⚿ Secrets</b> first.</p>
-            <div class="frow"><label>Name</label><input v-model="tForm.name" :disabled="!!tForm.id" placeholder="e.g. openai"/></div>
+            <div class="frow"><label>Name</label><input v-model="tForm.name" placeholder="e.g. openai"/></div>
+            <p v-if="tForm.id && tForm.name.trim() && tForm.name.trim()!==tForm.oldName" class="sub" style="font-size:11px;margin-top:-4px">Renaming changes what agents call: scripts using <span class="mono">{{tForm.oldName}}</span> need the new name.</p>
             <div class="frow"><label>Base URL</label><input v-model="tForm.base_url" placeholder="https://api.openai.com"/></div>
             <div class="lbl" style="margin-top:12px;display:flex;align-items:center">Bindings - how each key is injected <button class="btn sm" @click="addBinding" style="margin-left:auto">＋ binding</button></div>
             <div class="bindrow" v-for="(b,i) in tForm.bindings" :key="i">

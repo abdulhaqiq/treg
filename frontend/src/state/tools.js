@@ -13,7 +13,7 @@ openAddTool(mode){ this.addToolMenu=false; this.loadProjectsIfNeeded(); this.loa
       if(mode==='cli') this.loadCatalogClis();
       this.toolErr=''; this.newTool=true; }); },
 openEditTool(t){ this.loadProjectsIfNeeded(); this.loadSecrets().then(()=>{ const cur=(this.projects||[]).find(p=>p.id===t.project_id);
-      this.tForm={ id:t.id, mode:(t.cli?'cli':'endpoint'), name:t.name, base_url:t.base_url, project:(cur?cur.slug:null),
+      this.tForm={ id:t.id, mode:(t.cli?'cli':'endpoint'), name:t.name, oldName:t.name, base_url:t.base_url, project:(cur?cur.slug:null),
         bindings:(t.bindings||[]).map(b=>({secret_id:b.secret_id, injector:b.injector||'env', location:b.location||'header', name:b.name||'Authorization', format:b.format||'Bearer {secret}', secret_field:b.secret_field||'access_token'})),
         // deep-copy the cli profile — the PATCH replaces it wholesale, so every field must round-trip
         cli: t.cli ? Object.assign(JSON.parse(JSON.stringify(t.cli)), {package:t.cli.package||'', deny:(t.cli.deny||[]).slice(), deny_defaults:t.cli.deny_defaults!==false,
@@ -52,6 +52,8 @@ async saveTool(){ const f=this.tForm;
         if(new Set(hdr).size!==hdr.length){ this.toolErr='Two bindings target the same header - give each a distinct name.'; return; }  // catch the collision inline, clearly
         const bindings=f.bindings.map(b=>({secret_id:b.secret_id, injector:b.injector, location:b.location, name:b.name, format:b.format, secret_field:b.secret_field}));
         body = f.id ? {base_url:f.base_url.trim(), bindings, project:f.project||null} : {name:f.name.trim(), base_url:f.base_url.trim(), bindings, project:f.project||null};
+        // A rename is the tool name agents call; the server moves a connection's name along with it.
+        if(f.id && f.name.trim() && f.name.trim()!==f.oldName) body.name=f.name.trim();
       }
       this.toolBusy=true; this.toolErr='';
       try{
@@ -59,7 +61,13 @@ async saveTool(){ const f=this.tForm;
         else { await this.api('/tools',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); }
         const created = f.id ? null : body.name;
         this.newTool=false; await this.loadAll();
-        if(this.view==='detail') this.loadDetail();  // a detail-page ⚙ Configure save must show the new values
+        // The detail page is addressed by name: follow a rename or it reloads a name that is gone.
+        if(this.view==='detail' && f.id && body.name && this.detail && this.detail.name===f.oldName){
+          const t=(this.tools||[]).find(x=>x.id===f.id), name=t ? t.name : body.name.toLowerCase();
+          history.replaceState({detail:{kind:'tool',name}}, '', '/app/tools/'+encodeURIComponent(name));
+          this.openDetail('tool', name, true);
+        }
+        else if(this.view==='detail') this.loadDetail();  // a detail-page ⚙ Configure save must show the new values
         if(created) await this.remindCustomizedAccess(created); }
       catch(e){ this.toolErr='Save tool failed: '+(e.detail||e.status); } finally{ this.toolBusy=false; } },
 async remindCustomizedAccess(toolName){  // a NEW tool auto-applies to 'all-tools' members but NOT to customized ones
