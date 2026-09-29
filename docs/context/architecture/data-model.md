@@ -28,6 +28,7 @@ sources:
 
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
+  - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0034_managed_api_keys.py
   - src/treg/alembic/versions/0035_default_key_generation.py
   - src/treg/alembic/versions/0036_activity_key_indexes.py
@@ -329,6 +330,8 @@ uses this metadata, never the encrypted token's shape.
   `idempotency_response_lost` with the charge when the owner's ledger shows one, else
   `idempotency_outcome_unknown`. The key is never run again: a lapsed lease does not prove its owner
   stopped. Rows without a `call_ref` (written before this) keep answering 409 until they expire.
+  The per-call expired-label sweep reads `(membership_id, expires_at)` (Alembic `0053`), so its
+  cost is the expired rows, not every label the caller holds.
 - **`ToolRequest`** - a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty -
   auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |

@@ -156,7 +156,7 @@ async def test_missing_archive_is_revisited_and_old_window_removed(clients):
         db.add(key);await db.flush()
         db.add(ArchiveSnapshot(key_id=key.id,content_hash="late-body",body=b'{"data":{"email":"new@example.test"}}'))
         row.archive_key_hash=key.key_hash;row.archive_content_hash="late-body";db.add(row)
-        state=(await db.execute(select(ArenaInsightState))).scalar_one();state.updated_at=now()-timedelta(seconds=121)
+        state=(await db.execute(select(ArenaInsightState))).scalar_one();state.updated_at=now()-timedelta(seconds=service.REFRESH_SECONDS+1)
         db.add(state);await db.commit()
     await service.collect_batch(session_maker)
     row=(await service.public_snapshot(session_maker))["rows"][0]

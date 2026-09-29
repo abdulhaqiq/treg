@@ -256,7 +256,9 @@ every two minutes while visible, preserves the last successful values after a re
 shows the last update time. Prices still come from the catalog and team quote.
 
 `application.arena_insights.drain` is the collector, run by the `treg-worker arena insights` cron
-(every two minutes; `--max-seconds` bounds a pass and the next run resumes from the cursor). It no
+(every two minutes; `--max-seconds` bounds a pass and the next run resumes from the cursor). Once
+caught up it re-aggregates the 30-day window at most every `REFRESH_SECONDS` (30 minutes): each
+aggregate scans the whole window on the primary, so the cron cadence is not the refresh cadence. It no
 longer runs inside the web processes: as a lifespan coroutine, every web process (and every extra
 instance during a deploy) contended for the cursor row and each walked `callrecord` on the
 database the money path depends on. In the worker process it uses the API pool, the only one open

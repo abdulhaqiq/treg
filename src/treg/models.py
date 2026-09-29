@@ -1239,7 +1239,11 @@ class IdempotentCall(SQLModel, table=True):
     one that says no.
     """
 
-    __table_args__ = (UniqueConstraint("membership_id", "key", name="uq_idem_caller_key"),)
+    __table_args__ = (
+        UniqueConstraint("membership_id", "key", name="uq_idem_caller_key"),
+        # The per-call expired-label sweep in `_claim_idempotent` (Alembic 0053).
+        Index("ix_idempotentcall_membership_id_expires_at", "membership_id", "expires_at"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     # org_id is kept alongside the caller so the row is still org-scoped for deletion and audit.
