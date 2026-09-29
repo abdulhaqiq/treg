@@ -227,7 +227,7 @@ async def test_repeated_cancellation_cannot_interrupt_compensation(
     )
     original_http = app.state.http
     original_commit = AsyncSession.commit
-    original_delete = AsyncSession.delete
+    original_execute = AsyncSession.execute
     original_release = ledger.release_in_transaction
     cleanup_commit_reached = asyncio.Event()
     allow_cleanup_commit = asyncio.Event()
@@ -239,10 +239,13 @@ async def test_repeated_cancellation_cannot_interrupt_compensation(
             db.sync_session.info["cancelled_release"] = True
         return await original_release(db, call_id, **kwargs)
 
-    async def _tag_claim_delete(db: AsyncSession, row) -> None:
-        if isinstance(row, IdempotentCall) and row.key == key:
+    async def _tag_claim_delete(db: AsyncSession, statement, *args, **kwargs):
+        # The release is one DELETE fenced on the claim's owner, not a load-then-delete.
+        if (getattr(statement, "is_delete", False)
+                and statement.table.name == IdempotentCall.__tablename__
+                and "call_ref" in str(statement)):  # not the intake's expired-label sweep
             db.sync_session.info["claim_delete"] = True
-        await original_delete(db, row)
+        return await original_execute(db, statement, *args, **kwargs)
 
     async def _gate_cleanup_commit(db: AsyncSession) -> None:
         if db.sync_session.info.get("cancelled_release"):
@@ -254,7 +257,7 @@ async def test_repeated_cancellation_cannot_interrupt_compensation(
         await original_commit(db)
 
     monkeypatch.setattr(ledger, "release_in_transaction", _tag_cancelled_release)
-    monkeypatch.setattr(AsyncSession, "delete", _tag_claim_delete)
+    monkeypatch.setattr(AsyncSession, "execute", _tag_claim_delete)
     monkeypatch.setattr(AsyncSession, "commit", _gate_cleanup_commit)
     app.state.http = tracked
     headers = {"Idempotency-Key": key}

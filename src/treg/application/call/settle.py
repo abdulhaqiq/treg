@@ -1262,7 +1262,7 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
 
 
 async def _finish_cancelled_call(
-    claim: tuple[int, str] | None,
+    claim: tuple[int, str, str] | None,
     mk: MarketplaceCall | None,
     call_ref: str,
     response: UpstreamResponse | None = None,

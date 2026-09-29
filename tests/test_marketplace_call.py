@@ -1769,6 +1769,281 @@ async def test_the_sweep_clears_labels_NOBODY_COMES_BACK_FOR(clients: AsyncClien
     assert gone is None, "an expired row nobody returns for must still be reclaimed"
 
 
+async def _claim_row(key: str):
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import IdempotentCall
+
+    async with session_maker() as db:
+        return (await db.execute(select(IdempotentCall).where(
+            IdempotentCall.key == key))).scalar_one_or_none()
+
+
+async def _set_claim(key: str, **values) -> None:
+    from sqlalchemy import update
+
+    from treg.infra.db import session_maker
+    from treg.models import IdempotentCall
+
+    async with session_maker() as db:
+        await db.execute(update(IdempotentCall).where(IdempotentCall.key == key).values(**values))
+        await db.commit()
+
+
+def _ago(**kw):
+    from datetime import timedelta
+    return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(**kw)
+
+
+async def _ledger(org_id: int, call_id: str, kind: str, reason: str = "", amount: int = 0) -> None:
+    import uuid
+
+    from treg.infra.db import session_maker
+    from treg.models import LedgerEntry
+
+    async with session_maker() as db:
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind=kind, amount_micro=amount,
+                           call_id=call_id, endpoint_id=EP, meta={"reason": reason} if reason else {}))
+        await db.commit()
+
+
+async def test_an_abandoned_claim_is_closed_with_a_stored_410_never_run_again(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """Even an owner whose visible money shows only a clean release is not proof the operation
+    finished: a later child (overflow polling, an async worker) can still settle. So the key is
+    never run again; a live lease answers 409, a stale one a stored 410, and no provider call or
+    charge happens under it."""
+    from treg.application.call import idempotency
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "stuck-label", status="pending")
+    await _set_claim("stuck-label", call_ref="gone-owner")
+    await _ledger(org_id, "gone-owner", "reserve", amount=-100)
+    await _ledger(org_id, "gone-owner", "release", reason="not_billable_502", amount=100)
+    live = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "stuck-label"})
+    assert live.status_code == 409, live.text
+
+    balance = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    for _ in range(2):
+        r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "stuck-label"})
+        assert r.status_code == 410, r.text
+        assert r.json()["detail"]["error"] == "idempotency_outcome_unknown"
+        assert "X-Treg-Original-Cost-Micro" not in r.headers, "the original cost is not known"
+        assert r.headers["X-Treg-Call-Id"] == "gone-owner"
+    assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == balance
+    assert (await _claim_row("stuck-label")).call_ref == "gone-owner"
+
+
+@pytest.mark.parametrize("trail", ["none", "reaped"])
+async def test_an_abandoned_claim_with_no_proof_of_finishing_fails_closed(
+        clients: AsyncClient, platform_on, monkeypatch, trail):
+    """No money trail (an unmetered or pre-reserve owner), or a hold the stale-hold reaper released
+    while the owner may still have been upstream: the outcome is unknown, so a stored 410 instead
+    of a second upstream call."""
+    from treg.application.call import idempotency
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "unknown-label", status="pending")
+    await _set_claim("unknown-label", call_ref="silent-owner")
+    if trail == "reaped":
+        await _ledger(org_id, "silent-owner", "reserve", amount=-100)
+        await _ledger(org_id, "silent-owner", "release", reason="stale_hold_reaped", amount=100)
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    for _ in range(2):
+        r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "unknown-label"})
+        assert r.status_code == 410, r.text
+        assert r.json()["detail"]["error"] == "idempotency_outcome_unknown"
+        assert "X-Treg-Original-Cost-Micro" not in r.headers, "the original cost is not known"
+
+
+@pytest.mark.parametrize("task_status", ["settled", "pending"])
+async def test_an_async_child_that_settles_after_the_owner_died_is_still_a_charge(
+        clients: AsyncClient, platform_on, monkeypatch, task_status):
+    """A routed owner whose early child released cleanly and whose later async child is settled
+    by the worker AFTER the owner's lifetime: that late settle is a charge (410, never a takeover
+    that bills the key again), and a task still pending is money in flight (409)."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import AsyncTaskRecord, LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "async-label", status="pending")
+    await _set_claim("async-label", call_ref="routed-owner", created_at=_ago(hours=2))
+    stamp = _ago(hours=2)
+    async with session_maker() as db:
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="release", amount_micro=100,
+                           call_id="routed-owner:r0", endpoint_id=EP,
+                           meta={"reason": "not_billable_404"}, created_at=stamp))
+        db.add(AsyncTaskRecord(call_id="routed-owner:r1", org_id=org_id, provider="p", endpoint_id=EP,
+                               reserved_micro=500, next_check_at=stamp, status=task_status,
+                               created_at=stamp))
+        if task_status == "settled":  # the worker settles long after the owner stopped
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-500,
+                               call_id="routed-owner:r1", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 60)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "async-label"})
+    if task_status == "pending":
+        assert r.status_code == 409, r.text
+    else:
+        assert r.status_code == 410, r.text
+        assert r.json()["detail"]["error"] == "idempotency_response_lost"
+        assert r.json()["detail"]["charged_micro"] == 500
+
+
+async def test_a_renewal_between_read_and_close_keeps_the_lease(clients: AsyncClient, platform_on):
+    """The compare-and-swap includes the lease timestamp: an owner that renews after the retry
+    read the stale row keeps its claim."""
+    from types import SimpleNamespace
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "race-label", status="pending")
+    await _set_claim("race-label", call_ref="alive-owner", created_at=_ago(hours=1))
+    await _ledger(org_id, "alive-owner", "release", reason="not_billable_502", amount=100)
+    stale = await _claim_row("race-label")
+    await idempotency._renew_claim_lease((stale.membership_id, stale.key, "alive-owner"))
+    caller = SimpleNamespace(org_id=org_id, membership=SimpleNamespace(id=stale.membership_id))
+    async with session_maker() as db:
+        out = await idempotency._resolve_stale_claim(stale, caller, db)
+    assert out is None
+    row = await _claim_row("race-label")
+    assert row.call_ref == "alive-owner" and row.status == "pending"
+
+
+async def test_an_abandoned_CHARGED_claim_answers_410_and_never_charges_twice(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """The incident: the owner was charged, then marking its claim done failed. Forgetting the claim
+    would bill the same key again, so the retry gets a stored 410 naming the charge instead."""
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    first = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "paid-label"})
+    assert first.status_code == 200, first.text
+    owner = first.headers["X-Treg-Call-Id"]
+    from treg.application.call import idempotency
+
+    await _set_claim("paid-label", status="pending", response_status=None, response_body=None,
+                     charged_micro=0)
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    balance = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
+
+    for _ in range(2):
+        r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "paid-label"})
+        assert r.status_code == 410, r.text
+        detail = r.json()["detail"]
+        assert detail["error"] == "idempotency_response_lost" and detail["call_id"] == owner
+        assert detail["charged_micro"] > 0
+        assert r.headers["X-Treg-Call-Id"] == owner
+        assert r.headers["X-Treg-Original-Cost-Micro"] == str(detail["charged_micro"])
+    assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == balance
+
+
+async def test_an_expired_lease_with_money_in_flight_still_answers_409(
+        clients: AsyncClient, platform_on):
+    """An open hold under the owner's call id (or a child's) means the call or its async worker is
+    not finished, however old the lease."""
+    from treg.infra.db import session_maker
+    from treg.models import Hold
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "busy-label", status="pending")
+    await _set_claim("busy-label", call_ref="busy-owner", created_at=_ago(hours=1))
+    async with session_maker() as db:
+        db.add(Hold(id="busy-owner:r2", org_id=org_id, endpoint_id=EP, amount_micro=100))
+        await db.commit()
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "busy-label"})
+    assert r.status_code == 409, r.text
+
+
+async def test_a_legacy_claim_without_an_owner_is_never_taken_over(clients: AsyncClient, platform_on):
+    """Rows written before claims carried their call id have no money to check: they wait out the
+    window rather than risk a second charge."""
+    await _seed_answer(clients, "legacy-label", status="pending")
+    await _set_claim("legacy-label", created_at=_ago(hours=1))
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "legacy-label"})
+    assert r.status_code == 409, r.text
+
+
+async def test_a_renewal_during_closing_answers_409_not_a_phantom_410(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """Through the real replay path: the owner renews while the retry is deciding. The lost swap
+    must not leave the retry's loaded row looking closed."""
+    from treg.application.call import idempotency
+
+    await _seed_answer(clients, "phantom-label", status="pending")
+    await _set_claim("phantom-label", call_ref="alive-owner", created_at=_ago(hours=1))
+    real = idempotency._money_of
+
+    async def renew_meanwhile(db, org_id, call_ref, since, until):
+        row = await _claim_row("phantom-label")
+        await idempotency._renew_claim_lease((row.membership_id, row.key, "alive-owner"))
+        return await real(db, org_id, call_ref, since, until)
+
+    monkeypatch.setattr(idempotency, "_money_of", renew_meanwhile)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "phantom-label"})
+    assert r.status_code == 409, r.text
+    row = await _claim_row("phantom-label")
+    assert row.status == "pending" and row.call_ref == "alive-owner"
+
+
+async def test_the_old_owner_cannot_touch_a_claim_taken_over(clients: AsyncClient, platform_on):
+    """After a takeover, the late original call's release and store are fenced out."""
+    from types import SimpleNamespace
+
+    from treg.application.call import idempotency
+
+    await _seed_answer(clients, "fenced-label", status="pending")
+    await _set_claim("fenced-label", call_ref="new-owner")
+    row = await _claim_row("fenced-label")
+    await idempotency._release_idempotent_claim((row.membership_id, row.key, "old-owner"))
+    caller = SimpleNamespace(membership=SimpleNamespace(id=row.membership_id))
+    await idempotency._store_idempotent(
+        row.key, caller, status_code=200, body=b"{}", media_type="application/json",
+        charged_micro=1, metered=True, call_ref="old-owner")
+    after = await _claim_row("fenced-label")
+    assert after is not None and after.status == "pending" and after.call_ref == "new-owner"
+
+
+async def test_marking_a_claim_done_survives_one_pool_timeout(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """The saturated pool that stranded claims: one timeout is retried on a fresh session."""
+    from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+
+    from treg.application.call import idempotency
+
+    real, failed = idempotency.session_maker, []
+
+    def flaky():
+        if not failed:
+            failed.append(1)
+            raise PoolTimeoutError("QueuePool limit reached")
+        return real()
+
+    monkeypatch.setattr(idempotency, "session_maker", flaky)
+    monkeypatch.setattr(idempotency, "_POOL_RETRY_PAUSE_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "flaky-label"})
+    assert r.status_code == 200, r.text
+    assert failed, "the store must have hit the simulated timeout"
+    assert (await _claim_row("flaky-label")).status == "done"
+
+
+async def test_the_owner_renews_its_lease_and_nobody_else_does(clients: AsyncClient, platform_on):
+    from treg.application.call import idempotency
+
+    await _seed_answer(clients, "lease-label", status="pending")
+    await _set_claim("lease-label", call_ref="owner", created_at=_ago(hours=1))
+    row = await _claim_row("lease-label")
+    await idempotency._renew_claim_lease((row.membership_id, row.key, "stranger"))
+    assert (await _claim_row("lease-label")).created_at < _ago(minutes=30)
+    await idempotency._renew_claim_lease((row.membership_id, row.key, "owner"))
+    assert (await _claim_row("lease-label")).created_at > _ago(minutes=1)
+
+
 async def test_the_sweep_leaves_OTHER_callers_rows_alone(clients: AsyncClient, platform_on):
     """Scoped to the caller doing the work. A sweep that reached across callers would be a caller
     able to delete another's stored answers by making one call of their own."""

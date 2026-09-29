@@ -279,6 +279,9 @@ again, and charges nothing. The result says `replayed: true`.
 
 Only for a genuine retry. Asking the same question again to see what changed is NEW work: use a new
 key or none, or you will get the old answer back. Reusing one key for a different request is refused.
+A 409 means the original call is still running: retry shortly. A 410 `idempotency_response_lost` means
+it was charged but its answer was not kept: try `GET /calls/{call_id}/result`, or use a new key.
+A 410 `idempotency_outcome_unknown` means its outcome was not recorded: `GET /calls/{call_id}` shows the cost; use a new key.
 
 Most retries need none of this — a failed call was never billed.
 

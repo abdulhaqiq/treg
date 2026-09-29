@@ -116,6 +116,13 @@ Keys are yours alone: scoped to the caller, kept 24 hours. Nothing happens witho
 call that fails frees its key at once. Over MCP the same thing is the `idempotency_key` argument to
 `call`, and a replayed result carries `replayed: true`.
 
+A `409` means the original call with that key is still running: retry shortly. A `410`
+`idempotency_response_lost` means the original call completed and was charged but treg could not keep
+its answer; the body names the `call_id` and the charge, `GET /calls/{call_id}/result` may still have
+the answer, and a new key calls again. A `410` `idempotency_outcome_unknown` means the original call
+stopped before its outcome was recorded and may have reached the provider: `GET /calls/{call_id}`
+shows what it cost, and a new key calls again.
+
 ### Reselling treg inside your own product
 
 If you are a platform billing your own users, run one team, one balance, one token, and tag each call

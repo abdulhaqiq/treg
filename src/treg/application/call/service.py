@@ -41,7 +41,7 @@ from .evidence import (
     _redact_snippet,
     _safe_secret_renderings,
 )
-from .idempotency import IDEMPOTENCY_HEADER, _store_idempotent
+from .idempotency import IDEMPOTENCY_HEADER, _hold_claim_lease, _store_idempotent
 from .intake import META_HEADER, _parse_call_meta, _tag_telemetry, prepare_call_intake
 from .reserve import _enforce_tag_budgets, _platform_reserve
 from .resolve import (
@@ -104,6 +104,7 @@ class _ApplicationRequest:
             call_cost_micro=context.cost_micro,
         )
         self.db = session_maker()
+        self.lease: asyncio.Task | None = None
 
 
 def _served_response(served: dict, body: bytes) -> UpstreamResponse:
@@ -150,6 +151,8 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
     try:
         return await _execute_call(request, upstream_client)
     finally:
+        if request.lease is not None:
+            request.lease.cancel()
         context.idempotency = request.state.idem_claim
         context.audited = request.state.call_audited
         context.cost_micro = request.state.call_cost_micro
@@ -571,6 +574,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             read_body=request.body,
             caller=caller,
             enforce_tag_budgets=_enforce_tag_budgets,
+            call_ref=call_ref,
         )
     except CallFailure:
         raise
@@ -586,13 +590,19 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                      # A replay charges nothing; the first call's charge is echoed separately so a
                      # client summing X-Treg-Cost-Micro never counts one call twice.
                      "X-Treg-Cost-Micro": "0",
-                     "X-Treg-Original-Cost-Micro": str(replayed.charged_micro),
+                     # Omitted for a stale claim closed as `idempotency_outcome_unknown` (a
+                     # stored 410 with no charge found): its original cost is not known.
+                     **({} if replayed.status_code == 410 and not replayed.charged_micro
+                        else {"X-Treg-Original-Cost-Micro": str(replayed.charged_micro)}),
                      **({"X-Treg-Error": "1"} if replayed.status_code >= 400 else {}),
                      **({"X-Treg-Call-Id": replayed.call_ref} if replayed.call_ref else {})},
         )
     # Park it so a failure anywhere below can give the label back. Set AFTER the claim succeeds,
     # so losing the race above never releases the winner's row.
     request.state.idem_claim = intake.claim
+    if intake.claim:
+        # Keeps the claim's lease fresh while this call runs; `execute_call` cancels it on exit.
+        request.lease = asyncio.create_task(_hold_claim_lease(request.state))
 
     drop_params: set[str] = set()
     streaming_free_result = False
@@ -1604,7 +1614,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # label at once instead of making the caller wait out the window to reuse it.
         try:
             await _store_idempotent(idem_key, caller, status_code=response.status, body=b"",
-                                    media_type="", charged_micro=0, metered=False)
+                                    media_type="", charged_micro=0, metered=False,
+                                    call_ref=call_ref)
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref, response)
             raise

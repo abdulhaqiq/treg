@@ -126,7 +126,7 @@ class IntakeResult:
     idempotency_key: str
     fingerprint: str
     replay: IdempotentReplay | None
-    claim: tuple[int, str] | None
+    claim: tuple[int, str, str] | None
 
 
 async def prepare_call_intake(
@@ -139,6 +139,7 @@ async def prepare_call_intake(
     read_body: Callable[[], Awaitable[bytes]],
     caller: Caller,
     enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[None]],
+    call_ref: str,
 ) -> IntakeResult:
     """Run the pre-resolve gates in their frozen order using bounded transactions."""
     # Blocked status and the per-tag call count, BEFORE the replay below: a blocked user must neither
@@ -167,9 +168,9 @@ async def prepare_call_intake(
         # miss the lookup above; the unique constraint is what makes the loser wait instead of making
         # a second upstream call. A check-then-act in Python would leave exactly the window this
         # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
-        if not await _claim_idempotent(key, fingerprint, rest, caller, db):
+        if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref):
             raise IdempotencyFailed(
                 "idempotency_in_progress", status_code=409,
                 detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
                         "is already in progress — retry shortly"))
-    return IntakeResult(key, fingerprint, None, (caller.membership.id, key))
+    return IntakeResult(key, fingerprint, None, (caller.membership.id, key, call_ref))
