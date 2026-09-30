@@ -81,12 +81,12 @@ export default {
                     <b>Picked for {{(forYou.company && forYou.company.name) || 'you'}}</b>
                     <span v-if="forYouFacts" class="fy-facts">{{forYouFacts}}</span>
                   </div>
-                  <div v-if="forYou.status!=='pending' || forYou.use_case" class="fy-uc" @keydown.esc.stop="useCaseMenu=false" @focusout="!$event.currentTarget.contains($event.relatedTarget) && (useCaseMenu=false)">
-                    <span class="muted">Here for</span>
-                    <button type="button" class="fy-uc-btn" :aria-expanded="useCaseMenu" @click="useCaseMenu=!useCaseMenu">{{forYouLabel}} ▾</button>
-                    <div v-if="useCaseMenu" class="fy-uc-menu">
-                      <button v-for="u in forYou.use_cases" :key="u.key" type="button" :class="{on:u.key===forYou.use_case}" @click="pickUseCase(u.key,'getting_started_menu')">{{u.label}}</button>
-                    </div>
+                </div>
+                <div v-if="forYou.use_case" class="fy-uc" @keydown.esc.stop="useCaseMenu=false" @focusout="!$event.currentTarget.contains($event.relatedTarget) && (useCaseMenu=false)">
+                  <span class="fy-uc-lbl">Your agent is here for</span>
+                  <button type="button" class="fy-uc-btn" :aria-expanded="useCaseMenu" @click="useCaseMenu=!useCaseMenu">{{forYouLabel}} ▾</button>
+                  <div v-if="useCaseMenu" class="fy-uc-menu">
+                    <button v-for="u in forYou.use_cases" :key="u.key" type="button" :class="{on:u.key===forYou.use_case}" @click="pickUseCase(u.key,'getting_started_menu')">{{u.label}}</button>
                   </div>
                 </div>
                 <p v-if="forYou.status==='pending'" class="fy-wait"><span class="wc-waitdot"></span>{{forYou.use_case ? 'Writing plays for you…' : 'Reading up on you and picking tools…'}}</p>
