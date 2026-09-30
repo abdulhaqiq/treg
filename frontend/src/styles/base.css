@@ -320,17 +320,28 @@
   /* Picked for you (Getting started) + the welcome's one-tap use case */
   .wc-usecase{margin:6px 0 16px} .wc-usecase-q{margin:0 0 8px;font-size:13px;font-weight:600} .wc-usecase-chips{display:flex;flex-wrap:wrap;gap:8px}
   .fy{margin:0 0 20px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-  .fy-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .fy-hd{display:flex;align-items:center;gap:12px 20px;margin-bottom:12px}
+  @media (max-width:700px){ .fy-hd{flex-wrap:wrap} .fy-who{max-width:none;flex:1} .fy-tabs{flex-basis:100%} }
   .fy-logo{width:36px;height:36px;border-radius:8px;object-fit:cover;flex:none;background:var(--panel2)}
-  .fy-who{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+  .fy-who{display:flex;flex-direction:column;gap:2px;min-width:0;flex:none;max-width:45%}
+  .fy-tabs{flex:1;min-width:0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .fy-tabs::-webkit-scrollbar{display:none}
+  .fy-tab{flex:none;padding:6px 10px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}
+  .fy-tab:hover{color:var(--ink)}
+  .fy-tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink);cursor:default}
+  .fy-tools{margin-top:18px}
+  .fy-sub{margin:0 0 10px;font-size:13.5px;font-weight:600}
+  .fy-sub .muted{font-weight:400}
+  .fy-tool-row{display:flex;gap:10px;overflow-x:auto;scrollbar-width:thin;padding-bottom:4px}
+  .fy-tool{flex:0 0 220px;display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--ink);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s}
+  .fy-tool:hover{border-color:var(--accent)}
+  .fy-tool-hd{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+  .fy-tool-hd img{width:16px;height:16px;border-radius:3px;flex:none}
+  .fy-tool-prov{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fy-tool-price{margin-left:auto;flex:none;font-family:var(--mono);font-size:11.5px}
+  .fy-tool-job{font-size:13.5px;font-weight:600;line-height:1.35}
+  .fy-tool-why{font-size:12px;color:var(--muted)}
   .fy-facts{font-size:12.5px;color:var(--muted)}
-  .fy-uc{position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0 0 14px}
-  .fy-uc-lbl{font-size:13.5px;color:var(--muted)}
-  .fy-uc-btn{padding:8px 14px;border:1px solid var(--ink);border-radius:999px;background:var(--ink);color:var(--bg);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
-  .fy-uc-btn:hover{opacity:.88}
-  .fy-uc-menu{position:absolute;left:0;top:calc(100% + 6px);z-index:20;display:flex;flex-direction:column;min-width:230px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 10px 30px rgba(0,0,0,.12)}
-  .fy-uc-menu button{padding:8px 10px;border:0;border-radius:6px;background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
-  .fy-uc-menu button:hover,.fy-uc-menu button.on{background:var(--panel2);color:var(--accent)}
   .fy-wait{display:flex;align-items:center;gap:10px;margin:4px 0;color:var(--muted);font-size:13px}
   .fy-ask{margin:0 0 10px;font-size:13.5px}
   .fy-plays{margin-top:12px}

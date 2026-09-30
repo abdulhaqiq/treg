@@ -76,7 +76,7 @@ async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ thi
         if(st==='ready'||st==='ask') this.track('signup_profile_shown',{status:st,use_case:this.signupProfile.use_case||'',persona:this.signupProfile.persona||''});
       };
       await tick(); },
-async pickUseCase(key, from){ this.useCaseMenu=false; this.track('signup_use_case_picked',{use_case:key,from});
+async pickUseCase(key, from){ this.track('signup_use_case_picked',{use_case:key,from});
       try{ this.signupProfile=await this.api('/onboard/profile/use-case',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({use_case:key})}); }
       catch(e){ return; }
       this.loadSignupProfile(); },

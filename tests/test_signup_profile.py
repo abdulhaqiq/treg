@@ -64,6 +64,10 @@ def on(monkeypatch):
             return httpx.Response(404, json={"message": "companyNotFound"})
         if req.url.path.endswith("/call/openrouter.ai-judge.decide"):
             body = json.loads(req.content)
+            if "use_case" not in body["questions"]:   # the tools ranking: one noul per candidate
+                assert "<candidates>" in body["state"]
+                return httpx.Response(200, json={"answers": {
+                    k: {"type": "noul", "noul": 0.9 - int(k[1:]) * 0.01} for k in body["questions"]}})
             assert "<company>" in body["state"] and set(body["questions"]) == {"use_case", "persona"}
             return httpx.Response(200, headers={"X-Treg-Cost-Micro": "50"}, json={"answers": {
                 "use_case": {"type": "choice", "choice": "seo", "probabilities": {"seo": 0.8, "geo": 0.2}},
@@ -105,6 +109,19 @@ async def test_work_email_is_enriched_classified_and_given_plays(clients: AsyncC
     assert "cost_usd" not in p and "use_case_probs" not in p
     # one build: the second read did not start another
     assert on.count("/call/treg.people.enrich") == 1
+    # the tools ranking ran after the build: one card per job, never an endpoint they already call
+    tools = p["tools"]
+    assert 0 < len(tools) <= sp.TOOLS_KEEP and len({t["capability"] for t in tools}) == len(tools)
+    assert all(t["reason"] == "Fits what you're here for" and t["cap_key"] for t in tools)
+
+    # switching to a use case and back: the second switch reuses the plays already written
+    gateway_calls = sum(1 for u in on if u == "/v1/chat/completions")
+    assert (await clients.post("/onboard/profile/use-case", json={"use_case": "geo"})).json()["status"] == "pending"
+    await sp.drain()
+    back = (await clients.post("/onboard/profile/use-case", json={"use_case": "seo"})).json()
+    assert back["status"] == "ready" and back["plays"] == p["plays"]
+    await sp.drain()
+    assert sum(1 for u in on if u == "/v1/chat/completions") == gateway_calls + 1
 
 
 async def test_personal_email_is_asked_then_built_from_the_answer(clients: AsyncClient, on):
@@ -129,7 +146,21 @@ async def test_personal_email_is_asked_then_built_from_the_answer(clients: Async
 
 async def test_use_case_changes_are_rate_limited(clients: AsyncClient, on, monkeypatch):
     monkeypatch.setattr(sp, "ANSWER_LIMIT", (2, 3600))
-    for _ in range(2):
-        assert (await clients.post("/onboard/profile/use-case", json={"use_case": "leads"})).status_code == 200
-    assert (await clients.post("/onboard/profile/use-case", json={"use_case": "leads"})).status_code == 429
+    for uc in ("leads", "ads"):   # each a rebuild; switching back to written plays is free and unlimited
+        assert (await clients.post("/onboard/profile/use-case", json={"use_case": uc})).status_code == 200
+    assert (await clients.post("/onboard/profile/use-case", json={"use_case": "web"})).status_code == 429
     await sp.drain()
+
+
+def test_candidates_skip_what_they_call_and_pick_balances_history():
+    cat = catalog_store.load()
+    called = next(e for e in cat.endpoints if e.get("capability") == "google.domain.ranked_keywords"
+                  and e.get("tier") == "core" and e.get("scope") != "own_account")
+    cands = sp.candidates(cat, "leads", [{"id": called["id"], "n": 5, "failed": 0}])
+    assert called["id"] not in {e["id"] for e, _, _ in cands}
+    assert {"use_case", "alternative", "platform"} <= {why for _, why, _ in cands}
+    assert all(e.get("tier") == "core" and e.get("scope") != "own_account" for e, _, _ in cands)
+    # jev scores the use case far higher, yet history keeps its half of the cards
+    scored = sorted(((0.9 if why == "use_case" else 0.5, i) for i, (_, why, _) in enumerate(cands)), reverse=True)
+    picked = [cands[i][1] for _, i in sp.pick(scored, cands)]
+    assert len(picked) == sp.TOOLS_KEEP and sum(w != "use_case" for w in picked) == sp.TOOLS_KEEP // 2

@@ -17,7 +17,6 @@ tryExamples(){ return TregAgentSetup.examples; },
     forYou(){ const p=this.signupProfile; return p && ['pending','ask','ready'].includes(p.status) ? p : null; },
 forYouFacts(){ const p=this.forYou||{}, c=p.company||{}, who=p.person||{};
       return [c.name?'':who.company, (c.industries||[])[0], c.employees?c.employees+' people':'', who.title?'You: '+who.title:''].filter(Boolean).join(' · '); },
-forYouLabel(){ const p=this.forYou; const u=p&&(p.use_cases||[]).find(x=>x.key===p.use_case); return u?u.label:'Pick one'; },
 personalEmail(){ const d=((this.me||'').split('@')[1]||'').toLowerCase(); return !d || PERSONAL_MAIL.includes(d.split('.')[0]); },
 tryOauth(){ return TregAgentSetup.oauthGroups; }
 }

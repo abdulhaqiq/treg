@@ -188,8 +188,21 @@ metered, logged call:
    capability is dropped; missing plays come from the use case's templates, which are also the whole
    answer when the model fails or no key is set.
 
-With nothing to go on, or a top use case under `ASK_BELOW`, the status is `ask`: the use cases come
-back ranked and the page shows them as chips. The welcome modal asks the same question up front for a
+The header's right side is a quiet tab strip of the use cases, ranked by jev's probabilities; a tab
+switches the plays. Plays are kept per use case (`plays_by`), so returning to one is instant and
+costs nothing. With nothing to go on, or a top use case under `ASK_BELOW`, the status is `ask`: the
+use cases come back ranked and the page shows them as chips.
+
+**Tools for you** sits under the plays: catalog endpoints jev ranks for this person, refreshed at most
+every `TOOLS_FRESH_S` on a dashboard read (and whenever the use case changes), stored apart from the
+profile (namespace `signup_tools`). Candidates are core, connection-free rows: the use case's jobs,
+other providers for the jobs in the person's own recent calls (`CallRecord`, by their email), and
+neighbouring jobs on the platforms they already call; their own endpoints are left out, and each job
+offers at most its cheapest few providers. One jev request asks a Noul per candidate, telling it
+that real calls outweigh the guessed use case. `pick` keeps one card per job, half from the use case
+and half from call history, with a relative bar (half the best score, never under `TOOLS_MIN_P`)
+because jev's scale shifts with the person. Each card's reason is written by code, never by a model,
+and opens that job's provider comparison on its platform page. The welcome modal asks the same question up front for a
 personal address (step 0, optional), and the pick is posted after the team is created.
 `POST /onboard/profile/use-case` stores a pick (rate limited per user) and rebuilds the plays,
 reusing the enrichment already paid for. The profile lives in the key-value store (`Ephemeral`,

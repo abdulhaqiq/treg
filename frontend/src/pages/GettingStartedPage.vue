@@ -11,6 +11,11 @@ export default {
   computed: { exampleBanners: () => exampleBanners, exampleIcons: () => exampleIcons },
   methods: {
     // a play's card icon from the capability's platform; anything without its own mark reads as data
+    fmtToolPrice(t){  // "$0.012 / call" — the catalog's own figure, rounded for a card
+      if(!t.usd) return 'Free'
+      const v=t.usd<0.01?t.usd.toPrecision(2):t.usd.toFixed(t.usd<1?3:2)
+      return '$'+String(+v)+' / '+({per_result:'result',per_success:'hit'}[t.per]||'call')
+    },
     playIcon(platform){
       const own={tiktok:'try-tiktok',google:'try-google',web:'try-google','ai-search':'try-google',linkedin:'try-linkedin',
         x:'oauth-x',youtube:'oauth-youtube',instagram:'oauth-instagram','meta-ads':'oauth-meta-ads',facebook:'oauth-facebook'}
@@ -81,12 +86,9 @@ export default {
                     <b>Picked for {{(forYou.company && forYou.company.name) || 'you'}}</b>
                     <span v-if="forYouFacts" class="fy-facts">{{forYouFacts}}</span>
                   </div>
-                </div>
-                <div v-if="forYou.use_case" class="fy-uc" @keydown.esc.stop="useCaseMenu=false" @focusout="!$event.currentTarget.contains($event.relatedTarget) && (useCaseMenu=false)">
-                  <span class="fy-uc-lbl">Your agent is here for</span>
-                  <button type="button" class="fy-uc-btn" :aria-expanded="useCaseMenu" @click="useCaseMenu=!useCaseMenu">{{forYouLabel}} ▾</button>
-                  <div v-if="useCaseMenu" class="fy-uc-menu">
-                    <button v-for="u in forYou.use_cases" :key="u.key" type="button" :class="{on:u.key===forYou.use_case}" @click="pickUseCase(u.key,'getting_started_menu')">{{u.label}}</button>
+                  <!-- what they're here for: a quiet tab strip, ranked by jev, scrolls sideways when it runs out of room -->
+                  <div v-if="forYou.use_case" class="fy-tabs" role="tablist" aria-label="What your agent is here for">
+                    <button v-for="u in forYou.use_cases" :key="u.key" type="button" role="tab" class="fy-tab" :class="{on:u.key===forYou.use_case}" :aria-selected="u.key===forYou.use_case" @click="u.key!==forYou.use_case && pickUseCase(u.key,'getting_started_tabs')">{{u.label}}</button>
                   </div>
                 </div>
                 <p v-if="forYou.status==='pending'" class="fy-wait"><span class="wc-waitdot"></span>{{forYou.use_case ? 'Writing plays for you…' : 'Reading up on you and picking tools…'}}</p>
@@ -103,6 +105,16 @@ export default {
                       <span class="try-txt">{{pl.prompt}}</span>
                     </span>
                   </button>
+                </div>
+                <div v-if="forYou.tools && forYou.tools.length" class="fy-tools">
+                  <p class="fy-sub">Tools for you <span class="muted">· picked by Jev from your profile and the calls you make</span></p>
+                  <div class="fy-tool-row">
+                    <button v-for="t in forYou.tools" :key="t.id" type="button" class="fy-tool" @click="track('signup_tool_opened',{id:t.id,reason:t.reason,p:t.p}); openPlatform(t.platform,false,t.cap_key)">
+                      <span class="fy-tool-hd"><img :src="'/logos/'+t.provider+'.svg'" alt="" @error="$event.target.style.visibility='hidden'"><span class="fy-tool-prov">{{t.provider_display}}</span><span v-if="t.usd!=null" class="fy-tool-price">{{fmtToolPrice(t)}}</span></span>
+                      <span class="fy-tool-job">{{t.job}}</span>
+                      <span class="fy-tool-why">{{t.reason}}</span>
+                    </button>
+                  </div>
                 </div>
               </section>
               <p class="rd-try-intro">{{forYou && forYou.plays ? 'More examples to send your agent:' : 'Copy an example below and send it to your agent.'}}</p>

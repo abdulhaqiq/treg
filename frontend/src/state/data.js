@@ -118,7 +118,7 @@ export default function data(){
       me:'', icHash:'', myOrgs:[], isAdmin:false,
       onboarded:true,  // first-run onboarding done (server flag; gates the welcome modal)
       welcome:{on:false, step:0, name:'', agent:'claude-code', moreOpen:false, busy:false, err:'', useCase:''},
-      signupProfile:null, signupProfileTimer:null, useCaseMenu:false,  // "Picked for you" (GET /onboard/profile)  // first-run: name your team → pick your agent → setup line
+      signupProfile:null, signupProfileTimer:null,  // "Picked for you" (GET /onboard/profile)  // first-run: name your team → pick your agent → setup line
       emptyTab:'agent',
       tools:[], health:{}, calls:[], runs:[], callsLoaded:false, activityNext:null, activityOlderBusy:false, adminStats:null, adminOrgs:[], adminUsers:[],
       admHub:{on:false, state:'requested', rows:[], reason:{}, cap:{}, busy:null, updates:[]},  // hub listing review (superadmin)
