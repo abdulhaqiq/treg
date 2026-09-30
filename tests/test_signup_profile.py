@@ -95,16 +95,17 @@ async def test_profile_is_off_until_configured(clients: AsyncClient):
 
 async def test_work_email_is_enriched_classified_and_given_plays(clients: AsyncClient, on):
     first = (await clients.get("/onboard/profile")).json()
-    assert first["status"] == "pending" and len(first["use_cases"]) == len(sp.USE_CASES)
+    assert first["status"] == "pending" and len(first["use_cases"]) == len(sp.USE_CASES) + 1
     await sp.drain()
     p = (await clients.get("/onboard/profile")).json()
-    assert p["status"] == "ready" and p["use_case"] == "seo" and p["persona"] == "marketer"
+    # jev ranks the use cases, but the tab a person lands on is the general Recommended one
+    assert p["status"] == "ready" and p["use_case"] == sp.RECOMMENDED and p["persona"] == "marketer"
     assert p["person"]["title"] == "Head of Growth"
     assert p["company"] == {"name": "Superdesign Dev", "domain": "superdesign.dev", "tagline": "AI design agent",
                             "employees": "2-10"}
-    assert p["use_cases"][0]["key"] == "seo"
-    # the model's grounded play first, its off-list play dropped, the rest from the templates
-    assert [pl["source"] for pl in p["plays"]] == ["model", "template", "template"]
+    assert [u["key"] for u in p["use_cases"][:2]] == [sp.RECOMMENDED, "seo"]
+    # Recommended proposes two: the model's grounded play, its off-list play dropped, one template
+    assert [pl["source"] for pl in p["plays"]] == ["model", "template"]
     assert "superdesign.dev" in p["plays"][1]["prompt"]
     assert "cost_usd" not in p and "use_case_probs" not in p
     # one build: the second read did not start another
@@ -112,13 +113,19 @@ async def test_work_email_is_enriched_classified_and_given_plays(clients: AsyncC
     # the tools ranking ran after the build: one card per job, never an endpoint they already call
     tools = p["tools"]
     assert 0 < len(tools) <= sp.TOOLS_KEEP and len({t["capability"] for t in tools}) == len(tools)
-    assert all(t["reason"] == "Fits what you're here for" and t["cap_key"] for t in tools)
+    assert all(t["reason"] == "Matches your profile" and t["cap_key"] for t in tools)
+    assert p["tools_for"] == sp.RECOMMENDED and all(t["platform_label"] and t["job"] for t in tools)
+    # a routed job is one card served by treg's router, and never names treg as the vendor
+    assert any(t["routed"] and t["id"].startswith("treg.") for t in tools)
+    assert all("treg" != t["served"] for t in tools)
 
     # switching to a use case and back: the second switch reuses the plays already written
     gateway_calls = sum(1 for u in on if u == "/v1/chat/completions")
-    assert (await clients.post("/onboard/profile/use-case", json={"use_case": "geo"})).json()["status"] == "pending"
+    assert (await clients.post("/onboard/profile/use-case", json={"use_case": "seo"})).json()["status"] == "pending"
     await sp.drain()
-    back = (await clients.post("/onboard/profile/use-case", json={"use_case": "seo"})).json()
+    seo = (await clients.get("/onboard/profile")).json()
+    assert seo["use_case"] == "seo" and len(seo["plays"]) == sp.PLAYS and seo["tools_for"] == "seo"
+    back = (await clients.post("/onboard/profile/use-case", json={"use_case": sp.RECOMMENDED})).json()
     assert back["status"] == "ready" and back["plays"] == p["plays"]
     await sp.drain()
     assert sum(1 for u in on if u == "/v1/chat/completions") == gateway_calls + 1
@@ -152,14 +159,29 @@ async def test_use_case_changes_are_rate_limited(clients: AsyncClient, on, monke
     await sp.drain()
 
 
-def test_candidates_skip_what_they_call_and_pick_balances_history():
+def test_recommended_weighs_the_likeliest_use_cases_and_every_routed_job():
     cat = catalog_store.load()
-    called = next(e for e in cat.endpoints if e.get("capability") == "google.domain.ranked_keywords"
-                  and e.get("tier") == "core" and e.get("scope") != "own_account")
-    cands = sp.candidates(cat, "leads", [{"id": called["id"], "n": 5, "failed": 0}])
-    assert called["id"] not in {e["id"] for e, _, _ in cands}
-    assert {"use_case", "alternative", "platform"} <= {why for _, why, _ in cands}
-    assert all(e.get("tier") == "core" and e.get("scope") != "own_account" for e, _, _ in cands)
+    cands = sp.candidates(cat, sp.RECOMMENDED, [], ["geo", "ads", "seo"])
+    caps = [j["capability"] for j, _, _ in cands]
+    geo = [c for c in sp.USE_CASES["geo"]["capabilities"] if c in sp._jobs(cat)]
+    assert caps[:len(geo)] == geo                               # the likeliest use case leads
+    assert len(caps) == len(set(caps)) <= sp.RECOMMENDED_CANDIDATES
+    assert sum(j["routed"] for j, _, _ in cands) > 10          # the routed catalog, not one use case
+    assert sp.RECOMMENDED not in sp._questions()["use_case"]["criteria"]
+
+
+def test_candidates_are_jobs_routed_when_treg_routes_them():
+    cat = catalog_store.load()
+    routed = {e["capability"] for e in cat.endpoints if e.get("kind") == "routed"}
+    direct = next(e for e in cat.endpoints if e.get("capability") == "tiktok.user.profile"
+                  and e.get("kind") != "routed" and e.get("tier") == "core" and e.get("scope") != "own_account")
+    cands = sp.candidates(cat, "seo", [{"id": direct["id"], "n": 5, "failed": 0}])
+    caps = [j["capability"] for j, _, _ in cands]
+    assert len(caps) == len(set(caps))                       # one card per job
+    assert all(j["id"].startswith("treg.") == (j["capability"] in routed) for j, _, _ in cands)
+    route = [(j, d) for j, why, d in cands if why == "route"]
+    assert route and route[0][0]["capability"] == "tiktok.user.profile" and route[0][1] == direct["id"]
+    assert {"use_case", "platform"} <= {why for _, why, _ in cands}
     # jev scores the use case far higher, yet history keeps its half of the cards
     scored = sorted(((0.9 if why == "use_case" else 0.5, i) for i, (_, why, _) in enumerate(cands)), reverse=True)
     picked = [cands[i][1] for _, i in sp.pick(scored, cands)]

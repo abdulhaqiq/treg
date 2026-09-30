@@ -12,9 +12,10 @@ export default {
   methods: {
     // a play's card icon from the capability's platform; anything without its own mark reads as data
     fmtToolPrice(t){  // "$0.012 / call" — the catalog's own figure, rounded for a card
-      if(!t.usd) return 'Free'
+      if(!t.usd) return t.routed ? '' : 'Free'
+      const from=t.routed && t.served && t.served.startsWith('treg picks') ? 'from ' : ''
       const v=t.usd<0.01?t.usd.toPrecision(2):t.usd.toFixed(t.usd<1?3:2)
-      return '$'+String(+v)+' / '+({per_result:'result',per_success:'hit'}[t.per]||'call')
+      return from+'$'+String(+v)+' / '+({per_result:'result',per_success:'hit'}[t.per]||'call')
     },
     playIcon(platform){
       const own={tiktok:'try-tiktok',google:'try-google',web:'try-google','ai-search':'try-google',linkedin:'try-linkedin',
@@ -95,7 +96,7 @@ export default {
                 <template v-else-if="forYou.status==='ask'">
                   <p class="fy-ask">{{forYou.plays ? 'Not sure we guessed right. What will your agent do first?' : 'What will your agent do first? We will write three plays for it.'}}</p>
                   <div class="wc-usecase-chips">
-                    <button v-for="u in forYou.use_cases" :key="u.key" type="button" class="prov-chip" @click="pickUseCase(u.key,'getting_started_ask')">{{u.label}}</button>
+                    <button v-for="u in forYou.use_cases.filter(x=>x.key!=='recommended')" :key="u.key" type="button" class="prov-chip" @click="pickUseCase(u.key,'getting_started_ask')">{{u.label}}</button>
                   </div>
                 </template>
                 <div v-if="forYou.plays && forYou.status!=='pending'" class="try-grid fy-plays">
@@ -106,13 +107,13 @@ export default {
                     </span>
                   </button>
                 </div>
-                <div v-if="forYou.tools && forYou.tools.length" class="fy-tools">
+                <div v-if="forYou.tools && forYou.tools.length && forYou.tools_for===forYou.use_case" class="fy-tools">
                   <p class="fy-sub">Tools for you <span class="muted">· picked by Jev from your profile and the calls you make</span></p>
                   <div class="fy-tool-row">
-                    <button v-for="t in forYou.tools" :key="t.id" type="button" class="fy-tool" @click="track('signup_tool_opened',{id:t.id,reason:t.reason,p:t.p}); openPlatform(t.platform,false,t.cap_key)">
-                      <span class="fy-tool-hd"><img :src="'/logos/'+t.provider+'.svg'" alt="" @error="$event.target.style.visibility='hidden'"><span class="fy-tool-prov">{{t.provider_display}}</span><span v-if="t.usd!=null" class="fy-tool-price">{{fmtToolPrice(t)}}</span></span>
+                    <button v-for="t in forYou.tools" :key="t.id" type="button" class="fy-tool" @click="track('signup_tool_opened',{id:t.id,routed:t.routed,reason:t.reason,p:t.p}); openPlatform(t.platform,false,t.cap_key)">
+                      <span class="fy-tool-hd"><img :src="'/logos/platforms/'+t.platform+'.svg'" alt="" @error="$event.target.style.visibility='hidden'"><span class="fy-tool-prov">{{t.platform_label}}</span><span v-if="t.usd!=null && fmtToolPrice(t)" class="fy-tool-price">{{fmtToolPrice(t)}}</span></span>
                       <span class="fy-tool-job">{{t.job}}</span>
-                      <span class="fy-tool-why">{{t.reason}}</span>
+                      <span class="fy-tool-why">{{t.served}} · {{t.reason}}</span>
                     </button>
                   </div>
                 </div>

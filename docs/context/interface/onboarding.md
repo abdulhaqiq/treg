@@ -182,23 +182,28 @@ metered, logged call:
    answer carries, and is dropped when its domain is not the address's. A personal mailbox
    (`FREE_MAIL`) is never enriched: it mostly misses every provider, and a routed miss can still bill.
 2. **Classify** with jev through `openrouter.ai-judge.decide`: one Choice over `USE_CASES`, one over
-   `PERSONAS`. Skipped when there is no evidence to judge.
+   `PERSONAS`. Skipped when there is no evidence to judge. Jev's ranking orders the tabs; it does not
+   pick the tab a person lands on.
 3. **Write plays** with a small model on the AI Gateway (`signup_play_model`, key
    `ai_gateway_api_key`), grounded in the capability ids the use case lists. A play naming any other
    capability is dropped; missing plays come from the use case's templates, which are also the whole
    answer when the model fails or no key is set.
 
-The header's right side is a quiet tab strip of the use cases, ranked by jev's probabilities; a tab
-switches the plays. Plays are kept per use case (`plays_by`), so returning to one is instant and
-costs nothing. With nothing to go on, or a top use case under `ASK_BELOW`, the status is `ask`: the
-use cases come back ranked and the page shows them as chips.
+The header's right side is a quiet tab strip: **Recommended** first and selected by default, then one
+tab per use case in jev's order. Recommended is general: two plays written from the profile over the
+capabilities of jev's three likeliest use cases plus every job treg routes, and tools matched across
+the same. A person's own pick (the welcome question, or a tab) replaces it. Plays are kept per tab
+(`plays_by`), so returning to one is instant and costs nothing. With nothing to go on (a personal
+address that has not answered) the status is `ask` and the page shows the use cases as chips.
 
-**Tools for you** sits under the plays: catalog endpoints jev ranks for this person, refreshed at most
+**Tools for you** sits under the plays: one card per **job** (capability), named with its platform,
+that jev ranks for this person, refreshed at most
 every `TOOLS_FRESH_S` on a dashboard read (and whenever the use case changes), stored apart from the
-profile (namespace `signup_tools`). Candidates are core, connection-free rows: the use case's jobs,
-other providers for the jobs in the person's own recent calls (`CallRecord`, by their email), and
-neighbouring jobs on the platforms they already call; their own endpoints are left out, and each job
-offers at most its cheapest few providers. One jev request asks a Noul per candidate, telling it
+profile (namespace `signup_tools`). A job is served by its routed endpoint when treg routes it
+(the card says how many providers it picks from and quotes the cheapest), else by its cheapest core,
+connection-free provider; a card never names treg as a vendor. Candidates are the tab's jobs, the
+routed version of a job the person calls one provider for directly (`CallRecord`, by their email),
+and neighbouring jobs on the platforms they already call; jobs they already do are left out. One jev request asks a Noul per candidate, telling it
 that real calls outweigh the guessed use case. `pick` keeps one card per job, half from the use case
 and half from call history, with a relative bar (half the best score, never under `TOOLS_MIN_P`)
 because jev's scale shifts with the person. Each card's reason is written by code, never by a model,
