@@ -371,7 +371,7 @@ without importing the heavy database stack into the light `treg` CLI.
   with `TREG_JEV_TREG_TOKEN` (a member token of the demo team, so the spend is an ordinary bill) and jev
   through the Vercel AI Gateway (`TREG_AI_GATEWAY_API_KEY`), and stores the run under Ephemeral for the page.
   Both variables also belong on the web service, which needs them for the visitor judge endpoint.
-  The web service also spends from that token for Getting started's plays when
+  The web service also spends from that token for Getting started's tools for you when
   `TREG_SIGNUP_PROFILE_ENABLED=true` (see [onboarding](../interface/onboarding.md)).
 - `treg-worker admin purge-evidence` blanks failed-call evidence past the 14-day retention window
   (`--batch-size`, default 5000, rows per transaction; schedule it daily). `GET /admin/errors` is

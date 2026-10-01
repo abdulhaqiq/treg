@@ -71,11 +71,9 @@ async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ thi
       const tick=async()=>{
         try{ this.signupProfile=await this.api('/onboard/profile'); }catch(e){ this.signupProfile={status:'off'}; }
         const st=this.signupProfile.status;
-        // tools are ranked after the plays, per use case: keep reading until they match the tab shown
-        const p=this.signupProfile, toolsBehind=(st==='ready'||st==='ask') && p.use_case && p.tools_for!==p.use_case;
-        if((st==='pending' || toolsBehind) && ++tries<24){ this.signupProfileTimer=setTimeout(tick,2500); return; }
+        if(st==='pending' && ++tries<24){ this.signupProfileTimer=setTimeout(tick,2500); return; }
         this.signupProfileTimer=null;
-        if(st==='ready'||st==='ask') this.track('signup_profile_shown',{status:st,use_case:this.signupProfile.use_case||'',persona:this.signupProfile.persona||''});
+        if(st==='ready'||st==='ask') this.track('signup_profile_shown',{status:st,answer:this.signupProfile.answer||'',persona:this.signupProfile.persona||'',tools:(this.signupProfile.tools||[]).length});
       };
       await tick(); },
 async pickUseCase(key, from){ this.track('signup_use_case_picked',{use_case:key,from});

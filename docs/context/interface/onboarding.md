@@ -171,50 +171,38 @@ alone so someone mid-signup from a platform page stays on it. `/onboard/seed-too
 
 ## Picked for you (`src/treg/application/signup_profile.py`)
 
-Getting started opens step 2 with three **plays** written for the signed-in person: prompts to copy to
-their agent that name their own company, domain or market. `GET /onboard/profile` starts a background
-build on first read and answers `pending`; the dashboard polls it. The build is treg calling itself on
-the `jev_treg_token` team (the same member token as the `/jev` demo), so every step is an ordinary,
+Getting started opens step 2 with the tools that fit the signed-in person: one card per catalog
+**job** (capability), named with its platform. `GET /onboard/profile` starts a background build on
+first read and answers `pending`; the dashboard polls it. The build is treg calling itself on the
+`jev_treg_token` team (the same member token as the `/jev` demo), so every step is an ordinary,
 metered, logged call:
 
 1. **Enrich** a work address: `treg.people.enrich` (capped by `X-Treg-Max-Cost-Usd`) and
    `thecompaniesapi.companies.enrich` in parallel; the company falls back to the summary the person
    answer carries, and is dropped when its domain is not the address's. A personal mailbox
    (`FREE_MAIL`) is never enriched: it mostly misses every provider, and a routed miss can still bill.
-2. **Classify** with jev through `openrouter.ai-judge.decide`: one Choice over `USE_CASES`, one over
-   `PERSONAS`. Skipped when there is no evidence to judge. Jev's ranking orders the tabs; it does not
-   pick the tab a person lands on.
-3. **Write plays** with a small model on the AI Gateway (`signup_play_model`, key
-   `ai_gateway_api_key`), grounded in the capability ids the use case lists. A play naming any other
-   capability is dropped; missing plays come from the use case's templates, which are also the whole
-   answer when the model fails or no key is set.
+2. **Match** in one jev request through `openrouter.ai-judge.decide`: a Choice over `PERSONAS` and a
+   Noul per candidate job, over the profile, what the person said they are here for, and their own
+   recent calls (`CallRecord`, by their email), which the question weighs highest.
 
-The header's right side is a quiet tab strip: **Recommended** first and selected by default, then one
-tab per use case in jev's order. Recommended is general: two plays written from the profile over the
-capabilities of jev's three likeliest use cases plus every job treg routes, and tools matched across
-the same. A person's own pick (the welcome question, or a tab) replaces it. Plays are kept per tab
-(`plays_by`), so returning to one is instant and costs nothing. With nothing to go on (a personal
-address that has not answered) the status is `ask` and the page shows the use cases as chips.
+A job is served by its routed endpoint when treg routes it (the card says how many providers it
+picks from and quotes the cheapest), else by its cheapest core provider that needs no connection; a
+card never names treg as a vendor. Candidates, one per capability: the routed version of a job the
+person calls one provider for directly, the jobs of their answer, the jobs next to the ones they
+call, then every routed job. `pick` keeps the best six with a bar relative to the top score (jev's
+scale shifts with the person) and never two cards with the same job description. Each card's reason
+is written by code and opens that job's provider comparison on its platform page.
 
-**Tools for you** sits under the plays: one card per **job** (capability), named with its platform,
-that jev ranks for this person, refreshed at most
-every `TOOLS_FRESH_S` on a dashboard read (and whenever the use case changes), stored apart from the
-profile (namespace `signup_tools`). A job is served by its routed endpoint when treg routes it
-(the card says how many providers it picks from and quotes the cheapest), else by its cheapest core,
-connection-free provider; a card never names treg as a vendor. Candidates are the tab's jobs, the
-routed version of a job the person calls one provider for directly (`CallRecord`, by their email),
-and neighbouring jobs on the platforms they already call; jobs they already do are left out. One jev request asks a Noul per candidate, telling it
-that real calls outweigh the guessed use case. `pick` keeps one card per job, half from the use case
-and half from call history, with a relative bar (half the best score, never under `TOOLS_MIN_P`)
-because jev's scale shifts with the person. Each card's reason is written by code, never by a model,
-and opens that job's provider comparison on its platform page. The welcome modal asks the same question up front for a
-personal address (step 0, optional), and the pick is posted after the team is created.
-`POST /onboard/profile/use-case` stores a pick (rate limited per user) and rebuilds the plays,
-reusing the enrichment already paid for. The profile lives in the key-value store (`Ephemeral`,
-namespace `signup_profile`), is regenerable and holds no money; costs and raw probabilities stay
-server-side. `signup_profile_enabled` is off by default, and `off` hides the block entirely.
+With nothing to go on (a personal address that has not answered, no calls) the status is `ask` and
+the page shows the use cases as chips; the welcome modal asks the same question up front for a
+personal address. `POST /onboard/profile/use-case` stores the answer (rate limited per user) and
+re-matches, reusing the enrichment already paid for. A read after `TOOLS_FRESH_S` re-ranks in the
+background while the current tools stay on screen, so a returning person sees their calls reflected.
+The profile lives in the key-value store (`Ephemeral`, namespace `signup_profile`), is regenerable
+and holds no money; costs and raw probabilities stay server-side. `signup_profile_enabled` is off by
+default, and `off` hides the block entirely.
 
- It is intentionally revealable again:
+Getting Started's key is the active team's signed Default key. It is intentionally revealable again:
 the server derives it from signed identity, team, and Default generation, while additional and agent
 keys are random secrets whose plaintext is shown once and then discarded. A disabled Default hides
 the token and exposes only **Enable key**; rotating it changes this team's generation and revealable

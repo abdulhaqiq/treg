@@ -17,7 +17,7 @@ export default { components: { BrandMark, TregAgentPicker, TregSetupInstructions
             <div v-if="personalEmail && forYou" class="wc-usecase">
               <p class="wc-usecase-q">What will your agent do first? <span class="muted" style="font-weight:400">Optional</span></p>
               <div class="wc-usecase-chips">
-                <button v-for="u in forYou.use_cases.filter(x=>x.key!=='recommended')" :key="u.key" type="button" class="prov-chip" :class="{on:welcome.useCase===u.key}" :aria-pressed="welcome.useCase===u.key" @click="welcome.useCase = welcome.useCase===u.key ? '' : u.key">{{u.label}}</button>
+                <button v-for="u in forYou.use_cases" :key="u.key" type="button" class="prov-chip" :class="{on:welcome.useCase===u.key}" :aria-pressed="welcome.useCase===u.key" @click="welcome.useCase = welcome.useCase===u.key ? '' : u.key">{{u.label}}</button>
               </div>
             </div>
             <button class="btn primary" style="width:100%;margin-top:4px" @click="welcomeCreate" :disabled="welcome.busy">{{welcome.busy?'Creating…':'Create team →'}}</button>

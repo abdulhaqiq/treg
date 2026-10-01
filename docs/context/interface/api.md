@@ -497,7 +497,7 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   rules. `POST /auth/revoke-tokens` bumps the version and
   returns a replacement cookie/token for the caller. `/auth/logout` is a same-origin cookie action.
   Onboarding routes are `POST /onboard/demo|skip|reset`, plus `GET /onboard/profile` and
-  `POST /onboard/profile/use-case` for Getting started's plays; see [onboarding](onboarding.md).
+  `POST /onboard/profile/use-case` for Getting started's tools for you; see [onboarding](onboarding.md).
 
   The shared dependencies resolve a membership token, a team Default key, a legacy identity bearer
   plus `X-Treg-Org`, or a session cookie plus `X-Treg-Org`. Bootstrap credentials cannot access team

@@ -10,17 +10,11 @@ export default {
   data: () => ({ tryArt: '' }),
   computed: { exampleBanners: () => exampleBanners, exampleIcons: () => exampleIcons },
   methods: {
-    // a play's card icon from the capability's platform; anything without its own mark reads as data
-    fmtToolPrice(t){  // "$0.012 / call" — the catalog's own figure, rounded for a card
+    fmtToolPrice(t){  // "from $0.0012 / hit" — the catalog's own figure, rounded for a card
       if(!t.usd) return t.routed ? '' : 'Free'
       const from=t.routed && t.served && t.served.startsWith('treg picks') ? 'from ' : ''
       const v=t.usd<0.01?t.usd.toPrecision(2):t.usd.toFixed(t.usd<1?3:2)
       return from+'$'+String(+v)+' / '+({per_result:'result',per_success:'hit'}[t.per]||'call')
-    },
-    playIcon(platform){
-      const own={tiktok:'try-tiktok',google:'try-google',web:'try-google','ai-search':'try-google',linkedin:'try-linkedin',
-        x:'oauth-x',youtube:'oauth-youtube',instagram:'oauth-instagram','meta-ads':'oauth-meta-ads',facebook:'oauth-facebook'}
-      return '/media/redesign/'+(own[platform]||'try-people')+'.svg'
     },
   },
   mounted(){
@@ -79,46 +73,31 @@ export default {
           <div class="start-card rd-try">
             <div class="start-hd"><span class="start-num">2</span><b style="font-size:16px">Try it out</b></div>
             <div class="start-bd">
-              <!-- Picked for you: plays written for this person's company and use case (application/signup_profile.py) -->
+              <!-- Picked for you: who they are and the catalog jobs jev matched to them (application/signup_profile.py) -->
               <section v-if="forYou" class="fy" aria-live="polite">
                 <div class="fy-hd">
                   <img v-if="forYou.company && forYou.company.logo" class="fy-logo" :src="forYou.company.logo" alt="" @error="$event.target.style.display='none'">
                   <div class="fy-who">
-                    <b>Picked for {{(forYou.company && forYou.company.name) || 'you'}}</b>
+                    <b>Tools for {{(forYou.company && forYou.company.name) || 'you'}}</b>
                     <span v-if="forYouFacts" class="fy-facts">{{forYouFacts}}</span>
                   </div>
-                  <!-- what they're here for: a quiet tab strip, ranked by jev, scrolls sideways when it runs out of room -->
-                  <div v-if="forYou.use_case" class="fy-tabs" role="tablist" aria-label="What your agent is here for">
-                    <button v-for="u in forYou.use_cases" :key="u.key" type="button" role="tab" class="fy-tab" :class="{on:u.key===forYou.use_case}" :aria-selected="u.key===forYou.use_case" @click="u.key!==forYou.use_case && pickUseCase(u.key,'getting_started_tabs')">{{u.label}}</button>
-                  </div>
                 </div>
-                <p v-if="forYou.status==='pending'" class="fy-wait"><span class="wc-waitdot"></span>{{forYou.use_case ? 'Writing plays for you…' : 'Reading up on you and picking tools…'}}</p>
+                <p v-if="forYou.status==='pending' && !forYou.tools" class="fy-wait"><span class="wc-waitdot"></span>Matching the catalog to you…</p>
                 <template v-else-if="forYou.status==='ask'">
-                  <p class="fy-ask">{{forYou.plays ? 'Not sure we guessed right. What will your agent do first?' : 'What will your agent do first? We will write three plays for it.'}}</p>
+                  <p class="fy-ask">What will your agent do first? Jev will match tools to it.</p>
                   <div class="wc-usecase-chips">
-                    <button v-for="u in forYou.use_cases.filter(x=>x.key!=='recommended')" :key="u.key" type="button" class="prov-chip" @click="pickUseCase(u.key,'getting_started_ask')">{{u.label}}</button>
+                    <button v-for="u in forYou.use_cases" :key="u.key" type="button" class="prov-chip" @click="pickUseCase(u.key,'getting_started_ask')">{{u.label}}</button>
                   </div>
                 </template>
-                <div v-if="forYou.plays && forYou.status!=='pending'" class="try-grid fy-plays">
-                  <button v-for="(pl,i) in forYou.plays" :key="i" type="button" class="try-card" @click="track('signup_play_copied',{i,use_case:forYou.use_case,source:pl.source,platform:pl.platform}); copyStart(pl.prompt,'play-'+i)">
-                    <span class="rd-try-panel">
-                      <span class="try-cat"><span style="display:inline-flex;align-items:center;gap:7px"><img class="try-ico" :src="playIcon(pl.platform)" alt=""/>{{pl.title}}</span><span class="try-copy" :class="{done:startCopied==='play-'+i}">{{startCopied==='play-'+i ? '✓ copied' : '⧉ copy'}}</span></span>
-                      <span class="try-txt">{{pl.prompt}}</span>
-                    </span>
+                <div v-if="forYou.tools && forYou.tools.length" class="fy-tool-row">
+                  <button v-for="t in forYou.tools" :key="t.id" type="button" class="fy-tool" @click="track('signup_tool_opened',{id:t.id,routed:t.routed,reason:t.reason,p:t.p}); openPlatform(t.platform,false,t.cap_key)">
+                    <span class="fy-tool-hd"><img :src="'/logos/platforms/'+t.platform+'.svg'" alt="" @error="$event.target.style.visibility='hidden'"><span class="fy-tool-prov">{{t.platform_label}}</span><span v-if="t.usd!=null && fmtToolPrice(t)" class="fy-tool-price">{{fmtToolPrice(t)}}</span></span>
+                    <span class="fy-tool-job">{{t.job}}</span>
+                    <span class="fy-tool-why">{{t.served}} · {{t.reason}}</span>
                   </button>
                 </div>
-                <div v-if="forYou.tools && forYou.tools.length && forYou.tools_for===forYou.use_case" class="fy-tools">
-                  <p class="fy-sub">Tools for you <span class="muted">· picked by Jev from your profile and the calls you make</span></p>
-                  <div class="fy-tool-row">
-                    <button v-for="t in forYou.tools" :key="t.id" type="button" class="fy-tool" @click="track('signup_tool_opened',{id:t.id,routed:t.routed,reason:t.reason,p:t.p}); openPlatform(t.platform,false,t.cap_key)">
-                      <span class="fy-tool-hd"><img :src="'/logos/platforms/'+t.platform+'.svg'" alt="" @error="$event.target.style.visibility='hidden'"><span class="fy-tool-prov">{{t.platform_label}}</span><span v-if="t.usd!=null && fmtToolPrice(t)" class="fy-tool-price">{{fmtToolPrice(t)}}</span></span>
-                      <span class="fy-tool-job">{{t.job}}</span>
-                      <span class="fy-tool-why">{{t.served}} · {{t.reason}}</span>
-                    </button>
-                  </div>
-                </div>
               </section>
-              <p class="rd-try-intro">{{forYou && forYou.plays ? 'More examples to send your agent:' : 'Copy an example below and send it to your agent.'}}</p>
+              <p class="rd-try-intro">Copy an example below and send it to your agent.</p>
               <div v-if="tryArt" class="try-grid" :data-art="tryArt">
                 <button v-for="ex in tryExamples" :key="ex.k" type="button" class="try-card" :class="['rd-task-'+ex.k, {'rd-try-art':tryArt==='test'}]" @click="track('tryit_prompt_copied',{key:ex.k,cat:ex.cat,from:'getting_started',art:tryArt}); copyStart(ex.prompt,'try-'+ex.k)">
                   <img v-if="tryArt==='test' && exampleBanners[ex.k]" class="rd-try-banner" :src="exampleBanners[ex.k]" alt="" loading="lazy">
