@@ -2512,6 +2512,16 @@ endpoints:
     equals: 20000
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-listings-search-live.json
+  cost:
+    type: per_call
+    value: 0.6
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    confidence: verified
+    checked: '2026-10-02'
+    note: 'DataForSEO bills by apps returned, not per call: over the 14 days to 2026-10-02 real charges ran $0.60 median and $1.10 at the top (limit 1000), so keep `limit` small. The response `cost` is the exact charge and settles the call.'
   observed_cost: 0
 - id: dataforseo.x.app-data-apple-app-reviews-task-post
   tier: extended
@@ -4021,6 +4031,16 @@ endpoints:
     json_path: tasks.0.status_code
     equals: 20000
   unverified: "captured example_response was HTTP 200 with task status 40501 Invalid Field: 'model_name' for claude-opus-4-0, not a successful call. Catalog example and test_request now use claude-sonnet-4-5; a success payload was not recaptured (no live spend)."
+  cost:
+    type: per_call
+    value: 0.0245
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    confidence: verified
+    checked: '2026-10-02'
+    note: 'DataForSEO bills the model''s tokens, so the price moves with prompt and answer length: over the 14 days to 2026-10-02 real charges ran $0.0245 median, $0.056 at p90 and $0.29 at the top. Cap it with `max_output_tokens`. The response `cost` is the exact charge and settles the call.'
   observed_cost: 0
   capability: ai-search.claude.answer
 - id: dataforseo.x.ai-optimization-gemini-llm-responses-live
@@ -10113,6 +10133,16 @@ endpoints:
     equals: 20000
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-new-lost-backlinks-live.json
+  cost:
+    type: per_call
+    value: 0.0241
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    confidence: verified
+    checked: '2026-10-02'
+    note: 'Not free, although the verification call was billed nothing: every charged call over the 14 days to 2026-10-02 cost about $0.024. The response `cost` is the exact charge and settles the call.'
   observed_cost: 0
 - id: dataforseo.x.backlinks-bulk-new-lost-referring-domains-live
   tier: extended
@@ -10169,6 +10199,16 @@ endpoints:
     equals: 20000
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.backlinks-bulk-new-lost-referring-domains-live.json
+  cost:
+    type: per_call
+    value: 0.0241
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    confidence: verified
+    checked: '2026-10-02'
+    note: 'Not free, although the verification call was billed nothing: every charged call over the 14 days to 2026-10-02 cost about $0.024. The response `cost` is the exact charge and settles the call.'
   observed_cost: 0
 - id: dataforseo.x.backlinks-bulk-pages-summary-live
   tier: extended
@@ -11906,6 +11946,16 @@ endpoints:
     equals: 20000
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.domain-analytics-technologies-domains-by-technology-live.json
+  cost:
+    type: per_call
+    value: 0.0384
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    confidence: verified
+    checked: '2026-10-02'
+    note: 'DataForSEO bills by domains returned, not per call: over the 14 days to 2026-10-02 real charges ran $0.038 median and $2.41 at the top (large `limit`), so keep `limit` small. The response `cost` is the exact charge and settles the call.'
   observed_cost: 0.024
 - id: dataforseo.x.domain-analytics-technologies-technologies
   kind: utility
