@@ -649,13 +649,15 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         n = len(data) if isinstance(data, list) else (1 if data else 0)
         return n * mk.unit_micro
     if provider == "influencersclub" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        # Discovery bills per creator RETURNED and the rows live under `accounts` — invisible to
-        # the generic counters, so every call settled at the 20-row default estimate (found live
-        # 2026-08-30: 66 searches, ~10 rows each, billed as 20 each — a 2.08x overcharge). An
-        # envelope without `accounts` (an error shape) counts zero: pay-per-result means an answer
-        # with no rows costs nothing.
+        # Discovery bills per creator RETURNED (cost.value credits each, e.g. 0.01 for search/similar,
+        # 0.03 for search with return_filter_values=true). The `accounts` array is invisible to the
+        # generic counters. An envelope without `accounts` (an error shape) costs nothing.
+        # BUG FIX 2026-10: the original code multiplied rows by mk.unit_micro (one whole credit =
+        # $0.598) instead of by cost.value × unit_micro (0.01 credits = $0.00598 per row), causing
+        # ~100x overbilling. Use _rows_billed_micro which correctly applies cost.value.
         rows = doc.get("accounts")
-        return (sum(item is not None for item in rows) if isinstance(rows, list) else 0) * mk.unit_micro
+        row_count = sum(item is not None for item in rows) if isinstance(rows, list) else 0
+        return _rows_billed_micro(mk, ep, row_count)
     if provider == "dataforseo":
         cost = doc.get("cost")
         if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
