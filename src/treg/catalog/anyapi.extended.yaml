@@ -5297,47 +5297,6 @@ endpoints:
   verified: '2026-09-19'
   example_response: examples/anyapi.tiktok_shop.categories.json
   observed_time: 0.55
-- id: anyapi.tiktok_shop.category_products
-  tier: extended
-  platform: tiktok-shop
-  domain: category
-  method: POST
-  path: /v1/run/tiktok_shop.category_products
-  name: TikTok Shop Category Products
-  summary: 'Browse TikTok Shop products inside a category by category id: price, discount, rating, sales count, seller, and product URL per product.'
-  input:
-    body:
-      categoryId:
-        type: string
-        required: true
-        note: TikTok Shop category id, from tiktok_shop.categories (e.g. 700645 for Health).
-        example: '700645'
-      region:
-        type: string
-        required: false
-        note: Two-letter country code of the TikTok Shop market (e.g. US).
-        default: US
-        example: US
-    bodyType: json
-  cost:
-    type: per_success
-    value: 0.0012
-    currency: USD
-    unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
-    source: observed
-    source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.category_products
-    checked: '2026-09-11'
-    confidence: verified
-  docs_url: https://getanyapi.com/api/tiktok-shop/category-products
-  note: AnyAPI slug `tiktok_shop.category_products`. Price is the p90 of what AnyAPI really charged for this endpoint over the 60 days to 2026-09-09 (5 charged calls, $0.0012 median), not a list price; roughly one call in ten settles above it. 1 source can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.0012 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  test_request:
-    body:
-      categoryId: '700645'
-      region: US
-  unverified: http 404
 - id: anyapi.tiktok_shop.creator
   tier: extended
   platform: tiktok-shop
@@ -5419,42 +5378,6 @@ endpoints:
   verified: '2026-09-19'
   example_response: examples/anyapi.tiktok_shop.product.json
   observed_time: 1.94
-- id: anyapi.tiktok_shop.product_full
-  tier: extended
-  platform: tiktok-shop
-  domain: product
-  method: POST
-  path: /v1/run/tiktok_shop.product_full
-  name: TikTok Shop Product Full
-  summary: 'Deep TikTok Shop product record from a product URL: affiliate commission rate, units sold and GMV over the last 30 days and lifetime, stock, rating, review count, category tree, listing date, and the seller''s own sales totals.'
-  input:
-    body:
-      url:
-        type: string
-        required: true
-        note: TikTok Shop product URL. Any of the public forms works (https://www.tiktok.com/shop/pdp/<id>, https://shop.tiktok.com/<region>/pdp/<slug>/<id>, or https://shop.tiktok.com/view/product/<id>); the product id is read out of it.
-        example: https://www.tiktok.com/shop/pdp/1729527313880355335
-    bodyType: json
-  cost:
-    type: per_success
-    value: 0.022
-    currency: USD
-    unit: call
-    reported_charge:
-      path: costUsd
-      unit: usd
-    source: observed
-    source_url: https://api.getanyapi.com/v1/apis/tiktok_shop.product_full
-    checked: '2026-09-11'
-    confidence: verified
-  docs_url: https://getanyapi.com/api/tiktok-shop/product-full
-  note: AnyAPI slug `tiktok_shop.product_full`. Price is the p90 of what AnyAPI really charged for this endpoint over the 60 days to 2026-09-09 (13 charged calls, $0.021 median), not a list price; roughly one call in ten settles above it. 1 source can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.022 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  test_request:
-    body:
-      url: https://www.tiktok.com/shop/pdp/1729527313880355335
-  verified: '2026-09-19'
-  example_response: examples/anyapi.tiktok_shop.product_full.json
-  observed_time: 14.12
 - id: anyapi.tiktok_shop.product_reviews
   tier: extended
   platform: tiktok-shop
