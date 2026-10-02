@@ -70,7 +70,8 @@ endpoints:
       source_url: https://docs.influencers.club/guides/usage-limits
       checked: '2026-08-21'
       confidence: verified
-      note: "0.01 credit per creator returned, 0 creators = 0 credits. OBSERVED 2026-08-21: limit=2 moved the meter 10.00 -> 9.98. return_filter_values=true is documented at 0.03 per creator (not observed)"
+      reported_charge: {path: credits_cost, unit: credit}
+      note: "0.01 credit per creator returned, 0 creators = 0 credits; 0.03 with return_filter_values=true. The response's credits_cost is the exact charge and settles the call, so the premium rider is billed as charged. OBSERVED 2026-08-21: limit=2 moved the meter 10.00 -> 9.98"
     verified: '2026-08-21'
     example_response: examples/influencersclub.creators.search.json
     docs_url: https://docs.influencers.club/openapi/discovery-api/public_v1_discovery_create
@@ -100,6 +101,7 @@ endpoints:
       currency: credit
       per: 1
       unit: result
+      reported_charge: {path: credits_cost, unit: credit}
       source: observed
       source_url: https://docs.influencers.club/guides/usage-limits
       checked: '2026-08-21'
