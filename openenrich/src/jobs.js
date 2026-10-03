@@ -45,25 +45,44 @@ export const COLUMN_JOBS = [
   { id: 'person', group: 'Enrich', label: 'Enrich person', tool: 'treg.people.enrich', keep: ['title', 'company', 'location', 'linkedin_url'] },
 ]
 
-// Every treg job (`treg.*`, one capability served by the best of several providers) as an
-// enrichment, filed by what it is about. The popular ones above keep their own names.
-const CATEGORIES = [
-  ['People', /^treg\.people\./],
-  ['Company', /^treg\.(companies|linkedin\.company)\./],
-  ['Social profiles', /^treg\.(x|instagram|tiktok|youtube|facebook|linkedin|threads|reddit|douyin|bilibili|weibo|xiaohongshu)\./],
-  ['Web & SEO', /^treg\.(web|google|bing|yahoo)\./],
-  ['Other', /./],
+// Every people and company enrichment in the catalog: the capabilities on its "People & contact
+// data" and "Company data" shelves that answer one row at a time. Where treg runs a capability
+// across several providers (`treg.<capability>`) that is the one entry; otherwise each provider's
+// endpoint is listed. List building (searches), filter helpers, counts, bulk jobs, exports and
+// feeds are not row enrichments and stay out.
+const NOT_PER_ROW = [
+  /^(people|companies)\.search(\.|$)/, /^companies\.businesses\.search/, /^people\.lookalike$/,
+  /\.(autocomplete|count|filters|fields|feed|detail|taxonomy)$/,
+  /\.(bulk|export|job|segment|deny-rules|geo|audience|audiences|lists|technologies)(\.|$)/,
+  /^companies\.(lookup|id\.resolve|industries\.list|industry\.resolve|coverage\.check|investors\.portfolio|launch_posts|tech_stack\.users)$/,
+  // company data, but about the website's design or payments, not the account
+  /^companies\.(brand\.fonts|brand\.styleguide|website\.screenshot|transaction\.identify|tech_stack\.detection)$/,
+  /^people\.(preview|email\.disposable)$/,
 ]
-export function catalogJobs(results) {
+export const ENRICH_SHELVES = [['people', 'People'], ['companies', 'Company']]
+
+export function enrichmentJobs(shelves, routed) {
   const popular = new Set(COLUMN_JOBS.map((j) => j.tool))
-  return results
-    .filter((r) => r.id.startsWith('treg.') && !popular.has(r.id))
-    .map((r) => ({
-      id: r.id, tool: r.id, group: CATEGORIES.find(([, re]) => re.test(r.id))[0],
-      label: (r.summary || r.name || r.id).split(' — ')[0], price: r.cost?.usd,
-    }))
+  const out = []
+  for (const [group, platform] of shelves) {
+    for (const cap of platform?.capabilities || []) {
+      if (NOT_PER_ROW.some((re) => re.test(cap.id))) continue
+      const label = cap.description.replace(/\.$/, '')
+      const best = routed.get(`treg.${cap.id}`)
+      if (best) {
+        if (!popular.has(best.id)) out.push({ id: best.id, tool: best.id, group, label, price: best.cost?.usd, note: `Best of ${cap.endpoints.length} providers` })
+        continue
+      }
+      for (const ep of cap.endpoints) {
+        const provider = ep.provider_display || ep.provider
+        const twin = cap.endpoints.filter((e) => e.provider === ep.provider).length > 1
+        out.push({ id: ep.id, tool: ep.id, group, label, price: ep.cost?.usd, note: twin ? `${provider} · ${ep.name}` : provider })
+      }
+    }
+  }
+  return out
 }
-export const CATEGORY_ORDER = ['Popular', ...CATEGORIES.map(([name]) => name)]
+export const CATEGORY_ORDER = ['Popular', 'People', 'Company']
 
 // Column names that can feed each input, best first.
 const ALIASES = {
@@ -171,6 +190,14 @@ export function identityOf(tool) {
 
 export function outputsOf(tool) {
   return Object.keys(tool?.routing?.contract?.output || {})
+}
+
+// One cell from a list answer (a company's technologies, its funding rounds): every row's value,
+// joined, so a cell holds the whole list rather than its first item.
+export function cellFrom(rows, field) {
+  const values = rows.map((r) => r[field]).filter((v) => v != null && v !== '')
+  if (values.length <= 1) return values[0] ?? null
+  return [...new Set(values.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))))].join(', ')
 }
 
 export const usd = (micro) => `$${(micro / 1e6).toFixed(micro && micro < 10000 ? 4 : 2)}`

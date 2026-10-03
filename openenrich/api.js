@@ -80,6 +80,10 @@ export async function handleApi(req, res) {
       const r = await treg(`/catalog/search?q=${encodeURIComponent(url.searchParams.get('q') || '')}&limit=${limit}`)
       return send(res, r.status, r.json)
     }
+    if (route === 'platform' && req.method === 'GET' && TOOL_ID.test(arg)) {
+      const r = await treg(`/catalog/platforms/${arg}`)
+      return send(res, r.status, r.json)
+    }
     if ((route === 'tool' || route === 'columns') && req.method === 'GET' && TOOL_ID.test(arg)) {
       const r = await treg(route === 'tool' ? `/catalog/endpoints/${arg}` : `/table-columns/${arg}`)
       return send(res, r.status, r.json)

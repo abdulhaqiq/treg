@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { idempotencyKey } from '../api.js'
-import { autoMap, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/jobs.js'
+import { autoMap, cellFrom, enrichmentJobs, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -72,4 +72,24 @@ test('list rows keep extras, drop duplicates and stop at the limit', () => {
     ['first_name', 'last_name', 'title', 'company', 'linkedin_url', 'location', 'fullName'])
   assert.equal(people.records[0].full_name, 'Ada Lovelace')
   assert.equal(people.ids[0], 'full_name')
+})
+
+test('enrichments: one entry per routed capability, providers otherwise, no list-building helpers', () => {
+  const shelf = { capabilities: [
+    { id: 'companies.enrich', description: 'Enrich a company', endpoints: [{ id: 'a.x' }, { id: 'b.x' }] },
+    { id: 'companies.news', description: 'Recent news', endpoints: [{ id: 'c.news' }] },
+    { id: 'companies.funding', description: 'Funding rounds.', endpoints: [{ id: 'd.f', provider: 'd' }, { id: 'e.f', provider: 'e' }] },
+    { id: 'companies.search.count', description: 'Count', endpoints: [{ id: 'f.c' }] },
+    { id: 'companies.enrich.bulk.start', description: 'Bulk', endpoints: [{ id: 'g.b' }] },
+  ] }
+  const routed = new Map([['treg.companies.news', { id: 'treg.companies.news' }], ['treg.companies.enrich', { id: 'treg.companies.enrich' }]])
+  const jobs = enrichmentJobs([['Company', shelf]], routed)
+  assert.deepEqual(jobs.map((j) => j.tool), ['treg.companies.news', 'd.f', 'e.f'])   // enrich is already in Popular
+  assert.equal(jobs[1].label, 'Funding rounds')
+})
+
+test('a list answer fills one cell with every value', () => {
+  assert.equal(cellFrom([{ name: 'React' }, { name: 'Stripe' }, { name: 'React' }], 'name'), 'React, Stripe')
+  assert.equal(cellFrom([{ email: 'a@x.com' }], 'email'), 'a@x.com')
+  assert.equal(cellFrom([{ name: null }], 'name'), null)
 })

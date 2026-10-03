@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from './client.js'
-import { CATEGORY_ORDER, COLUMN_JOBS, ROUTE_CAP_USD, autoMap, catalogJobs, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
+import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, autoMap, enrichmentJobs, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
 
 const props = defineProps({ table: Object })
 const emit = defineEmits(['close', 'add'])
@@ -16,21 +16,25 @@ const keep = ref([])
 const peopleTitle = ref('')
 const peopleLimit = ref(3)
 const query = ref('')
-const results = ref([])
 const error = ref('')
 const loading = ref(false)
 
-const routed = ref([])         // every treg.* job, from the catalog
+const routed = ref([])         // every people and company enrichment, from the catalog shelves
 
-onMounted(() => {
+onMounted(async () => {
   for (const j of COLUMN_JOBS) api.tool(j.tool).then((t) => (tools[j.tool] = t)).catch(() => {})
-  api.search('treg', 100).then((r) => (routed.value = catalogJobs(r.results || []))).catch(() => {})
+  try {
+    const [best, ...shelves] = await Promise.all([api.search('treg', 100),
+      ...ENRICH_SHELVES.map(([slug]) => api.platform(slug).catch(() => null))])
+    const byId = new Map((best.results || []).filter((r) => r.id.startsWith('treg.')).map((r) => [r.id, r]))
+    routed.value = enrichmentJobs(ENRICH_SHELVES.map(([, group], i) => [group, shelves[i]]), byId)
+  } catch {}
 })
 
 const tool = computed(() => (job.value ? tools[job.value.tool] : null))
 const groups = computed(() => {
   const q = query.value.trim().toLowerCase()
-  const match = (j) => !q || j.label.toLowerCase().includes(q) || j.tool.toLowerCase().includes(q)
+  const match = (j) => !q || [j.label, j.tool, j.note || ''].some((s) => s.toLowerCase().includes(q))
   const out = {}
   for (const j of COLUMN_JOBS) if (match(j)) (out.Popular ||= []).push(j)
   for (const j of routed.value) if (match(j)) (out[j.group] ||= []).push(j)
@@ -42,12 +46,7 @@ const fromPrice = (j) => {
   return min != null ? `from ${usd(min * 1e6)}` : ''
 }
 
-// Typing also searches every tool in the catalog, not only the treg jobs.
-let searchTimer = null
-watch(query, () => {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(searchCatalog, 300)
-})
+
 
 async function pick(j) {
   job.value = j
@@ -80,11 +79,6 @@ async function pick(j) {
   }
 }
 
-async function searchCatalog() {
-  const q = query.value.trim()
-  const found = q.length > 1 ? (await api.search(q, 25)).results || [] : []
-  if (q === query.value.trim()) results.value = found.filter((r) => !r.id.startsWith('treg.')).slice(0, 10)
-}
 
 function setSource(input, value) {
   if (value === '__text') { custom[input] = true; mapping[input] = '' } else { delete custom[input]; mapping[input] = value }
@@ -126,8 +120,8 @@ function add(rows) {
         <strong>Add enrichment</strong>
         <button class="icon" title="Close" @click="emit('close')">✕</button>
       </header>
-      <form class="side-search" @submit.prevent="searchCatalog">
-        <input v-model="query" :placeholder="`Search ${COLUMN_JOBS.length + routed.length} enrichments and every tool…`" autofocus />
+      <form class="side-search" @submit.prevent>
+        <input v-model="query" :placeholder="`Search ${COLUMN_JOBS.length + routed.length} people and company enrichments…`" autofocus />
       </form>
       <div class="side-body">
         <section v-for="(list, name) in groups" :key="name">
@@ -136,14 +130,6 @@ function add(rows) {
             <span class="badge">{{ j.label[0] }}</span>
             <span class="enrich-text"><strong>{{ j.label }}</strong><small v-if="j.note">{{ j.note }}</small></span>
             <span class="price">{{ fromPrice(j) }}</span>
-          </button>
-        </section>
-        <section v-if="results.length">
-          <h4>Single-provider tools</h4>
-          <button v-for="r in results" :key="r.id" class="enrich" @click="pick({ id: 'any', tool: r.id, label: r.name })">
-            <span class="badge alt">{{ (r.provider_display || r.provider || '?')[0] }}</span>
-            <span class="enrich-text"><strong>{{ r.name }}</strong><small>{{ r.provider_display || r.provider }}</small></span>
-            <span class="price">{{ r.cost?.usd != null ? usd(r.cost.usd * 1e6) : '' }}</span>
           </button>
         </section>
       </div>

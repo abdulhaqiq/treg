@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from './client.js'
-import { cellValue, fillInputs, host, listRecords, readAnswer, rowId, satisfies, toCsv, usd } from './jobs.js'
+import { cellFrom, cellValue, fillInputs, host, listRecords, readAnswer, rowId, satisfies, toCsv, usd } from './jobs.js'
 import ColumnPanel from './ColumnPanel.vue'
 
 const props = defineProps({ table: Object })
@@ -109,7 +109,7 @@ async function runRow(row, cols, job, child, othersRunning) {
   }
   for (const c of cols) {
     row.cells[c.id] = res.state === 'hit'
-      ? { value: res.rows[0][c.job.field] ?? null, state: 'hit', answer: res.rows[0], ...meta }
+      ? { value: cellFrom(res.rows, c.job.field), state: 'hit', answer: res.rows.length > 1 ? res.rows : res.rows[0], ...meta }
       : { value: null, state: res.state, error: res.error, ...meta }
   }
 }
