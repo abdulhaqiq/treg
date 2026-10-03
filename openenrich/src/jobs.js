@@ -45,6 +45,26 @@ export const COLUMN_JOBS = [
   { id: 'person', group: 'Enrich', label: 'Enrich person', tool: 'treg.people.enrich', keep: ['title', 'company', 'location', 'linkedin_url'] },
 ]
 
+// Every treg job (`treg.*`, one capability served by the best of several providers) as an
+// enrichment, filed by what it is about. The popular ones above keep their own names.
+const CATEGORIES = [
+  ['People', /^treg\.people\./],
+  ['Company', /^treg\.(companies|linkedin\.company)\./],
+  ['Social profiles', /^treg\.(x|instagram|tiktok|youtube|facebook|linkedin|threads|reddit|douyin|bilibili|weibo|xiaohongshu)\./],
+  ['Web & SEO', /^treg\.(web|google|bing|yahoo)\./],
+  ['Other', /./],
+]
+export function catalogJobs(results) {
+  const popular = new Set(COLUMN_JOBS.map((j) => j.tool))
+  return results
+    .filter((r) => r.id.startsWith('treg.') && !popular.has(r.id))
+    .map((r) => ({
+      id: r.id, tool: r.id, group: CATEGORIES.find(([, re]) => re.test(r.id))[0],
+      label: (r.summary || r.name || r.id).split(' — ')[0], price: r.cost?.usd,
+    }))
+}
+export const CATEGORY_ORDER = ['Popular', ...CATEGORIES.map(([name]) => name)]
+
 // Column names that can feed each input, best first.
 const ALIASES = {
   domain: ['domain', 'company_domain', 'website', 'company_website', 'url'],
@@ -107,12 +127,20 @@ export function satisfies(identity, inputs) {
 
 // One /table/ answer (as the local API returns it) read as {state, rows, error}.
 export function readAnswer(r) {
-  if (r.status === 402) return { state: 'stop', error: 'Balance ran out. Top up at treg.to, then run again.' }
-  if (r.status === 401 || r.status === 403) return { state: 'stop', error: 'treg rejected the token. Check TREG_TOKEN.' }
   const a = r.answer || {}
+  const d = a.detail && typeof a.detail === 'object' ? a.detail : a
+  // treg answers 402 for two reasons: only a short balance stops the run
+  if (r.status === 402 && d.error === 'insufficient_balance') {
+    return { state: 'stop', low: true, error: 'Your treg balance is too low for the next row. Top up at treg.to, then run the column again.' }
+  }
+  if (r.status === 402 && d.error === 'route_max_cost') {
+    return { state: 'error', error: 'Every provider left would cost more than the $0.25 row cap. Nothing was charged.' }
+  }
+  if (r.status === 401) return { state: 'stop', error: 'treg rejected the token. Check TREG_TOKEN.' }
   if (r.status >= 400 || a.error) {
-    const why = a.error === 'upstream_error' ? `provider answered ${a.upstream_status}` : a.detail || a.message || a.error || `HTTP ${r.status}`
-    return { state: 'error', error: typeof why === 'string' ? why : JSON.stringify(why), retry: r.status === 429 }
+    const why = a.error === 'upstream_error' ? `provider answered ${a.upstream_status}`
+      : d.message || (typeof a.detail === 'string' ? a.detail : '') || d.error || a.error || `HTTP ${r.status}`
+    return { state: 'error', error: String(why), retry: r.status === 429 }
   }
   const rows = (a.rows || []).map((row) => Object.fromEntries((a.columns || []).map((c, i) => [c, row[i]])))
   if (a._treg?.outcome === 'miss' || !rows.length) return { state: 'miss', rows: [], columns: [] }

@@ -12,7 +12,7 @@ async function call(path, { method = 'GET', body } = {}) {
 
 export const api = {
   account: () => call('account'),
-  search: (q) => call(`search?q=${encodeURIComponent(q)}`),
+  search: (q, limit = 25) => call(`search?q=${encodeURIComponent(q)}&limit=${limit}`),
   tool: (id) => call(`tool/${encodeURIComponent(id)}`),
   columns: (id) => call(`columns/${encodeURIComponent(id)}`).catch(() => null),
   run: (id, req) => call(`run/${encodeURIComponent(id)}`, { method: 'POST', body: req }),

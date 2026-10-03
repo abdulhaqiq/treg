@@ -31,7 +31,8 @@ test('answers read as hit, miss, error or stop', () => {
   assert.equal(hit.rows[0].email, 'e@x.com')
   assert.equal(readAnswer({ status: 200, answer: { columns: ['email'], rows: [], _treg: { outcome: 'miss' } } }).state, 'miss')
   assert.equal(readAnswer({ status: 502, answer: { error: 'upstream_error', upstream_status: 500 } }).state, 'error')
-  assert.equal(readAnswer({ status: 402, answer: {} }).state, 'stop')
+  assert.equal(readAnswer({ status: 402, answer: { detail: { error: 'insufficient_balance' } } }).state, 'stop')
+  assert.equal(readAnswer({ status: 402, answer: { detail: { error: 'route_max_cost' } } }).state, 'error')
 })
 
 test('list sources keep the fixed columns when treg mapped them', () => {

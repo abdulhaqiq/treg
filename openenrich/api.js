@@ -76,7 +76,8 @@ export async function handleApi(req, res) {
       return send(res, r.status, r.json)
     }
     if (route === 'search' && req.method === 'GET') {
-      const r = await treg(`/catalog/search?q=${encodeURIComponent(url.searchParams.get('q') || '')}`)
+      const limit = Math.min(100, Number(url.searchParams.get('limit')) || 25)
+      const r = await treg(`/catalog/search?q=${encodeURIComponent(url.searchParams.get('q') || '')}&limit=${limit}`)
       return send(res, r.status, r.json)
     }
     if ((route === 'tool' || route === 'columns') && req.method === 'GET' && TOOL_ID.test(arg)) {

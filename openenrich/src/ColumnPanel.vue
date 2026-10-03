@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api } from './client.js'
-import { COLUMN_JOBS, ROUTE_CAP_USD, autoMap, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
+import { CATEGORY_ORDER, COLUMN_JOBS, ROUTE_CAP_USD, autoMap, catalogJobs, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
 
 const props = defineProps({ table: Object })
 const emit = defineEmits(['close', 'add'])
@@ -20,21 +20,34 @@ const results = ref([])
 const error = ref('')
 const loading = ref(false)
 
+const routed = ref([])         // every treg.* job, from the catalog
+
 onMounted(() => {
   for (const j of COLUMN_JOBS) api.tool(j.tool).then((t) => (tools[j.tool] = t)).catch(() => {})
+  api.search('treg', 100).then((r) => (routed.value = catalogJobs(r.results || []))).catch(() => {})
 })
 
 const tool = computed(() => (job.value ? tools[job.value.tool] : null))
 const groups = computed(() => {
   const q = query.value.trim().toLowerCase()
+  const match = (j) => !q || j.label.toLowerCase().includes(q) || j.tool.toLowerCase().includes(q)
   const out = {}
-  for (const j of COLUMN_JOBS) if (!q || j.label.toLowerCase().includes(q)) (out[j.group] ||= []).push(j)
-  return out
+  for (const j of COLUMN_JOBS) if (match(j)) (out.Popular ||= []).push(j)
+  for (const j of routed.value) if (match(j)) (out[j.group] ||= []).push(j)
+  return Object.fromEntries(CATEGORY_ORDER.filter((g) => out[g]).map((g) => [g, out[g]]))
 })
-const fromPrice = (id) => {
-  const p = priceOf(tools[id])
-  return p.known ? `from ${usd(p.min * 1e6)}` : ''
+const fromPrice = (j) => {
+  const p = priceOf(tools[j.tool])
+  const min = p.known ? p.min : j.price
+  return min != null ? `from ${usd(min * 1e6)}` : ''
 }
+
+// Typing also searches every tool in the catalog, not only the treg jobs.
+let searchTimer = null
+watch(query, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(searchCatalog, 300)
+})
 
 async function pick(j) {
   job.value = j
@@ -68,7 +81,9 @@ async function pick(j) {
 }
 
 async function searchCatalog() {
-  results.value = query.value.trim() ? ((await api.search(query.value.trim())).results || []).slice(0, 8) : []
+  const q = query.value.trim()
+  const found = q.length > 1 ? (await api.search(q, 25)).results || [] : []
+  if (q === query.value.trim()) results.value = found.filter((r) => !r.id.startsWith('treg.')).slice(0, 10)
 }
 
 function setSource(input, value) {
@@ -91,8 +106,10 @@ function add(rows) {
   const maxCost = tool.value?.endpoint?.kind === 'routed' ? ROUTE_CAP_USD : undefined
   const base = { group, tool: job.value.tool, method: method.value, inputs: { ...inputs.value }, needs: needs.value, maxCost }
   if (job.value.linked) {
+    // people searches can bill per person returned: the cap scales with the count asked for
+    const limit = Number(peopleLimit.value) || 3
     const id = uniqueColumnId(props.table.columns, 'people')
-    return emit('add', { rows, columns: [{ id, label: 'People', job: { ...base, linked: true, limit: Number(peopleLimit.value) || 3 } }] })
+    return emit('add', { rows, columns: [{ id, label: 'People', job: { ...base, maxCost: ROUTE_CAP_USD * limit, linked: true, limit } }] })
   }
   const columns = []
   for (const field of keep.value) {
@@ -110,19 +127,19 @@ function add(rows) {
         <button class="icon" title="Close" @click="emit('close')">✕</button>
       </header>
       <form class="side-search" @submit.prevent="searchCatalog">
-        <input v-model="query" placeholder="Search enrichments… (Enter searches every tool)" autofocus />
+        <input v-model="query" :placeholder="`Search ${COLUMN_JOBS.length + routed.length} enrichments and every tool…`" autofocus />
       </form>
       <div class="side-body">
         <section v-for="(list, name) in groups" :key="name">
           <h4>{{ name }}</h4>
-          <button v-for="j in list" :key="j.id" class="enrich" @click="pick(j)">
+          <button v-for="j in list" :key="j.id" class="enrich" :title="j.label" @click="pick(j)">
             <span class="badge">{{ j.label[0] }}</span>
             <span class="enrich-text"><strong>{{ j.label }}</strong><small v-if="j.note">{{ j.note }}</small></span>
-            <span class="price">{{ fromPrice(j.tool) }}</span>
+            <span class="price">{{ fromPrice(j) }}</span>
           </button>
         </section>
         <section v-if="results.length">
-          <h4>Every tool</h4>
+          <h4>Single-provider tools</h4>
           <button v-for="r in results" :key="r.id" class="enrich" @click="pick({ id: 'any', tool: r.id, label: r.name })">
             <span class="badge alt">{{ (r.provider_display || r.provider || '?')[0] }}</span>
             <span class="enrich-text"><strong>{{ r.name }}</strong><small>{{ r.provider_display || r.provider }}</small></span>
@@ -181,7 +198,7 @@ function add(rows) {
         <p class="small">
           <strong>{{ ready }}</strong> of {{ table.rows.length }} rows have the inputs.
           <template v-if="price.known">
-            From {{ usd(price.min * 1e6) }} a row<template v-if="price.cap">, never over {{ usd(price.cap * 1e6) }}</template>.
+            From {{ usd(price.min * 1e6) }} a row<template v-if="price.cap">, never over {{ usd(price.cap * (job.linked ? Number(peopleLimit) || 1 : 1) * 1e6) }}</template>.
             <template v-if="tool?.endpoint?.cost?.type === 'per_success'">No result, no charge.</template>
           </template>
         </p>

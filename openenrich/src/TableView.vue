@@ -49,10 +49,20 @@ async function runGroup(group, howMany) {
   const child = job.linked ? await childTable(cols[0]) : null
   for (const r of queue) for (const c of cols) r.cells[c.id] = { state: 'queued' }
 
+  // Each call holds up to its cap until it settles, so a low balance can refuse a hold while
+  // other rows still run: that row waits for them instead of stopping the run.
+  let inFlight = 0
   const worker = async () => {
     while (queue.length && !run.value.stopping) {
       const row = queue.shift()
-      await runRow(row, cols, job, child)
+      inFlight++
+      const out = await runRow(row, cols, job, child, () => inFlight > 1)
+      inFlight--
+      if (out === 'wait') {
+        queue.unshift(row)
+        await new Promise((ok) => setTimeout(ok, 1500))
+        continue
+      }
       run.value.done++
       save()
     }
@@ -64,7 +74,7 @@ async function runGroup(group, howMany) {
   emit('balance')
 }
 
-async function runRow(row, cols, job, child) {
+async function runRow(row, cols, job, child, othersRunning) {
   const inputs = fillInputs(job.inputs, row)
   if (!satisfies(job.needs || [], inputs)) {
     for (const c of cols) row.cells[c.id] = { state: 'skipped', inputs }
@@ -82,6 +92,10 @@ async function runRow(row, cols, job, child) {
   const res = readAnswer(r)
   const meta = { served_by: r.served_by, cost_micro: r.cost_micro, call_id: r.call_id, replay: r.replay, inputs }
   run.value.spent += r.cost_micro || 0
+  if (res.state === 'stop' && res.low && othersRunning()) {
+    for (const c of cols) row.cells[c.id] = { state: 'queued' }
+    return 'wait'
+  }
   if (res.state === 'stop') {
     run.value.stopping = true
     banner.value = res.error
@@ -193,6 +207,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
       </span>
       <span class="spacer" />
       <button @click="exportCsv">Export CSV</button>
+      <button class="primary" :disabled="!!run" @click="adding = true; detail = null">+ Add column</button>
     </div>
     <p v-if="banner" class="banner">{{ banner }}</p>
 
@@ -214,7 +229,6 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                   <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
                 </div>
               </th>
-              <th class="add-col"><button :disabled="!!run" @click.stop="adding = true; detail = null">+ Add column</button></th>
             </tr>
           </thead>
           <tbody>
@@ -228,7 +242,6 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                 <span v-else-if="pill(r.cells[c.id])" :class="['pill', r.cells[c.id].state]">{{ pill(r.cells[c.id]) }}</span>
                 <template v-else>{{ show(r.cells[c.id]) }}</template>
               </td>
-              <td class="add-col" />
             </tr>
           </tbody>
         </table>
