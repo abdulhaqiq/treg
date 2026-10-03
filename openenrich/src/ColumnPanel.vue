@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from './client.js'
 import { iconFor } from './icons.js'
-import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SIGNAL_EXTRAS, autoMap, enrichmentJobs, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
+import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
 
 const props = defineProps({ table: Object })
 const emit = defineEmits(['close', 'add'])
@@ -19,6 +19,9 @@ const peopleLimit = ref(3)
 const query = ref('')
 const error = ref('')
 const loading = ref(false)
+const contract = ref(false)    // outputs come from a fixed contract, not a guess from an example
+const test = ref(null)         // {values, cost, row} after "Test on row 1"
+const testing = ref(false)
 
 const routed = ref([])         // every people and company enrichment, from the catalog shelves
 
@@ -62,21 +65,34 @@ async function pick(j) {
   loading.value = true
   for (const k of Object.keys(mapping)) delete mapping[k]
   for (const k of Object.keys(custom)) delete custom[k]
+  test.value = null
   try {
     tools[j.tool] ||= await api.tool(j.tool)
     const t = tools[j.tool]
     if (t?.endpoint?.kind === 'routed') identity.value = identityOf(t)
     else {
-      const input = t?.endpoint?.input || {}
-      const params = { ...input.pathParams, ...input.queryParams, ...(input.body && typeof input.body === 'object' ? input.body : {}) }
-      identity.value = [Object.keys(params).filter((k) => params[k]?.required)]
+      const params = paramsOf(t?.endpoint)
+      identity.value = [Object.keys(params).filter((k) => params[k]?.required && !SETTING_PARAMS.has(k))]
       for (const k of Object.keys(params)) mapping[k] = ''
+      for (const k of Object.keys(params)) {
+        const value = settingDefault(t?.endpoint, k)
+        if (value !== undefined) { mapping[k] = value; custom[k] = true }
+      }
     }
     if (j.linked) mapping.company_domain = autoMap([['company_domain']], props.table.columns, props.table.kind).company_domain || ''
     else {
       for (const k of identity.value.flat()) mapping[k] ||= ''
-      Object.assign(mapping, autoMap(identity.value.length ? identity.value : [Object.keys(mapping)], props.table.columns, props.table.kind))
+      // routed: the contract's identity; a single provider: every input it takes, optional ones too
+      const mappable = t?.endpoint?.kind === 'routed' ? identity.value : [Object.keys(mapping).filter((k) => !custom[k])]
+      Object.assign(mapping, autoMap(mappable, props.table.columns, props.table.kind))
+      // "Provide exactly one company identifier": keep only the first input a column filled
+      if (/exactly one/i.test(t?.endpoint?.input?.note || '')) {
+        const filled = Object.keys(mapping).filter((k) => mapping[k] && !custom[k])
+        for (const k of filled.slice(1)) mapping[k] = ''
+      }
       const preview = await api.columns(j.tool)
+      // a routed list job's rows are each provider's own objects: only a flat contract is fixed
+      contract.value = preview?.column_source === 'contract' && preview?.shape === 'flat'
       outputs.value = (preview?.columns || outputsOf(t)).filter((c) => c !== 'served_by')
       keep.value = j.keep ? j.keep.filter((c) => outputs.value.includes(c)) : outputs.value.slice(0, 3)
     }
@@ -99,13 +115,41 @@ const inputs = computed(() => {
   if (job.value?.linked && peopleTitle.value) m.title = peopleTitle.value
   return m
 })
-// a row is ready when it has what the tool needs, and at least one input at all
+// a row is ready when it has what the tool needs, and at least one input from the row itself
+const fromRow = computed(() => Object.fromEntries(Object.entries(inputs.value).filter(([k]) => !custom[k] || /\{/.test(inputs.value[k]))))
 const ready = computed(() => props.table.rows.filter((r) => {
   const filled = fillInputs(inputs.value, r)
-  return Object.keys(filled).length && satisfies(needs.value, filled)
+  return Object.keys(fillInputs(fromRow.value, r)).length && satisfies(needs.value, filled)
 }).length)
 const price = computed(() => priceOf(tool.value, Object.keys(inputs.value)))
-const canRun = computed(() => ready.value && (job.value?.linked || keep.value.length))
+const needsTest = computed(() => !job.value?.linked && !contract.value && !test.value)
+const canRun = computed(() => ready.value && (job.value?.linked || keep.value.length) && !needsTest.value)
+
+// Run the first ready row once and take the columns from the real answer. The run replays that
+// row from treg for nothing (same inputs, same Idempotency-Key).
+async function testRow() {
+  const row = props.table.rows.find((r) => Object.keys(fillInputs(fromRow.value, r)).length && satisfies(needs.value, fillInputs(inputs.value, r)))
+  if (!row) return
+  testing.value = true
+  error.value = ''
+  try {
+    const filled = fillInputs(inputs.value, row)
+    const req = method.value === 'GET' ? { method: 'GET', query: filled } : { method: method.value, body: filled }
+    const r = await api.run(job.value.tool, req)
+    const a = readAnswer(r)
+    if (a.state !== 'hit') {
+      error.value = a.state === 'miss' ? 'No result on that row. Try another tool or check the inputs.' : a.error
+      return
+    }
+    const picked = pickColumns(a.rows, job.value.keep || [])
+    outputs.value = picked.columns
+    keep.value = picked.keep
+    test.value = { cost: r.cost_micro, row: props.table.rows.indexOf(row) + 1,
+      values: Object.fromEntries(picked.columns.map((c) => [c, String(a.rows.map((x) => x[c]).find((v) => v != null && v !== '') ?? '')])) }
+  } finally {
+    testing.value = false
+  }
+}
 
 function add(rows) {
   const group = `g${Date.now().toString(36)}`
@@ -200,8 +244,10 @@ function add(rows) {
 
         <template v-if="!job.linked">
           <h4>Columns to add</h4>
-          <div class="chips">
-            <label v-for="o in outputs" :key="o" :class="['chip', { on: keep.includes(o) }]">
+          <p v-if="needsTest" class="muted small">This tool's answer varies, so test it on one row to see the real columns.</p>
+          <p v-else-if="test" class="muted small">From row {{ test.row }} ({{ usd(test.cost || 0) }}); running it again later is free.</p>
+          <div v-if="!needsTest" class="chips">
+            <label v-for="o in outputs" :key="o" :class="['chip', { on: keep.includes(o) }]" :title="test?.values[o] || ''">
               <input v-model="keep" type="checkbox" :value="o" hidden />{{ o }}
             </label>
           </div>
@@ -217,7 +263,9 @@ function add(rows) {
             <template v-if="tool?.endpoint?.cost?.type === 'per_success'">No result, no charge.</template>
           </template>
         </p>
-        <button class="primary wide" :disabled="!canRun" @click="add(10)">Save and run {{ Math.min(10, ready) }} rows</button>
+        <button v-if="needsTest" class="primary wide" :disabled="!ready || testing" @click="testRow">
+          {{ testing ? 'Testing…' : 'Test on 1 row' }}</button>
+        <button v-else class="primary wide" :disabled="!canRun" @click="add(10)">Save and run {{ Math.min(10, ready) }} rows</button>
         <button class="ghost wide" :disabled="!canRun" @click="add('all')">Save and run all {{ ready }} rows</button>
       </footer>
     </template>

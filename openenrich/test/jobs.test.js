@@ -134,3 +134,25 @@ test('a nested answer reads as one record under short and full field names', () 
   assert.equal(r.rows[0]['brand.colors'], '#02c8ff, #051c2d')
   assert.equal(r.rows[0].domain, 'cisco.com')
 })
+
+test('real answers pick useful columns; settings stay typed; provider ids hide a tool', async () => {
+  const { pickColumns, rowCallable, fillInputs, autoMap } = await import('../src/jobs.js')
+  const rows = [{ id: '1', type: 'news', 'attributes.headline': 'Stripe raises', 'attributes.summary': 'x', 'meta.page': 1, 'attributes.empty': null }]
+  assert.deepEqual(pickColumns(rows).keep, ['attributes.headline', 'attributes.summary'])
+  assert.deepEqual(fillInputs({ perPage: '10', fields: '["a"]', domain: '{d}' }, { cells: { d: 'https://stripe.com' } }),
+    { perPage: 10, fields: ['a'], domain: 'stripe.com' })
+  assert.equal(rowCallable({ input: { queryParams: { organization_id: { required: true } } } }), false)
+  assert.equal(rowCallable({ platform_eligible: false }), false)
+  assert.deepEqual(autoMap([['companyName', 'fullName']], [{ id: 'company' }, { id: 'full_name' }], 'people'),
+    { companyName: '{company}', fullName: '{full_name}' })
+})
+
+test('a setting defaults to the example, then the verified test request, then the first allowed value', async () => {
+  const { settingDefault } = await import('../src/jobs.js')
+  const ep = { input: { queryParams: { page_size: { required: false }, email_type: { required: true, enum: ['personal', 'work'] },
+    engine: { required: true, example: 'x' }, profile_url: {} } }, test_request: { queryParams: { page_size: '1' } } }
+  assert.equal(settingDefault(ep, 'page_size'), '1')
+  assert.equal(settingDefault(ep, 'email_type'), 'personal')
+  assert.equal(settingDefault(ep, 'engine'), 'x')
+  assert.equal(settingDefault(ep, 'profile_url'), undefined)
+})

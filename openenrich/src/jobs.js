@@ -102,6 +102,7 @@ export function enrichmentJobs(shelves, routed) {
       // no treg route yet: one entry, the providers to pick from, cheapest first
       const providers = cap.endpoints
         .filter((ep) => !/^poll\b/i.test(ep.name || ''))   // the second half of an async job, not a row call
+        .filter(rowCallable)
         .map((ep) => ({ id: ep.id, slug: ep.provider, name: ep.provider_display || ep.provider, endpoint: ep.name, price: ep.cost?.usd }))
         .sort((x, y) => (x.price ?? Infinity) - (y.price ?? Infinity))
       if (!providers.length) continue
@@ -119,6 +120,33 @@ export function enrichmentJobs(shelves, routed) {
   }
   return out
 }
+export function paramsOf(ep) {
+  const input = ep?.input || {}
+  return { ...input.pathParams, ...input.queryParams, ...(input.body && typeof input.body === 'object' ? input.body : {}) }
+}
+
+// A setting's value for every row: the catalog's example, else the endpoint's verified test
+// request (a bounded page size, say), else the first allowed value. Required settings always get
+// one; an optional one only when the catalog names a value.
+export function settingDefault(ep, k) {
+  const p = paramsOf(ep)[k]
+  const t = ep?.test_request || {}
+  const tested = { ...t.pathParams, ...t.queryParams, ...(t.body && typeof t.body === 'object' ? t.body : {}) }[k]
+  if (!SETTING_PARAMS.has(k)) return undefined
+  const value = p?.example ?? tested ?? (p?.required ? p?.enum?.[0] : undefined)
+  return value === undefined ? undefined : typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+// A row can drive it: treg's own key can call it, and no required input is the provider's own
+// record id.
+export function rowCallable(ep) {
+  if (ep.platform_eligible === false) return false
+  const params = Object.entries(paramsOf(ep))
+  if (params.some(([k, v]) => v?.required && PROVIDER_ID.test(k))) return false
+  // a keyword search or a bulk job takes nothing a row holds: it builds lists, it does not enrich
+  return !params.length || params.some(([k]) => rowInput(k))
+}
+
 export const CATEGORY_ORDER = ['Popular', 'Signals', 'People', 'Company']
 
 // Column names that can feed each input, best first.
@@ -138,7 +166,37 @@ const ALIASES = {
   email: ['email', 'work_email'],
   website: ['website', 'company_website', 'url', 'domain'],
   name: ['name', 'company_name', 'company'],
+  profile: ['linkedin_url', 'linkedin', 'linkedin_profile'],
+  url: ['linkedin_url', 'linkedin', 'website', 'domain'],
+  company: ['name', 'company_name', 'company', 'website', 'domain'],
+  company_name: ['company_name', 'company', 'name'],
+  firstname: ['first_name', 'firstname'],
+  lastname: ['last_name', 'lastname', 'surname'],
+  phone: ['phone', 'mobile', 'phone_number'],
+  phone_number: ['phone', 'mobile', 'phone_number'],
+  domain_or_company: ['domain', 'company_domain', 'website', 'name'],
+  company_or_domain: ['domain', 'company_domain', 'website', 'name'],
+  company_profile_url: ['company_linkedin_url', 'linkedin_url'],
+  company_linkedin_url: ['company_linkedin_url', 'linkedin_url'],
+  username: ['x_handle', 'twitter', 'username', 'handle'],
+  ip_address: ['ip', 'ip_address'],
+  email_domain: ['domain', 'company_domain', 'website'],
+  role: ['title', 'role'],
 }
+// an input a row column can fill (by name, an alias, or the same name in snake_case)
+export const rowInput = (k) => k in ALIASES || snake(k) in ALIASES
+
+// Required settings that are the same for every row (paging, an engine or dataset name, the
+// fields to return): filled with the catalog's example value, editable in the panel.
+// ponytail: a name list; a catalog flag per parameter would be the lasting fix.
+export const SETTING_PARAMS = new Set(['perPage', 'per_page', 'page', 'page_size', 'limit', 'offset', 'limit_per_item', 'engine',
+  'dataset_id', 'type', 'fields', 'email_type', 'ad_reached_countries', 'data_to_extract'])
+
+// A parameter only the provider can fill (its own record id): a row cannot drive the tool.
+export const PROVIDER_ID = /^(organization_id|contactIds|monitor_id|company_id|person_id|select)$/
+
+// camelCase and kebab names read as snake_case: companyName, fullName, domainOrCompany
+const snake = (s) => String(s).replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase().replace(/[^a-z0-9]+/g, '_')
 const HOST_INPUTS = new Set(['domain', 'company_domain', 'company_id_or_domain'])
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -149,9 +207,10 @@ export function autoMap(identity, columns, tableKind) {
   const byName = new Map(columns.map((c) => [norm(c.label || c.id), c.id]))
   const mapping = {}
   for (const input of new Set(identity.flat())) {
-    let names = ALIASES[input] || [input]
+    let names = ALIASES[input] || ALIASES[snake(input)] || [input, snake(input)]
     if (input === 'full_name' && tableKind === 'people') names = [...names, 'name']
-    if (input === 'name' && tableKind === 'people') names = names.filter((n) => n !== 'name')
+    // in a people table a tool's `name` is the person's
+    if (input === 'name' && tableKind === 'people') names = ['full_name', 'person', 'name']
     const hit = names.find((n) => byName.has(n))
     if (hit) mapping[input] = `{${byName.get(hit)}}`
   }
@@ -172,6 +231,12 @@ export function host(value) {
 export function fillInputs(mapping, row) {
   const out = {}
   for (const [input, template] of Object.entries(mapping)) {
+    // a typed setting: JSON stays JSON (a '{column}' template is not JSON), a whole number a number
+    if (typeof template === 'string') {
+      const t = template.trim()
+      if (/^[[{]/.test(t)) { try { out[input] = JSON.parse(t); continue } catch {} }
+      if (/^\d+$/.test(t)) { out[input] = Number(t); continue }
+    }
     let v = String(template ?? '').replace(/\{([^}]+)\}/g, (_, id) => {
       const value = cellValue(row.cells[id])
       return value == null ? '' : String(value)
@@ -199,6 +264,8 @@ export function readAnswer(r) {
     return { state: 'error', error: 'Every provider left would cost more than the $0.25 row cap. Nothing was charged.' }
   }
   if (r.status === 401) return { state: 'stop', error: 'treg rejected the token. Check TREG_TOKEN.' }
+  // a lookup's 404 is the provider saying it has nothing on this row
+  if (r.status === 404 && (a.error === 'upstream_error' || d.error === 'upstream_error')) return { state: 'miss', rows: [], columns: [] }
   if (r.status >= 400 || a.error) {
     const why = a.error === 'upstream_error' ? `provider answered ${a.upstream_status}`
       : d.message || (typeof a.detail === 'string' ? a.detail : '') || d.error || a.error || `HTTP ${r.status}`
@@ -245,6 +312,20 @@ export function identityOf(tool) {
 
 export function outputsOf(tool) {
   return Object.keys(tool?.routing?.contract?.output || {})
+}
+
+// The columns worth adding from a real answer: fields that hold a value, minus the bookkeeping
+// (ids, types, paging, credits), the contract's own picks first when it has them.
+const NOISE = /^(id|type|code|status|uuid|_.*)$|(^|\.)(id|meta|key_metadata|relationships|included|links|pagination)(\.|$)/
+export function pickColumns(rows, preferred = []) {
+  const filled = (c) => rows.some((r) => r[c] != null && r[c] !== '' && r[c] !== '[]')
+  const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) => c !== 'served_by')
+  const same = (x, y) => rows.every((r) => JSON.stringify(r[x]) === JSON.stringify(r[y]))
+  // a nested answer names each field twice (`colors`, `brand.colors`): keep the short one
+  const twin = (c) => c.includes('.') && columns.some((o) => o !== c && c.endsWith(`.${o}`) && same(c, o))
+  const useful = columns.filter((c) => !NOISE.test(c) && filled(c) && !twin(c))
+  const keep = preferred.filter((c) => useful.includes(c))
+  return { columns, keep: keep.length ? keep : useful.slice(0, 3) }
 }
 
 // One cell from a list answer (a company's technologies, its funding rounds): every row's value,
