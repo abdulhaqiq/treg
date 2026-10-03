@@ -86,6 +86,7 @@ test('enrichments: one entry per routed capability, providers otherwise, no list
   const jobs = enrichmentJobs([['Company', shelf]], routed)
   assert.deepEqual(jobs.map((j) => j.tool), ['treg.companies.news', 'd.f', 'e.f'])   // enrich is already in Popular
   assert.equal(jobs[1].label, 'Funding rounds')
+  assert.equal(jobs[0].label, 'Company news')
 })
 
 test('a list answer fills one cell with every value', () => {

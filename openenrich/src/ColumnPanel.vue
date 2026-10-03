@@ -34,7 +34,7 @@ onMounted(async () => {
 const tool = computed(() => (job.value ? tools[job.value.tool] : null))
 const groups = computed(() => {
   const q = query.value.trim().toLowerCase()
-  const match = (j) => !q || [j.label, j.tool, j.note || ''].some((s) => s.toLowerCase().includes(q))
+  const match = (j) => !q || [j.label, j.tool, j.note || '', j.about || ''].some((s) => s.toLowerCase().includes(q))
   const out = {}
   for (const j of COLUMN_JOBS) if (match(j)) (out.Popular ||= []).push(j)
   for (const j of routed.value) if (match(j)) (out[j.group] ||= []).push(j)
@@ -126,7 +126,7 @@ function add(rows) {
       <div class="side-body">
         <section v-for="(list, name) in groups" :key="name">
           <h4>{{ name }}</h4>
-          <button v-for="j in list" :key="j.id" class="enrich" :title="j.label" @click="pick(j)">
+          <button v-for="j in list" :key="j.id" class="enrich" :title="j.about || j.note || j.label" @click="pick(j)">
             <span class="badge">{{ j.label[0] }}</span>
             <span class="enrich-text"><strong>{{ j.label }}</strong><small v-if="j.note">{{ j.note }}</small></span>
             <span class="price">{{ fromPrice(j) }}</span>
