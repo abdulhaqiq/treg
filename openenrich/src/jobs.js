@@ -59,67 +59,6 @@ const NOT_PER_ROW = [
   /^companies\.(brand\.fonts|brand\.styleguide|website\.screenshot|transaction\.identify|tech_stack\.detection)$/,
   /^people\.(preview|email\.disposable)$/,
 ]
-// Short names for the panel, by capability. The catalog's description stays as the hover text.
-// A capability missing here shows its description until it gets a name.
-const TITLES = {
-  'people.address.verify': 'Verify US address',
-  'people.contact.get': 'Contact info',
-  'people.contact.verify': 'Verify contact details',
-  'people.decision_makers': 'Decision makers',
-  'people.email.find.personal': 'Personal email',
-  'people.email.personal.availability': 'Has personal email?',
-  'people.email.sources': 'Where email appears online',
-  'people.email.work.availability': 'Has work email?',
-  'people.employees.search': 'Employees at companies',
-  'people.enrich.verified': 'Enrich person (verified email)',
-  'people.github.to_linkedin': 'GitHub to LinkedIn',
-  'people.identity.from_email': 'Email to social profiles',
-  'people.identity.resolve': 'Email to LinkedIn',
-  'people.organization_contacts': 'Contacts by role',
-  'people.personality.analyze': 'Personality profile',
-  'people.phone.availability': 'Has phone?',
-  'people.phone.find.personal': 'Personal phone',
-  'people.phone.verify': 'Verify phone',
-  'people.profile.from_phone': 'Phone to social profiles',
-  'people.profile.lookup': 'Find profile by name',
-  'people.profile.url': 'LinkedIn URL from name',
-  'people.role.lookup': 'Person in a role',
-  'people.signals': 'Job changes',
-  'companies.acquisitions': 'Acquisitions',
-  'companies.brand.assets': 'Logo & brand colors',
-  'companies.connections': 'Partners & customers',
-  'companies.domain.find': 'Domain from name',
-  'companies.email_pattern': 'Email format',
-  'companies.emails.list': 'All emails at domain',
-  'companies.emails.locations': 'Contacts by country',
-  'companies.emails.role': 'Role emails (info@, sales@)',
-  'companies.employees': 'Employees',
-  'companies.employees.list': 'Employees',
-  'companies.employees.search': 'Employees by title',
-  'companies.founders': 'Founders',
-  'companies.funding': 'Funding rounds',
-  'companies.funding_rounds': 'Funding rounds',
-  'companies.headcount_trend': 'Headcount growth',
-  'companies.identify.ip': 'Company from IP',
-  'companies.intelligence_brief': 'Account brief',
-  'companies.investments': 'Investors',
-  'companies.jobs': 'Open jobs',
-  'companies.jobs.search': 'Job postings',
-  'companies.news': 'Company news',
-  'companies.outbound_investments': 'Investments made',
-  'companies.products': 'Products',
-  'companies.profile.url': 'LinkedIn page from name',
-  'companies.repositories': 'GitHub repos',
-  'companies.reviews': 'Employee reviews',
-  'companies.sec_filings': 'SEC filings',
-  'companies.signals': 'Intent signals',
-  'companies.similar': 'Lookalike companies',
-  'companies.teams.search': 'Teams',
-  'companies.tech_stack': 'Tech stack',
-  'companies.website.extract': 'Extract from website',
-  'companies.website_evolution': 'Website changes',
-}
-
 export const ENRICH_SHELVES = [['people', 'People'], ['companies', 'Company']]
 
 export function enrichmentJobs(shelves, routed) {
@@ -128,19 +67,22 @@ export function enrichmentJobs(shelves, routed) {
   for (const [group, platform] of shelves) {
     for (const cap of platform?.capabilities || []) {
       if (NOT_PER_ROW.some((re) => re.test(cap.id))) continue
-      const label = TITLES[cap.id] || cap.description.replace(/\.$/, '')
       const about = cap.description.replace(/\.$/, '')
+      const label = cap.title || about                       // the catalog's short shelf title
       const best = routed.get(`treg.${cap.id}`)
       if (best) {
         if (!popular.has(best.id)) out.push({ id: best.id, tool: best.id, cap: cap.id, group, label, about, price: best.cost?.usd, note: `Best of ${cap.endpoints.length} providers` })
         continue
       }
-      for (const ep of cap.endpoints) {
-        if (/^poll\b/i.test(ep.name || '')) continue   // the second half of an async job, not a row call
-        const provider = ep.provider_display || ep.provider
-        const twin = cap.endpoints.filter((e) => e.provider === ep.provider).length > 1
-        out.push({ id: ep.id, tool: ep.id, cap: cap.id, group, label, about, price: ep.cost?.usd, note: twin ? `${provider} · ${ep.name}` : provider })
-      }
+      // no treg route yet: one entry, the providers to pick from, cheapest first
+      const providers = cap.endpoints
+        .filter((ep) => !/^poll\b/i.test(ep.name || ''))   // the second half of an async job, not a row call
+        .map((ep) => ({ id: ep.id, name: ep.provider_display || ep.provider, endpoint: ep.name, price: ep.cost?.usd }))
+        .sort((x, y) => (x.price ?? Infinity) - (y.price ?? Infinity))
+      if (!providers.length) continue
+      const names = [...new Set(providers.map((p) => p.name))]
+      out.push({ id: cap.id, tool: providers[0].id, cap: cap.id, group, label, about, price: providers[0].price, providers,
+        note: names.length > 1 ? `${names.length} providers: ${names.join(', ')}` : names[0] })
     }
   }
   return out
@@ -155,11 +97,17 @@ const ALIASES = {
   first_name: ['first_name', 'firstname'],
   last_name: ['last_name', 'lastname', 'surname'],
   linkedin_url: ['linkedin_url', 'linkedin', 'linkedin_profile'],
+  // single-provider tools name the same inputs their own way
+  profile_url: ['linkedin_url', 'linkedin', 'linkedin_profile'],
+  linkedin_profile_url: ['linkedin_url', 'linkedin', 'linkedin_profile'],
+  company_id_or_domain: ['domain', 'company_domain', 'website'],
+  website_url: ['website', 'domain', 'company_domain', 'url'],
+  email_address: ['email', 'work_email'],
   email: ['email', 'work_email'],
   website: ['website', 'company_website', 'url', 'domain'],
   name: ['name', 'company_name', 'company'],
 }
-const HOST_INPUTS = new Set(['domain', 'company_domain'])
+const HOST_INPUTS = new Set(['domain', 'company_domain', 'company_id_or_domain'])
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 

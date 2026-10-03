@@ -91,7 +91,11 @@ const inputs = computed(() => {
   if (job.value?.linked && peopleTitle.value) m.title = peopleTitle.value
   return m
 })
-const ready = computed(() => props.table.rows.filter((r) => satisfies(needs.value, fillInputs(inputs.value, r))).length)
+// a row is ready when it has what the tool needs, and at least one input at all
+const ready = computed(() => props.table.rows.filter((r) => {
+  const filled = fillInputs(inputs.value, r)
+  return Object.keys(filled).length && satisfies(needs.value, filled)
+}).length)
 const price = computed(() => priceOf(tool.value, Object.keys(inputs.value)))
 const canRun = computed(() => ready.value && (job.value?.linked || keep.value.length))
 
@@ -143,7 +147,17 @@ function add(rows) {
       </header>
       <div v-if="loading" class="side-body"><p class="muted">Loading…</p></div>
       <div v-else class="side-body">
-        <p v-if="job.note" class="muted small">{{ job.note }}.</p>
+        <p v-if="job.about || job.note" class="muted small">{{ job.about || job.note }}.</p>
+
+        <template v-if="job.providers?.length > 1">
+          <h4>Provider</h4>
+          <select :value="job.tool" @change="pick({ ...job, tool: $event.target.value })">
+            <option v-for="p in job.providers" :key="p.id" :value="p.id">
+              {{ p.name }}<template v-if="job.providers.filter((x) => x.name === p.name).length > 1"> · {{ p.endpoint }}</template>
+              <template v-if="p.price != null"> · {{ usd(p.price * 1e6) }}</template>
+            </option>
+          </select>
+        </template>
 
         <h4>Inputs</h4>
         <div v-for="(v, k) in mapping" :key="k" class="input-row">

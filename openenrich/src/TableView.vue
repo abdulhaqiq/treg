@@ -76,7 +76,7 @@ async function runGroup(group, howMany) {
 
 async function runRow(row, cols, job, child, othersRunning) {
   const inputs = fillInputs(job.inputs, row)
-  if (!satisfies(job.needs || [], inputs)) {
+  if (!Object.keys(inputs).length || !satisfies(job.needs || [], inputs)) {
     for (const c of cols) row.cells[c.id] = { state: 'skipped', inputs }
     return
   }

@@ -74,19 +74,21 @@ test('list rows keep extras, drop duplicates and stop at the limit', () => {
   assert.equal(people.ids[0], 'full_name')
 })
 
-test('enrichments: one entry per routed capability, providers otherwise, no list-building helpers', () => {
+test('enrichments: one entry per capability, routed or with its providers, no list-building helpers', () => {
   const shelf = { capabilities: [
     { id: 'companies.enrich', description: 'Enrich a company', endpoints: [{ id: 'a.x' }, { id: 'b.x' }] },
-    { id: 'companies.news', description: 'Recent news', endpoints: [{ id: 'c.news' }] },
-    { id: 'companies.funding', description: 'Funding rounds.', endpoints: [{ id: 'd.f', provider: 'd' }, { id: 'e.f', provider: 'e' }] },
+    { id: 'companies.news', description: 'Recent news', title: 'Get company news', endpoints: [{ id: 'c.news' }] },
+    { id: 'companies.funding', description: 'Funding rounds.', endpoints: [
+      { id: 'd.f', provider: 'd', cost: { usd: 0.5 } }, { id: 'e.f', provider: 'e', cost: { usd: 0.1 } }, { id: 'e.p', provider: 'e', name: 'Poll a job' }] },
     { id: 'companies.search.count', description: 'Count', endpoints: [{ id: 'f.c' }] },
     { id: 'companies.enrich.bulk.start', description: 'Bulk', endpoints: [{ id: 'g.b' }] },
   ] }
   const routed = new Map([['treg.companies.news', { id: 'treg.companies.news' }], ['treg.companies.enrich', { id: 'treg.companies.enrich' }]])
   const jobs = enrichmentJobs([['Company', shelf]], routed)
-  assert.deepEqual(jobs.map((j) => j.tool), ['treg.companies.news', 'd.f', 'e.f'])   // enrich is already in Popular
+  assert.deepEqual(jobs.map((j) => j.tool), ['treg.companies.news', 'e.f'])   // enrich is already in Popular
+  assert.equal(jobs[0].label, 'Get company news')
   assert.equal(jobs[1].label, 'Funding rounds')
-  assert.equal(jobs[0].label, 'Company news')
+  assert.deepEqual(jobs[1].providers.map((p) => p.id), ['e.f', 'd.f'])         // cheapest first, no poll step
 })
 
 test('a list answer fills one cell with every value', () => {
