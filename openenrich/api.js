@@ -65,6 +65,14 @@ function trusted(req) {
 }
 
 export async function handleApi(req, res) {
+  // provider logos are public images (an <img> cannot send the header), so they skip the check
+  const logo = req.url.match(/^\/api\/logo\/([\w-]+)$/)
+  if (logo && req.method === 'GET') {
+    const r = await fetch(`${TREG_URL}/logos/${logo[1]}.svg`).catch(() => null)
+    if (!r?.ok) return res.writeHead(404).end()
+    res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' })
+    return res.end(Buffer.from(await r.arrayBuffer()))
+  }
   if (!trusted(req)) return send(res, 403, { error: 'forbidden' })
   try {
     const url = new URL(req.url, 'http://local')

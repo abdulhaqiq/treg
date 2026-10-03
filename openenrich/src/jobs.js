@@ -36,8 +36,7 @@ export const SOURCES = [
 export const COLUMN_JOBS = [
   { id: 'people_at', group: 'People', label: 'Find people at company', tool: 'treg.people.search', linked: true,
     note: 'Writes the people to a new table, linked to this one' },
-  { id: 'email', group: 'Contact info', label: 'Find work email', tool: 'treg.people.email.find', keep: ['email', 'verified'],
-    note: 'Tries providers cheapest first until one finds it' },
+  { id: 'email', group: 'Contact info', label: 'Find work email', tool: 'treg.people.email.find', keep: ['email', 'verified'] },
   { id: 'verify', group: 'Contact info', label: 'Verify email', tool: 'treg.people.email.verify', keep: ['valid', 'status'] },
   { id: 'phone', group: 'Contact info', label: 'Find mobile phone', tool: 'treg.people.phone.find', keep: ['phone', 'line_type'] },
   { id: 'company', group: 'Enrich', label: 'Enrich company', tool: 'treg.companies.enrich',
@@ -71,18 +70,18 @@ export function enrichmentJobs(shelves, routed) {
       const label = cap.title || about                       // the catalog's short shelf title
       const best = routed.get(`treg.${cap.id}`)
       if (best) {
-        if (!popular.has(best.id)) out.push({ id: best.id, tool: best.id, cap: cap.id, group, label, about, price: best.cost?.usd, note: `Best of ${cap.endpoints.length} providers` })
+        const logos = [...new Set(cap.endpoints.map((ep) => ep.provider))]
+        if (!popular.has(best.id)) out.push({ id: best.id, tool: best.id, cap: cap.id, group, label, about, price: best.cost?.usd, logos })
         continue
       }
       // no treg route yet: one entry, the providers to pick from, cheapest first
       const providers = cap.endpoints
         .filter((ep) => !/^poll\b/i.test(ep.name || ''))   // the second half of an async job, not a row call
-        .map((ep) => ({ id: ep.id, name: ep.provider_display || ep.provider, endpoint: ep.name, price: ep.cost?.usd }))
+        .map((ep) => ({ id: ep.id, slug: ep.provider, name: ep.provider_display || ep.provider, endpoint: ep.name, price: ep.cost?.usd }))
         .sort((x, y) => (x.price ?? Infinity) - (y.price ?? Infinity))
       if (!providers.length) continue
-      const names = [...new Set(providers.map((p) => p.name))]
-      out.push({ id: cap.id, tool: providers[0].id, cap: cap.id, group, label, about, price: providers[0].price, providers,
-        note: names.length > 1 ? `${names.length} providers: ${names.join(', ')}` : names[0] })
+      const logos = [...new Set(providers.map((p) => p.slug))]
+      out.push({ id: cap.id, tool: providers[0].id, cap: cap.id, group, label, about, price: providers[0].price, providers, logos })
     }
   }
   return out

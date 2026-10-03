@@ -89,10 +89,18 @@ test('enrichments: one entry per capability, routed or with its providers, no li
   assert.equal(jobs[0].label, 'Get company news')
   assert.equal(jobs[1].label, 'Funding rounds')
   assert.deepEqual(jobs[1].providers.map((p) => p.id), ['e.f', 'd.f'])         // cheapest first, no poll step
+  assert.deepEqual(jobs[1].logos, ['e', 'd'])
 })
 
 test('a list answer fills one cell with every value', () => {
   assert.equal(cellFrom([{ name: 'React' }, { name: 'Stripe' }, { name: 'React' }], 'name'), 'React, Stripe')
   assert.equal(cellFrom([{ email: 'a@x.com' }], 'email'), 'a@x.com')
   assert.equal(cellFrom([{ name: null }], 'name'), null)
+})
+
+test('an enrichment icon says what it finds', async () => {
+  const { iconFor } = await import('../src/icons.js')
+  assert.equal(iconFor('treg.people.email.find'), iconFor('people.email.find.personal'))     // both mail
+  assert.notEqual(iconFor('people.email.verify'), iconFor('people.email.find'))              // check, not mail
+  assert.notEqual(iconFor('companies.funding'), iconFor('companies.tech_stack'))
 })

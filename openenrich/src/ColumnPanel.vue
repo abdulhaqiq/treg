@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from './client.js'
+import { iconFor } from './icons.js'
 import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, autoMap, enrichmentJobs, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
 
 const props = defineProps({ table: Object })
@@ -40,6 +41,11 @@ const groups = computed(() => {
   for (const j of routed.value) if (match(j)) (out[j.group] ||= []).push(j)
   return Object.fromEntries(CATEGORY_ORDER.filter((g) => out[g]).map((g) => [g, out[g]]))
 })
+// one provider: its logo; several (a treg route, or a capability with a provider picker): a stack
+// icon. The popular jobs are all treg routes.
+const logosOf = (j) => j.logos || ['', '']
+const badLogo = reactive({})
+
 const fromPrice = (j) => {
   const p = priceOf(tools[j.tool])
   const min = p.known ? p.min : j.price
@@ -131,7 +137,14 @@ function add(rows) {
         <section v-for="(list, name) in groups" :key="name">
           <h4>{{ name }}</h4>
           <button v-for="j in list" :key="j.id" class="enrich" :title="j.about || j.note || j.label" @click="pick(j)">
-            <span class="badge">{{ j.label[0] }}</span>
+            <span v-if="logosOf(j).length === 1 && !badLogo[j.id]" class="badge logo">
+              <img :src="`/api/logo/${logosOf(j)[0]}`" alt="" @error="badLogo[j.id] = true" />
+            </span>
+            <span v-else-if="logosOf(j).length > 1" class="badge" :title="`${logosOf(j).filter(Boolean).length || 'Several'} providers`">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round"><path :d="iconFor(j.cap || j.tool)" /></svg>
+            </span>
+            <span v-else class="badge">{{ j.label[0] }}</span>
             <span class="enrich-text"><strong>{{ j.label }}</strong><small v-if="j.note">{{ j.note }}</small></span>
             <span class="price">{{ fromPrice(j) }}</span>
           </button>
