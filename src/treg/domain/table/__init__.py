@@ -57,9 +57,10 @@ _COMPANIES_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
                   "product_category")),
     ("employees", ("employee_count", "employees", "company.employee_count", "linkedin_employee_count",
                    "numberOfEmployees", "about.totalEmployeesExact", "employee_range", "size",
-                   "about.totalEmployees")),
+                   "about.totalEmployees", "entities.0.properties.workforce.total")),
     ("location", ("location.name", "location_name", "headquarter", "hq_city", "company.location.city", "city",
-                  "locality", "location", "location.country", "country")),
+                  "locality", "location", "location.country", "country",
+                  "entities.0.properties.headquarters.address")),
     ("linkedin_url", ("linkedin_url", "linkedinUrl", "company.linkedin_url", "URLs.linkedin",
                       "linkedin_profile_url")),
 )
@@ -104,9 +105,12 @@ def flatten(obj: Any, prefix: str = "", depth: int = 0) -> dict[str, Any]:
 def _get_path(obj: Any, path: str) -> tuple[bool, Any]:
     cur = obj
     for part in path.split("."):
-        if not isinstance(cur, dict) or part not in cur:
+        if isinstance(cur, list) and part.isdigit() and int(part) < len(cur):   # `entities.0.name`
+            cur = cur[int(part)]
+        elif isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
             return False, None
-        cur = cur[part]
     return True, cur
 
 
