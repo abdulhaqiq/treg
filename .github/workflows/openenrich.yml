@@ -1,0 +1,29 @@
+name: openenrich
+
+on:
+  push:
+    branches: [main]
+    paths: ['openenrich/**', '.github/workflows/openenrich.yml']
+  pull_request:
+    paths: ['openenrich/**', '.github/workflows/openenrich.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: openenrich
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: openenrich/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

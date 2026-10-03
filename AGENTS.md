@@ -174,6 +174,10 @@ so parallel runs and side-by-side runs never share one.
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
   fails the build.
+- **openenrich** (`openenrich/`) is a standalone enrichment-table app with its own `package.json`.
+  It reaches treg only over HTTP (`/table/`, the catalog routes) and never imports `src/treg` or
+  `frontend/`, so it can move to its own repository with `git filter-repo`. Its CI is
+  `.github/workflows/openenrich.yml`.
 - **The dashboard** lives in `frontend/` (Vue components, TypeScript entry/transport, Vite).
   Build with `bash scripts/build-dashboard.sh`; generated assets in `src/treg/web/dashboard/`
   ship with Python. Run `npm --prefix frontend test` and `npm --prefix frontend run test:e2e`.

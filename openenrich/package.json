@@ -1,0 +1,22 @@
+{
+  "name": "openenrich",
+  "version": "0.1.0",
+  "description": "An open enrichment table: build a list of companies or people, find their emails and phones, export a CSV. Runs on treg.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "openenrich": "server.js" },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "vite build && node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "vue": "3.5.41"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.9",
+    "vite": "8.3.0"
+  },
+  "engines": { "node": ">=22.12.0" }
+}

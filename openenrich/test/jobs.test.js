@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { idempotencyKey } from '../api.js'
+import { autoMap, fillInputs, keptColumns, parseCsv, readAnswer, satisfies, toCsv } from '../src/jobs.js'
+
+const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
+
+test('auto-map feeds every input a column can, by alias', () => {
+  const cols = [{ id: 'first_name' }, { id: 'last_name' }, { id: 'company_domain' }, { id: 'linkedin_url' }]
+  assert.deepEqual(autoMap(EMAIL_FIND, cols, 'people'),
+    { domain: '{company_domain}', first_name: '{first_name}', last_name: '{last_name}', linkedin_url: '{linkedin_url}' })
+})
+
+test('"name" is a person only in a people table', () => {
+  const cols = [{ id: 'name' }, { id: 'website', label: 'Website' }]
+  assert.deepEqual(autoMap(EMAIL_FIND, cols, 'people'), { domain: '{website}', full_name: '{name}' })
+  assert.deepEqual(autoMap(EMAIL_FIND, cols, 'companies'), { domain: '{website}' })
+})
+
+test('inputs fill from cells, domains become hosts, empties drop, alternatives decide', () => {
+  const row = { cells: { site: 'https://www.ramp.com/about', who: { value: 'Eric Glyman', state: 'hit' }, li: '' } }
+  const inputs = fillInputs({ domain: '{site}', full_name: '{who}', linkedin_url: '{li}', title: 'founder' }, row)
+  assert.deepEqual(inputs, { domain: 'ramp.com', full_name: 'Eric Glyman', title: 'founder' })
+  assert.ok(satisfies(EMAIL_FIND, inputs))
+  assert.ok(!satisfies(EMAIL_FIND, { domain: 'ramp.com' }))
+})
+
+test('answers read as hit, miss, error or stop', () => {
+  const hit = readAnswer({ status: 200, answer: { columns: ['email', 'served_by'], rows: [['e@x.com', 'hunter']], _treg: {} } })
+  assert.equal(hit.state, 'hit')
+  assert.equal(hit.rows[0].email, 'e@x.com')
+  assert.equal(readAnswer({ status: 200, answer: { columns: ['email'], rows: [], _treg: { outcome: 'miss' } } }).state, 'miss')
+  assert.equal(readAnswer({ status: 502, answer: { error: 'upstream_error', upstream_status: 500 } }).state, 'error')
+  assert.equal(readAnswer({ status: 402, answer: {} }).state, 'stop')
+})
+
+test('list sources keep the fixed columns when treg mapped them', () => {
+  assert.deepEqual(keptColumns('people', ['first_name', 'last_name', 'title', 'company', 'linkedin_url', 'location', 'id', 'x.y']),
+    ['first_name', 'last_name', 'title', 'company', 'linkedin_url', 'location'])
+  assert.deepEqual(keptColumns('companies', ['a', 'b', 'served_by']), ['a', 'b'])
+})
+
+test('CSV round-trips quotes, commas and newlines', () => {
+  const rows = parseCsv('name,note\r\n"Ramp, Inc.","said ""hi""\nthen left"\n\nMercury,\n')
+  assert.deepEqual(rows, [['name', 'note'], ['Ramp, Inc.', 'said "hi"\nthen left'], ['Mercury', '']])
+  const cols = [{ id: 'name', label: 'name' }, { id: 'note', label: 'note' }]
+  const out = toCsv(cols, rows.slice(1).map(([name, note]) => ({ cells: { name, note: { value: note } } })))
+  assert.deepEqual(parseCsv(out), rows)
+})
+
+test('the idempotency key ignores key order and changes with the inputs', () => {
+  const a = idempotencyKey('treg.people.email.find', 'POST', {}, { domain: 'ramp.com', full_name: 'Eric' })
+  const b = idempotencyKey('treg.people.email.find', 'POST', {}, { full_name: 'Eric', domain: 'ramp.com' })
+  assert.equal(a, b)
+  assert.notEqual(a, idempotencyKey('treg.people.email.find', 'POST', {}, { domain: 'ramp.com', full_name: 'Karim' }))
+})
