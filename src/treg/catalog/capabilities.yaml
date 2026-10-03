@@ -1371,3 +1371,12 @@ capability_titles:
   companies.tech_stack: "Get the tech stack"
   companies.website.extract: "Extract from a website"
   companies.website_evolution: "Track website changes"
+  # signals a lead list watches (company and person rows)
+  linkedin.company.posts: "List company LinkedIn posts"
+  linkedin.user.posts: "List LinkedIn posts"
+  x.user.posts: "List X posts"
+  meta-ads.library.advertiser: "Find Meta ads"
+  google.ads.transparency: "Find Google ads"
+  linkedin.search.ads: "Find LinkedIn ads"
+  tiktok-ads.library.search: "Find TikTok ads"
+  trustpilot.business.reviews: "Read Trustpilot reviews"
