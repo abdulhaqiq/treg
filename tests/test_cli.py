@@ -124,6 +124,7 @@ def test_login_exits_instead_of_printing_a_dead_link_when_offline(monkeypatch):
         cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
     assert "Cannot reach https://treg.to" in str(exc_info.value)
     assert "treg login --token" in str(exc_info.value)
+    assert 'prefix_rule(pattern = ["treg"], decision = "allow")' in str(exc_info.value)
     assert opened == []
 
 
