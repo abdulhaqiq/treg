@@ -511,15 +511,24 @@ def cmd_login(args, cfg) -> None:
     except Exception as exc:
         start_exc = exc
         lid = _secrets.token_urlsafe(18)
-    # Detect localhost-with-nothing-listening: the install.sh sets base_url but if that failed, the
-    # default is production treg.to. If someone explicitly points at localhost (for local dev) and
-    # nothing is there, fail early with a helpful message rather than opening a dead browser page.
+    # An unreachable server must fail here, never fall back to a local id: the server would never
+    # have heard of that id, so the link could only ever answer "this login has expired", and the
+    # poll below could never reach it either. Agent sandboxes (Codex and the like) run commands with
+    # the network off, which is exactly this case. A localhost base_url gets the dev-server hint.
     if start_exc and _is_loopback_url(base):
         sys.exit(
             f"Cannot reach {base} — is a local treg server running?\n"
             f"  If you meant to use the production registry, run:\n"
             f"    treg config --base-url {PRODUCTION_BASE_URL}\n"
             f"  then retry `treg login`.\n"
+            f"  (error: {start_exc})"
+        )
+    if start_exc:
+        sys.exit(
+            f"Cannot reach {base} to start the sign-in, so no sign-in link was made.\n"
+            f"  If an agent sandbox runs this command (Codex and the like), allow it network access\n"
+            f"  and retry, or sign in without a browser: create a token in the dashboard, then\n"
+            f"    treg login --token <token>\n"
             f"  (error: {start_exc})"
         )
     # The code rides in the URL FRAGMENT (never sent to the server, so it stays out of request logs):
