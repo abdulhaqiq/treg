@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { idempotencyKey } from '../api.js'
-import { autoMap, fillInputs, keptColumns, parseCsv, readAnswer, satisfies, toCsv } from '../src/jobs.js'
+import { autoMap, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -53,4 +53,22 @@ test('the idempotency key ignores key order and changes with the inputs', () => 
   const b = idempotencyKey('treg.people.email.find', 'POST', {}, { full_name: 'Eric', domain: 'ramp.com' })
   assert.equal(a, b)
   assert.notEqual(a, idempotencyKey('treg.people.email.find', 'POST', {}, { domain: 'ramp.com', full_name: 'Karim' }))
+  assert.notEqual(a, idempotencyKey('treg.people.email.find', 'POST', {}, { domain: 'ramp.com', full_name: 'Eric' }, { exclude: ['tomba'] }))
+})
+
+test('list rows keep extras, drop duplicates and stop at the limit', () => {
+  const columns = ['name', 'domain', 'industry', 'employees', 'location', 'linkedin_url', 'description']
+  const rows = [
+    { name: 'Microsoft', domain: 'microsoft.com', description: 'software' },
+    { name: 'Microsoft', domain: 'microsoft.com', location: 'Campbell' },
+    { name: 'Google', domain: 'google.com' },
+    { name: 'Apple', domain: 'apple.com' },
+  ]
+  const { records, ids } = listRecords('companies', rows, columns, 2)
+  assert.deepEqual(records.map((r) => r.name), ['Microsoft', 'Google'])
+  assert.equal(ids.at(-1), 'description')
+  const people = listRecords('people', [{ fullName: 'Ada Lovelace', title: 'CTO' }],
+    ['first_name', 'last_name', 'title', 'company', 'linkedin_url', 'location', 'fullName'])
+  assert.equal(people.records[0].full_name, 'Ada Lovelace')
+  assert.equal(people.ids[0], 'full_name')
 })

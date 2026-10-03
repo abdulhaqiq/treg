@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from './client.js'
-import { cellValue, fillInputs, host, keptColumns, readAnswer, rowId, satisfies, toCsv, usd } from './jobs.js'
+import { cellValue, fillInputs, host, listRecords, readAnswer, rowId, satisfies, toCsv, usd } from './jobs.js'
 import ColumnPanel from './ColumnPanel.vue'
 
 const props = defineProps({ table: Object })
@@ -12,6 +12,7 @@ const adding = ref(false)
 const detail = ref(null)       // {row, column} shown in the side panel
 const run = ref(null)          // {done, total, spent, stopping}
 const banner = ref('')
+const menu = ref(null)         // the column whose header menu is open
 
 const CONCURRENCY = 5
 const DONE = new Set(['hit', 'miss'])
@@ -88,8 +89,8 @@ async function runRow(row, cols, job, child) {
     return
   }
   if (res.state === 'hit' && job.linked) {
-    addPeople(child, row, res)
-    row.cells[cols[0].id] = { value: res.rows.length, state: 'hit', link: child.name, ...meta }
+    const count = addPeople(child, row, res, job.limit)
+    row.cells[cols[0].id] = { value: count, state: 'hit', link: child.name, ...meta }
     return
   }
   for (const c of cols) {
@@ -110,18 +111,20 @@ async function childTable(col) {
   return child
 }
 
-function addPeople(child, parentRow, res) {
+function addPeople(child, parentRow, res, limit) {
   const company = cellValue(parentRow.cells.name ?? parentRow.cells.company_name ?? parentRow.cells.company) ?? ''
-  const ids = ['company_name', 'company_domain', ...keptColumns('people', res.columns).filter((c) => c !== 'company')]
+  const { records, ids: kept } = listRecords('people', res.rows, res.columns, limit)
+  const ids = ['company_name', 'company_domain', ...kept.filter((c) => c !== 'company')]
   for (const id of ids) if (!child.columns.some((c) => c.id === id)) child.columns.push({ id, label: id })
   child.rows = child.rows.filter((r) => r._parent !== parentRow.id)
-  for (const p of res.rows) {
+  for (const p of records) {
     child.rows.push({
       id: rowId(), _parent: parentRow.id,
       cells: Object.fromEntries(child.columns.map((c) => [c.id,
         c.id === 'company_name' ? company : c.id === 'company_domain' ? host(cellValue(parentRow.cells[domainColumn()])) : p[c.id] ?? null])),
     })
   }
+  return records.length
 }
 
 const domainColumn = () => (t.value.columns.find((c) => ['domain', 'company_domain', 'website'].includes(c.id)) || {}).id
@@ -152,8 +155,14 @@ const linkOf = (cell) => (cell && typeof cell === 'object' && typeof cell.link =
 
 function show(cell) {
   if (cell == null || typeof cell !== 'object') return cell ?? ''
-  if (cell.state === 'hit') return cell.value === true ? '✓' : cell.value === false ? '✗' : cell.value ?? ''
-  return { queued: '·', running: '⟳', miss: '— no match', skipped: '— missing input', error: '⚠ error' }[cell.state] ?? ''
+  return cell.value === true ? '✓' : cell.value === false ? '✗' : cell.value ?? ''
+}
+
+// A cell that has no value to show says why, as a small status pill.
+function pill(cell) {
+  if (!cell || typeof cell !== 'object') return ''
+  if (cell.state === 'hit') return ''
+  return { queued: 'Queued', running: 'Running', miss: 'No result', skipped: 'Missing input', error: 'Error' }[cell.state] ?? ''
 }
 
 function exportCsv() {
@@ -173,60 +182,74 @@ onUnmounted(() => window.removeEventListener('focus', reload))
 </script>
 
 <template>
-  <div class="bar">
-    <a v-if="t.parent" href="#" @click.prevent="emit('open', t.parent.table)">← {{ t.parent.table }}</a>
-    <strong>{{ t.rows.length }} rows</strong>
-    <template v-if="run">
-      <span>Running {{ run.done }} / {{ run.total }} · spent {{ usd(run.spent) }}</span>
-      <button class="ghost" :disabled="run.stopping" @click="run.stopping = true">{{ run.stopping ? 'Stopping…' : 'Stop' }}</button>
-    </template>
-    <span class="spacer" />
-    <button class="ghost" @click="exportCsv">Export CSV</button>
-    <button class="primary" :disabled="!!run" @click="adding = true">+ Add column</button>
-  </div>
-  <p v-if="banner" class="banner">{{ banner }}</p>
-
-  <div class="layout">
-    <div class="grid-wrap">
-      <table class="grid">
-        <thead>
-          <tr>
-            <th class="num">#</th>
-            <th v-for="c in t.columns" :key="c.id" :class="{ jobcol: c.job }">
-              <span>{{ c.label }}</span>
-              <span v-if="c.job && groups.get(c.job.group) === c && remaining(c) && !run" class="col-run">
-                <button title="Run 10 more rows" @click="runGroup(c.job.group, 10)">▶ 10</button>
-                <button :title="`Run the ${remaining(c)} rows left`" @click="runGroup(c.job.group, 'all')">all</button>
-              </span>
-              <button class="x" title="Delete column" @click="removeColumn(c)">×</button>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(r, i) in t.rows" :key="r.id">
-            <td class="num">{{ i + 1 }}</td>
-            <td v-for="c in t.columns" :key="c.id" :class="['cell', r.cells[c.id]?.state]"
-                @click="r.cells[c.id]?.state && (detail = { row: r, column: c })">
-              <a v-if="linkOf(r.cells[c.id])" href="#" @click.prevent.stop="emit('open', linkOf(r.cells[c.id]))">
-                {{ r.cells[c.id].value }} {{ r.cells[c.id].value === 1 ? 'person' : 'people' }} →
-              </a>
-              <template v-else>{{ show(r.cells[c.id]) }}</template>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+  <div class="sheet">
+    <div class="bar">
+      <a v-if="t.parent" class="crumb-link" href="#" @click.prevent="emit('open', t.parent.table)">← {{ t.parent.table }}</a>
+      <strong class="title">{{ t.name }}</strong>
+      <span class="muted small">{{ t.rows.length }} rows · {{ t.columns.length }} columns</span>
+      <span v-if="run" class="running">
+        <span class="dot" /> Running {{ run.done }} / {{ run.total }} · {{ usd(run.spent) }}
+        <button class="ghost" :disabled="run.stopping" @click="run.stopping = true">{{ run.stopping ? 'Stopping…' : 'Stop' }}</button>
+      </span>
+      <span class="spacer" />
+      <button @click="exportCsv">Export CSV</button>
     </div>
+    <p v-if="banner" class="banner">{{ banner }}</p>
 
-    <ColumnPanel v-if="adding" :table="t" @close="adding = false" @add="addColumns" />
+    <div class="layout">
+      <div class="grid-wrap" @click="menu = null">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th class="num">#</th>
+              <th v-for="c in t.columns" :key="c.id" :class="{ jobcol: c.job, open: menu === c.id }" @click.stop="menu = menu === c.id ? null : c.id">
+                <span class="th-label">{{ c.label }}</span>
+                <span class="caret">▾</span>
+                <div v-if="menu === c.id" class="menu" @click.stop>
+                  <template v-if="c.job">
+                    <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
+                    <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
+                    <hr />
+                  </template>
+                  <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
+                </div>
+              </th>
+              <th class="add-col"><button :disabled="!!run" @click.stop="adding = true; detail = null">+ Add column</button></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(r, i) in t.rows" :key="r.id">
+              <td class="num">{{ i + 1 }}</td>
+              <td v-for="c in t.columns" :key="c.id" :class="['cell', r.cells[c.id]?.state, { picked: detail?.row === r && detail?.column === c }]"
+                  @click="r.cells[c.id]?.state && (detail = { row: r, column: c }, adding = false)">
+                <a v-if="linkOf(r.cells[c.id])" class="pill link" href="#" @click.prevent.stop="emit('open', linkOf(r.cells[c.id]))">
+                  {{ r.cells[c.id].value }} {{ r.cells[c.id].value === 1 ? 'person' : 'people' }} →
+                </a>
+                <span v-else-if="pill(r.cells[c.id])" :class="['pill', r.cells[c.id].state]">{{ pill(r.cells[c.id]) }}</span>
+                <template v-else>{{ show(r.cells[c.id]) }}</template>
+              </td>
+              <td class="add-col" />
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-    <aside v-else-if="detail" class="panel">
-      <header><strong>{{ detail.column.label }}</strong><button class="ghost" @click="detail = null">Close</button></header>
-      <dl class="detail">
-        <template v-for="(v, k) in detail.row.cells[detail.column.id]" :key="k">
-          <dt>{{ k }}</dt>
-          <dd>{{ k === 'cost_micro' ? usd(v) : typeof v === 'object' ? JSON.stringify(v, null, 1) : v }}</dd>
-        </template>
-      </dl>
-    </aside>
+      <ColumnPanel v-if="adding" :table="t" @close="adding = false" @add="addColumns" />
+
+      <aside v-else-if="detail" class="side">
+        <header class="side-head">
+          <strong>{{ detail.column.label }} · row {{ t.rows.indexOf(detail.row) + 1 }}</strong>
+          <button class="icon" title="Close" @click="detail = null">✕</button>
+        </header>
+        <div class="side-body">
+          <dl class="detail">
+            <template v-for="(v, k) in detail.row.cells[detail.column.id]" :key="k">
+              <dt>{{ k.replace(/_/g, ' ') }}</dt>
+              <dd>{{ k === 'cost_micro' ? usd(v) : typeof v === 'object' ? JSON.stringify(v, null, 1) : v }}</dd>
+            </template>
+          </dl>
+        </div>
+      </aside>
+    </div>
   </div>
 </template>

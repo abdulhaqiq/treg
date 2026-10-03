@@ -99,7 +99,7 @@ onUnmounted(() => window.removeEventListener('hashchange', fromHash))
     <TableView :key="table.name" :table="table" @open="open" @balance="refreshAccount" />
   </main>
 
-  <main v-else-if="source" class="narrow">
+  <main v-else-if="source" class="full">
     <SourceForm :source="source" @cancel="source = null" @created="created" />
   </main>
 

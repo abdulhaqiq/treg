@@ -4,23 +4,26 @@
 export const SOURCES = [
   {
     id: 'companies', label: 'Find companies', kind: 'companies', tool: 'treg.companies.search',
-    hint: 'Describe the companies, or filter by industry or technology',
+    // tomba answers a filtered search with the same big-company list, ignoring country and limit
+    exclude: ['tomba'],
+    hint: 'Filter by industry, technology or country',
+    // no free-text field: treg sends a description to one provider only, with thin rows
     fields: [
-      { name: 'q', label: 'Describe', placeholder: 'B2B fintech startups' },
       { name: 'industry', label: 'Industry', placeholder: 'Software' },
       { name: 'technology', label: 'Uses technology', placeholder: 'Stripe' },
-      { name: 'country', label: 'Country (ISO code)', placeholder: 'US' },
+      { name: 'country', label: 'Country', placeholder: 'US (ISO code)' },
+      { name: 'name', label: 'Company name', placeholder: 'Acme' },
     ],
   },
   {
     id: 'people', label: 'Find people', kind: 'people', tool: 'treg.people.search',
-    hint: 'Describe the people, or give a title and a company domain',
+    hint: 'Filter by job title, company or location',
     fields: [
-      { name: 'q', label: 'Describe', placeholder: 'heads of growth at fintech startups' },
-      { name: 'title', label: 'Title', placeholder: 'Head of Growth' },
+      { name: 'title', label: 'Job title', placeholder: 'Head of Growth' },
       { name: 'company_domain', label: 'Company domain', placeholder: 'ramp.com' },
       { name: 'location', label: 'Location', placeholder: 'London, United Kingdom' },
-      { name: 'country', label: 'Country (ISO code)', placeholder: 'GB' },
+      { name: 'country', label: 'Country', placeholder: 'GB (ISO code)' },
+      { name: 'q', label: 'Keywords', placeholder: 'fintech, payments' },
     ],
   },
   {
@@ -31,14 +34,15 @@ export const SOURCES = [
 ]
 
 export const COLUMN_JOBS = [
-  { id: 'people_at', label: 'Find people at company', tool: 'treg.people.search', linked: true,
-    note: 'Makes a new people table, linked to this one' },
-  { id: 'email', label: 'Find work email', tool: 'treg.people.email.find', keep: ['email', 'verified'] },
-  { id: 'verify', label: 'Verify email', tool: 'treg.people.email.verify', keep: ['valid', 'status'] },
-  { id: 'phone', label: 'Find phone', tool: 'treg.people.phone.find', keep: ['phone', 'line_type'] },
-  { id: 'company', label: 'Enrich company', tool: 'treg.companies.enrich',
+  { id: 'people_at', group: 'People', label: 'Find people at company', tool: 'treg.people.search', linked: true,
+    note: 'Writes the people to a new table, linked to this one' },
+  { id: 'email', group: 'Contact info', label: 'Find work email', tool: 'treg.people.email.find', keep: ['email', 'verified'],
+    note: 'Tries providers cheapest first until one finds it' },
+  { id: 'verify', group: 'Contact info', label: 'Verify email', tool: 'treg.people.email.verify', keep: ['valid', 'status'] },
+  { id: 'phone', group: 'Contact info', label: 'Find mobile phone', tool: 'treg.people.phone.find', keep: ['phone', 'line_type'] },
+  { id: 'company', group: 'Enrich', label: 'Enrich company', tool: 'treg.companies.enrich',
     keep: ['description', 'industry', 'employees', 'founded', 'location'] },
-  { id: 'person', label: 'Enrich person', tool: 'treg.people.enrich', keep: ['title', 'company', 'location', 'linkedin_url'] },
+  { id: 'person', group: 'Enrich', label: 'Enrich person', tool: 'treg.people.enrich', keep: ['title', 'company', 'location', 'linkedin_url'] },
 ]
 
 // Column names that can feed each input, best first.
@@ -199,6 +203,42 @@ export const FIXED = {
 export function keptColumns(kind, columns) {
   const fixed = FIXED[kind]
   return fixed && fixed.every((c) => columns.includes(c)) ? fixed : columns.filter((c) => c !== 'served_by').slice(0, 12)
+}
+
+// Useful fields some providers add beyond the fixed columns, under the names they use.
+const EXTRA = {
+  people: { full_name: ['full_name', 'fullName', 'name', 'basic_profile.name', 'person.full_name', 'profile.full_name'],
+            email: ['email', 'person.email.email', 'work_email'] },
+  companies: { description: ['description', 'overview', 'company.description', 'descriptions.primary', 'one_liner'] },
+}
+
+// List rows as a table's records: the fixed columns plus the extras any row has, duplicates (same
+// domain, LinkedIn or name) dropped, at most `limit` rows (some providers ignore the limit).
+export function listRecords(kind, rows, columns, limit = Infinity) {
+  const extra = EXTRA[kind] || {}
+  const recs = rows.map((r) => {
+    const rec = Object.fromEntries(keptColumns(kind, columns).map((c) => [c, r[c] ?? null]))
+    for (const [name, paths] of Object.entries(extra)) {
+      const hit = paths.map((p) => r[p]).find((v) => typeof v === 'string' && v.trim())
+      if (hit) rec[name] = hit
+    }
+    if (kind === 'people' && !rec.full_name && (rec.first_name || rec.last_name)) {
+      rec.full_name = [rec.first_name, rec.last_name].filter(Boolean).join(' ')
+    }
+    return rec
+  })
+  const seen = new Set()
+  const out = []
+  for (const rec of recs) {
+    const key = String(rec.domain || rec.linkedin_url || rec.full_name || rec.name || '').toLowerCase()
+    if (key && seen.has(key)) continue
+    if (key) seen.add(key)
+    out.push(rec)
+    if (out.length >= limit) break
+  }
+  const ids = [...keptColumns(kind, columns)]
+  for (const name of Object.keys(extra)) if (out.some((r) => r[name])) ids.splice(kind === 'people' && name === 'full_name' ? 0 : ids.length, 0, name)
+  return { records: out, ids }
 }
 
 // A table built from list rows (a source search, or one parent's people).

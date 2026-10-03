@@ -19,9 +19,10 @@ async function credentials() {
   return { 'X-Treg-Token': token, ...(org ? { 'X-Treg-Org': org } : {}) }
 }
 
-// Same tool + same inputs = same key, so a re-run replays from treg for nothing.
-export function idempotencyKey(tool, method, query, body) {
-  return createHash('sha256').update(stableJson([tool, method, query || {}, body ?? null])).digest('hex').slice(0, 48)
+// Same tool + same inputs + same routing = same key, so a re-run replays from treg for nothing,
+// and a changed exclude list asks again instead of replaying the old provider's answer.
+export function idempotencyKey(tool, method, query, body, route = {}) {
+  return createHash('sha256').update(stableJson([tool, method, query || {}, body ?? null, route])).digest('hex').slice(0, 48)
 }
 
 export function stableJson(value) {
@@ -83,10 +84,11 @@ export async function handleApi(req, res) {
       return send(res, r.status, r.json)
     }
     if (route === 'run' && req.method === 'POST' && TOOL_ID.test(arg)) {
-      const { method = 'POST', query = {}, body, maxCost } = await readBody(req)
+      const { method = 'POST', query = {}, body, maxCost, exclude } = await readBody(req)
       const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== '' && v != null)).toString()
-      const headers = { 'Idempotency-Key': idempotencyKey(arg, method, query, body) }
+      const headers = { 'Idempotency-Key': idempotencyKey(arg, method, query, body, exclude?.length ? { exclude } : {}) }
       if (maxCost) headers['X-Treg-Route-Max-Cost'] = String(maxCost)
+      if (exclude?.length) headers['X-Treg-Route-Exclude'] = exclude.join(',')
       const r = await treg(`/table/${arg}${qs ? `?${qs}` : ''}`, { method, headers, body: method === 'GET' ? undefined : body })
       return send(res, 200, {
         status: r.status,
