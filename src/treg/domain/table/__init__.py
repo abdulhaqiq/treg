@@ -46,7 +46,25 @@ _PEOPLE_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("location", ("location", "location_name", "basic_profile.location.full_location", "location.linkedinText",
                   "location.address", "city", "location.city", "address")),
 )
-LIST_MAPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {"people": _PEOPLE_MAP}
+# `title` and `url` come last: exa names a company `title` and its homepage `url`, while other
+# providers' `url` is the LinkedIn page, read only after every domain field has been tried
+_COMPANIES_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("name", ("name", "company_name", "basic_info.name", "company.name", "about.name", "organization",
+              "display_name", "title")),
+    ("domain", ("domain", "company_domain", "basic_info.primary_domain", "company.domain", "domain.domain",
+                "email_domain", "website", "company_website", "company.website", "URLs.website", "websiteUrl", "url")),
+    ("industry", ("industry", "company_industry_linkedin", "company.industry", "about.industry", "industryList",
+                  "product_category")),
+    ("employees", ("employee_count", "employees", "company.employee_count", "linkedin_employee_count",
+                   "numberOfEmployees", "about.totalEmployeesExact", "employee_range", "size",
+                   "about.totalEmployees")),
+    ("location", ("location.name", "location_name", "headquarter", "hq_city", "company.location.city", "city",
+                  "locality", "location", "location.country", "country")),
+    ("linkedin_url", ("linkedin_url", "linkedinUrl", "company.linkedin_url", "URLs.linkedin",
+                      "linkedin_profile_url")),
+)
+LIST_MAPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {"people": _PEOPLE_MAP,
+                                                                  "companies": _COMPANIES_MAP}
 
 
 # ------------------------------------------------------------------------------------------------
