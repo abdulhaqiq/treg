@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { idempotencyKey } from '../api.js'
-import { autoMap, cellFrom, enrichmentJobs, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/jobs.js'
+import { autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -103,4 +103,26 @@ test('an enrichment icon says what it finds', async () => {
   assert.equal(iconFor('treg.people.email.find'), iconFor('people.email.find.personal'))     // both mail
   assert.notEqual(iconFor('people.email.verify'), iconFor('people.email.find'))              // check, not mail
   assert.notEqual(iconFor('companies.funding'), iconFor('companies.tech_stack'))
+})
+
+test('signals: signal capabilities group together, extras keep only per-company endpoints', () => {
+  const company = { capabilities: [{ id: 'companies.funding', description: 'Funding', endpoints: [{ id: 'a.f', provider: 'a' }] }] }
+  const linkedin = { capabilities: [
+    { id: 'linkedin.search.ads', description: 'Ads', endpoints: [
+      { id: 'b.co', provider: 'b', name: "Find a company's LinkedIn ads" }, { id: 'b.kw', provider: 'b', name: 'Search LinkedIn ads by keyword' }] },
+    { id: 'linkedin.user.profile', description: 'Profile', endpoints: [{ id: 'c.p', provider: 'c' }] },
+  ] }
+  const jobs = enrichmentJobs([['Company', company], ['Signals', signalShelf([linkedin])]], new Map())
+  assert.deepEqual(jobs.map((j) => [j.group, j.tool]), [['Signals', 'a.f'], ['Signals', 'b.co']])
+})
+
+test('two capabilities with the same title are one entry with both providers', () => {
+  const shelf = { capabilities: [
+    { id: 'companies.funding', description: 'Funding', title: 'List funding rounds', endpoints: [{ id: 'p.f', provider: 'p', cost: { usd: 0.04 } }] },
+    { id: 'companies.funding_rounds', description: 'Rounds', title: 'List funding rounds', endpoints: [{ id: 'a.f', provider: 'a', cost: { usd: 0.01 } }] },
+  ] }
+  const jobs = enrichmentJobs([['Company', shelf]], new Map())
+  assert.equal(jobs.length, 1)
+  assert.deepEqual(jobs[0].providers.map((x) => x.id), ['a.f', 'p.f'])
+  assert.equal(jobs[0].tool, 'a.f')
 })

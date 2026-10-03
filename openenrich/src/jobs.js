@@ -60,14 +60,39 @@ const NOT_PER_ROW = [
 ]
 export const ENRICH_SHELVES = [['people', 'People'], ['companies', 'Company']]
 
+// Signals: what makes a row worth contacting now (the /leads-signals sources). Some sit on the
+// people and company shelves; the rest live on other platforms and are fetched from those shelves.
+const SIGNAL_CAPS = new Set([
+  'people.signals', 'companies.jobs', 'companies.jobs.search', 'companies.funding', 'companies.funding_rounds',
+  'companies.news', 'companies.headcount_trend', 'companies.tech_stack', 'companies.signals',
+  'companies.website_evolution', 'companies.acquisitions', 'companies.reviews',
+])
+export const SIGNAL_EXTRAS = [
+  'linkedin.company.posts', 'linkedin.user.posts', 'x.user.posts', 'meta-ads.library.advertiser',
+  'google.ads.transparency', 'linkedin.search.ads', 'tiktok-ads.library.search', 'trustpilot.business.reviews',
+]
+// a platform shelf for the extras: only those capabilities, and only their per-company endpoints
+export function signalShelf(platforms) {
+  const capabilities = []
+  for (const p of platforms) {
+    for (const cap of p?.capabilities || []) {
+      if (!SIGNAL_EXTRAS.includes(cap.id)) continue
+      capabilities.push({ ...cap, endpoints: cap.endpoints.filter((ep) => !/by keyword/i.test(ep.name || '')) })
+    }
+  }
+  return { capabilities }
+}
+
 export function enrichmentJobs(shelves, routed) {
   const popular = new Set(COLUMN_JOBS.map((j) => j.tool))
   const out = []
-  for (const [group, platform] of shelves) {
+  for (const [shelf, platform] of shelves) {
     for (const cap of platform?.capabilities || []) {
+      let group = shelf
       if (NOT_PER_ROW.some((re) => re.test(cap.id))) continue
       const about = cap.description.replace(/\.$/, '')
       const label = cap.title || about                       // the catalog's short shelf title
+      if (SIGNAL_CAPS.has(cap.id) || SIGNAL_EXTRAS.includes(cap.id)) group = 'Signals'
       const best = routed.get(`treg.${cap.id}`)
       if (best) {
         const logos = [...new Set(cap.endpoints.map((ep) => ep.provider))]
@@ -80,13 +105,21 @@ export function enrichmentJobs(shelves, routed) {
         .map((ep) => ({ id: ep.id, slug: ep.provider, name: ep.provider_display || ep.provider, endpoint: ep.name, price: ep.cost?.usd }))
         .sort((x, y) => (x.price ?? Infinity) - (y.price ?? Infinity))
       if (!providers.length) continue
+      // the same job filed under two capability ids (funding vs funding_rounds) is one entry
+      const twin = out.find((j) => j.providers && j.group === group && j.label === label)
+      if (twin) {
+        twin.providers = [...twin.providers, ...providers].sort((x, y) => (x.price ?? Infinity) - (y.price ?? Infinity))
+        twin.logos = [...new Set(twin.providers.map((p) => p.slug))]
+        Object.assign(twin, { tool: twin.providers[0].id, price: twin.providers[0].price })
+        continue
+      }
       const logos = [...new Set(providers.map((p) => p.slug))]
       out.push({ id: cap.id, tool: providers[0].id, cap: cap.id, group, label, about, price: providers[0].price, providers, logos })
     }
   }
   return out
 }
-export const CATEGORY_ORDER = ['Popular', 'People', 'Company']
+export const CATEGORY_ORDER = ['Popular', 'Signals', 'People', 'Company']
 
 // Column names that can feed each input, best first.
 const ALIASES = {

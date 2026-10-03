@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from './client.js'
 import { iconFor } from './icons.js'
-import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, autoMap, enrichmentJobs, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
+import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SIGNAL_EXTRAS, autoMap, enrichmentJobs, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
 
 const props = defineProps({ table: Object })
 const emit = defineEmits(['close', 'add'])
@@ -25,10 +25,12 @@ const routed = ref([])         // every people and company enrichment, from the 
 onMounted(async () => {
   for (const j of COLUMN_JOBS) api.tool(j.tool).then((t) => (tools[j.tool] = t)).catch(() => {})
   try {
+    const extraPlatforms = [...new Set(SIGNAL_EXTRAS.map((c) => c.split('.')[0]))]
     const [best, ...shelves] = await Promise.all([api.search('treg', 100),
-      ...ENRICH_SHELVES.map(([slug]) => api.platform(slug).catch(() => null))])
+      ...[...ENRICH_SHELVES.map(([slug]) => slug), ...extraPlatforms].map((slug) => api.platform(slug).catch(() => null))])
     const byId = new Map((best.results || []).filter((r) => r.id.startsWith('treg.')).map((r) => [r.id, r]))
-    routed.value = enrichmentJobs(ENRICH_SHELVES.map(([, group], i) => [group, shelves[i]]), byId)
+    const own = ENRICH_SHELVES.map(([, group], i) => [group, shelves[i]])
+    routed.value = enrichmentJobs([...own, ['Signals', signalShelf(shelves.slice(ENRICH_SHELVES.length))]], byId)
   } catch {}
 })
 
@@ -131,7 +133,7 @@ function add(rows) {
         <button class="icon" title="Close" @click="emit('close')">✕</button>
       </header>
       <form class="side-search" @submit.prevent>
-        <input v-model="query" :placeholder="`Search ${COLUMN_JOBS.length + routed.length} people and company enrichments…`" autofocus />
+        <input v-model="query" :placeholder="`Search ${COLUMN_JOBS.length + routed.length} enrichments and signals…`" autofocus />
       </form>
       <div class="side-body">
         <section v-for="(list, name) in groups" :key="name">
