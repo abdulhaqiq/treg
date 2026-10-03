@@ -311,6 +311,15 @@ def test_each_company_provider_fills_the_fixed_columns(provider, expect):
         assert row[column] == source[path], (provider, column, path)
 
 
+def test_a_path_reads_into_a_list_by_index():
+    # exa keeps a company's facts in `entities[0].properties`
+    item = {"title": "B2B Rocket", "url": "https://b2brocket.ai/", "entities": [{"properties": {
+        "workforce": {"total": 150}, "headquarters": {"address": "Lewes, DE 19958, US"}}}]}
+    t = to_table({"output": {"companies": [item]}, "_treg": {}}, contract_output=["companies"], list_field="companies")
+    row = dict(zip(t["columns"], t["rows"][0]))
+    assert (row["employees"], row["location"]) == (150, "Lewes, DE 19958, US")
+
+
 def test_a_one_item_list_is_one_row_unless_it_wraps_tables():
     t = to_table({"data": [{"name": "a", "email": "a@x.com"}], "total": 1})
     assert t["shape"] == "list" and t["columns"] == ["name", "email"] and t["rows"] == [["a", "a@x.com"]]

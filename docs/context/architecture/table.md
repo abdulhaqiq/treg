@@ -130,7 +130,7 @@ contract_output=, list_field=, hub_fields=)` never raises: anything it cannot sh
   names to fixed columns first: `people` to `first_name`, `last_name`, `title`, `company`,
   `linkedin_url`, `location`; `companies` to `name`, `domain`, `industry`, `employees`, `location`,
   `linkedin_url` (a bare `url` only as the last domain path: a homepage for one provider, a LinkedIn
-  page for another). First matching path that holds text wins (`organization.name` is a path; an object is never
+  page for another). A path's numeric part indexes a list (`entities.0.properties.workforce.total`, exa). First matching path that holds text wins (`organization.name` is a path; an object is never
   taken, so an object `company` falls through to `company.name`); every other
   field follows under the provider's own name, minus the paths a mapped column used.
 - **hub**: an id not in the catalog that `hub.tool_for` resolves for this caller (one short read,
