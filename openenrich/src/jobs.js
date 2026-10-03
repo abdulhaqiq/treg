@@ -204,7 +204,19 @@ export function readAnswer(r) {
       : d.message || (typeof a.detail === 'string' ? a.detail : '') || d.error || a.error || `HTTP ${r.status}`
     return { state: 'error', error: String(why), retry: r.status === 429 }
   }
-  const rows = (a.rows || []).map((row) => Object.fromEntries((a.columns || []).map((c, i) => [c, row[i]])))
+  let rows = (a.rows || []).map((row) => Object.fromEntries((a.columns || []).map((c, i) => [c, row[i]])))
+  // a nested answer (an object holding several lists) comes as `field, value` summary rows, each
+  // list already joined; read it as one record, under the short name and the full path (`colors`
+  // and `brand.colors`, the name the column preview used)
+  if (a.shape === 'nested') {
+    const parent = (a.tables?.[0]?.path || '').split('.').slice(0, -1).join('.')
+    const rec = {}
+    for (const { field, value } of rows) {
+      rec[field] = value
+      if (parent) rec[`${parent}.${field}`] = value
+    }
+    rows = rows.length ? [rec] : []
+  }
   if (a._treg?.outcome === 'miss' || !rows.length) return { state: 'miss', rows: [], columns: [] }
   return { state: 'hit', rows, columns: a.columns || [] }
 }

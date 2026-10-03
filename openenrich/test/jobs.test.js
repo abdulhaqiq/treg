@@ -126,3 +126,11 @@ test('two capabilities with the same title are one entry with both providers', (
   assert.deepEqual(jobs[0].providers.map((x) => x.id), ['a.f', 'p.f'])
   assert.equal(jobs[0].tool, 'a.f')
 })
+
+test('a nested answer reads as one record under short and full field names', () => {
+  const r = readAnswer({ status: 200, answer: { shape: 'nested', columns: ['field', 'value'],
+    rows: [['domain', 'cisco.com'], ['colors', '#02c8ff, #051c2d']], tables: [{ name: 'colors', path: 'brand.colors' }], _treg: {} } })
+  assert.equal(r.state, 'hit')
+  assert.equal(r.rows[0]['brand.colors'], '#02c8ff, #051c2d')
+  assert.equal(r.rows[0].domain, 'cisco.com')
+})

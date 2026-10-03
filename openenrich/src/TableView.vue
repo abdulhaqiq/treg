@@ -37,9 +37,11 @@ async function flush() {
 }
 
 // --- running a column -----------------------------------------------------------------------------
-async function runGroup(group, howMany) {
+async function runGroup(group, howMany, again = false) {
   if (run.value) return
   const cols = t.value.columns.filter((c) => c.job?.group === group)
+  // re-running replays each answered row from treg for nothing (same Idempotency-Key)
+  if (again) for (const r of t.value.rows) for (const c of cols) r.cells[c.id] = null
   const job = cols[0].job
   const todo = t.value.rows.filter((r) => !DONE.has(r.cells[cols[0].id]?.state))
   const queue = howMany === 'all' ? todo : todo.slice(0, howMany)
@@ -52,11 +54,12 @@ async function runGroup(group, howMany) {
   // Each call holds up to its cap until it settles, so a low balance can refuse a hold while
   // other rows still run: that row waits for them instead of stopping the run.
   let inFlight = 0
+  const shared = new Map()      // rows with the same inputs share one call (one Idempotency-Key)
   const worker = async () => {
     while (queue.length && !run.value.stopping) {
       const row = queue.shift()
       inFlight++
-      const out = await runRow(row, cols, job, child, () => inFlight > 1)
+      const out = await runRow(row, cols, job, child, () => inFlight > 1, shared)
       inFlight--
       if (out === 'wait') {
         queue.unshift(row)
@@ -74,7 +77,7 @@ async function runGroup(group, howMany) {
   emit('balance')
 }
 
-async function runRow(row, cols, job, child, othersRunning) {
+async function runRow(row, cols, job, child, othersRunning, shared) {
   const inputs = fillInputs(job.inputs, row)
   if (!Object.keys(inputs).length || !satisfies(job.needs || [], inputs)) {
     for (const c of cols) row.cells[c.id] = { state: 'skipped', inputs }
@@ -84,11 +87,9 @@ async function runRow(row, cols, job, child, othersRunning) {
   const req = job.method === 'GET'
     ? { method: 'GET', query: inputs }
     : { method: job.method, body: job.linked ? { ...inputs, limit: job.limit } : inputs, maxCost: job.maxCost }
-  let r = await api.run(job.tool, req)
-  if (r.status === 429) {
-    await new Promise((ok) => setTimeout(ok, 3000))
-    r = await api.run(job.tool, req)
-  }
+  const key = JSON.stringify(req)
+  if (!shared.has(key)) shared.set(key, callWithRetry(job.tool, req))
+  const r = await shared.get(key)
   const res = readAnswer(r)
   const meta = { served_by: r.served_by, cost_micro: r.cost_micro, call_id: r.call_id, replay: r.replay, inputs }
   run.value.spent += r.cost_micro || 0
@@ -111,6 +112,17 @@ async function runRow(row, cols, job, child, othersRunning) {
     row.cells[c.id] = res.state === 'hit'
       ? { value: cellFrom(res.rows, c.job.field), state: 'hit', answer: res.rows.length > 1 ? res.rows : res.rows[0], ...meta }
       : { value: null, state: res.state, error: res.error, ...meta }
+  }
+}
+
+// 429, or the same key still running from an earlier run: wait and ask again (a finished call
+// answers from treg's replay, free)
+async function callWithRetry(tool, req) {
+  for (let attempt = 0; ; attempt++) {
+    const r = await api.run(tool, req)
+    const busy = r.status === 429 || (r.status === 409 && /in progress/i.test(JSON.stringify(r.answer)))
+    if (!busy || attempt >= 5) return r
+    await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1)))
   }
 }
 
@@ -224,6 +236,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                   <template v-if="c.job">
                     <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
                     <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
+                    <button :disabled="!!run" @click="menu = null; runGroup(c.job.group, 'all', true)">Re-run all rows</button>
                     <hr />
                   </template>
                   <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
