@@ -92,7 +92,7 @@ main.full { padding: 0; }
 .bar { display: flex; align-items: center; gap: 12px; padding: 10px 0; flex-wrap: wrap; }
 .bar .title { font-size: 15px; }
 .crumb-link { font-size: 12px; }
-.running { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-size: 12px; }
+.run-status { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-size: 12px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite alternate; }
 @keyframes pulse { from { opacity: .3; } to { opacity: 1; } }
 .layout { display: flex; flex: 1; min-height: 0; gap: 0; padding-bottom: 16px; }

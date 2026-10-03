@@ -14,7 +14,7 @@ const run = ref(null)          // {done, total, spent, stopping}
 const banner = ref('')
 const menu = ref(null)         // the column whose header menu is open
 
-const CONCURRENCY = 5
+const CONCURRENCY = 10   // a waterfall row takes 5-15 s, so rows run side by side
 const DONE = new Set(['hit', 'miss'])
 
 const groups = computed(() => {
@@ -201,7 +201,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
       <a v-if="t.parent" class="crumb-link" href="#" @click.prevent="emit('open', t.parent.table)">← {{ t.parent.table }}</a>
       <strong class="title">{{ t.name }}</strong>
       <span class="muted small">{{ t.rows.length }} rows · {{ t.columns.length }} columns</span>
-      <span v-if="run" class="running">
+      <span v-if="run" class="run-status">
         <span class="dot" /> Running {{ run.done }} / {{ run.total }} · {{ usd(run.spent) }}
         <button class="ghost" :disabled="run.stopping" @click="run.stopping = true">{{ run.stopping ? 'Stopping…' : 'Stop' }}</button>
       </span>
