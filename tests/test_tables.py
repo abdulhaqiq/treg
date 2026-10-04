@@ -106,3 +106,10 @@ async def test_deleting_the_team_deletes_its_tables_and_rows(clients: AsyncClien
     async with session_maker() as db:
         assert (await db.execute(select(func.count(TableDoc.id)).where(TableDoc.org_id == org.json()["org_id"]))).scalar_one() == 0
         assert (await db.execute(select(func.count(TableRow.id)))).scalar_one() == 0
+
+
+async def test_csv_export_neutralises_formulas(clients: AsyncClient, table_on):
+    await clients.post("/tables", json={"name": "f", "columns": [{"id": "a", "label": "a"}],
+                                        "rows": [{"cells": {"a": "=HYPERLINK(\"x\")"}}, {"cells": {"a": -5}}]})
+    lines = (await clients.get("/tables/f?format=csv")).text.splitlines()
+    assert lines[1] == "\"'=HYPERLINK(\"\"x\"\")\"" and lines[2] == "-5"

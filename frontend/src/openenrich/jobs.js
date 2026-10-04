@@ -360,7 +360,9 @@ export function parseCsv(text) {
 
 export function toCsv(columns, rows) {
   const esc = (v) => {
-    const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    let s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    // text that opens with a formula character would run as a formula in a spreadsheet (CSV injection)
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   return [columns.map((c) => esc(c.label)), ...rows.map((r) => columns.map((c) => esc(cellValue(r.cells[c.id]))))]

@@ -83,7 +83,10 @@ def _csv(table: dict, name: str) -> Response:
         for c in columns:
             cell = row["cells"].get(c["id"])
             value = cell.get("value") if isinstance(cell, dict) else cell
-            values.append("" if value is None else value if isinstance(value, (str, int, float)) else str(value))
+            text = "" if value is None else value if isinstance(value, (int, float)) else str(value)
+            # a provider's text that opens with a formula character would run as a formula in a
+            # spreadsheet: quote it so it reads as text (CSV injection)
+            values.append("'" + text if isinstance(text, str) and text[:1] in ("=", "+", "-", "@", "\t", "\r") else text)
         writer.writerow(values)
     return Response(out.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})

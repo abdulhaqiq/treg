@@ -157,3 +157,9 @@ test('a setting defaults to the example, then the verified test request, then th
   assert.equal(settingDefault(ep, 'engine'), 'x')
   assert.equal(settingDefault(ep, 'profile_url'), undefined)
 })
+
+test('CSV export neutralises formulas in text', () => {
+  const out = toCsv([{ id: 'a', label: 'a' }], [{ cells: { a: '=cmd()' } }, { cells: { a: -5 } }])
+  assert.equal(out.split('\n')[1], "'=cmd()")
+  assert.equal(out.split('\n')[2], '-5')
+})
