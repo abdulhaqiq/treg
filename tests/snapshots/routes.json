@@ -478,6 +478,64 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "list_tables",
+    "path": "/tables"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_table",
+    "path": "/tables"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "get_table",
+    "path": "/tables/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_table",
+    "path": "/tables/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_table",
+    "path": "/tables/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "upsert_rows",
+    "path": "/tables/{name}/rows"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "delete_rows",
+    "path": "/tables/{name}/rows/delete"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "host_media",
@@ -683,6 +741,24 @@
     ],
     "name": "dashboard_run_page",
     "path": "/app/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "openenrich_page",
+    "path": "/openenrich"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "openenrich_table_page",
+    "path": "/openenrich/{name}"
   },
   {
     "kind": "APIRoute",

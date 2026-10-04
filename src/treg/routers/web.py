@@ -3302,6 +3302,25 @@ async def dashboard_run_page(run_id: str):
     return _spa_with_og("runs", run_id)
 
 
+@app.get("/openenrich", include_in_schema=False)
+async def openenrich_page(
+    request: Request, treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+):
+    """openenrich (docs/context/architecture/tables.md): the dashboard, opened on the team's tables.
+    The SPA reads the path; a signed-out visitor gets the sign-in and lands here after it."""
+    return await dashboard(request, treg_session, db)
+
+
+@app.get("/openenrich/{name}", include_in_schema=False)
+async def openenrich_table_page(
+    name: str, request: Request, treg_session: str = Cookie(default=""),  # noqa: ARG001 — the SPA reads the path itself
+    db: AsyncSession = Depends(get_session),
+):
+    """One table of the team in openenrich."""
+    return await dashboard(request, treg_session, db)
+
+
 @app.get("/llms.txt", include_in_schema=False)
 async def llms_txt(request: Request, db: AsyncSession = Depends(get_session)):
     """Agent-readable overview (llms.txt convention) — an AI agent that fetches this learns the

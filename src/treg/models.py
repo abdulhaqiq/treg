@@ -2033,3 +2033,38 @@ class OnboardingProfile(SQLModel, table=True):
     house_cost_micro: int = Field(default=0, sa_column=Column(BigInteger, nullable=False, server_default="0"))
     created_at: NaiveUTC = Field(default_factory=_now)
     finished_at: NaiveUTC | None = None
+
+
+class TableDoc(SQLModel, table=True):
+    """A team's table in openenrich (docs/context/architecture/tables.md): rows of companies or
+    people, and columns that are either plain values or a job (a catalog or hub tool, its input
+    mapping and the output field it fills). Phase 1 stores it; the page runs the jobs."""
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_tabledoc_org_name"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    name: str                                        # the URL name, unique in the team
+    kind: str = Field(default="")                    # companies | people | "" (a CSV)
+    parent_id: int | None = Field(default=None)      # a linked table: the table its rows came from
+    parent_column: str | None = Field(default=None)  # the parent's column that made it
+    source: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    columns: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    created_by: str = Field(default="")
+    created_at: NaiveUTC = Field(default_factory=_now)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class TableRow(SQLModel, table=True):
+    """One row of a TableDoc. `row_key` is the id clients address it by; `cells` maps a column id to
+    a plain value or a job cell ({value, state, served_by, cost_micro, call_id, inputs, ...})."""
+
+    __table_args__ = (UniqueConstraint("table_id", "row_key", name="uq_tablerow_table_key"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    table_id: int = Field(foreign_key="tabledoc.id", index=True)
+    row_key: str
+    parent_row: str | None = Field(default=None)     # in a linked table, the parent row's key
+    position: int = Field(default=0)
+    cells: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    updated_at: NaiveUTC = Field(default_factory=_now)

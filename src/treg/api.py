@@ -68,6 +68,7 @@ from .routers import provider_resources as provider_resource_routes
 from .routers import referrals as referral_routes
 from .routers import resources as resources_routes
 from .routers import table as table_routes
+from .routers import tables as tables_routes
 from .routers import web as web_routes
 from .routers.auth import _client_ip
 from .routers.auth_helpers import _same_origin
@@ -316,6 +317,7 @@ async def create_tool_request(
 
 router.routes.extend(feedback_routes.app.routes)
 router.routes.extend(hub_routes.app.routes)
+router.routes.extend(tables_routes.app.routes)
 router.routes.extend(media_routes.app.routes)
 router.routes.extend(auth_routes.social_router.routes)
 router.routes.extend(auth_routes.cli_router.routes)         # CLI pairing
