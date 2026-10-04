@@ -562,6 +562,7 @@ Provider-specific calculation stays outside the faithful relay.
 | CompanyEnrich people search | Rows in `items[]`, floored at 1 (the documented 2-credit minimum on an empty page); each row is 2 credits (`_rows_billed_micro` scales `unit_micro` by the row's `cost.value`), capped at the reserved `pageSize` |
 | Icypeas bulk (`profile.url.bulk`, `people.identity.resolve.bulk`, `scrape.bulk`) | Rows in `data[]` whose `status` is `FOUND`; a company scrape (`type: "company"` in the request body) bills at 0.5 credit a hit, other bulk rows at 1 credit; `NOT_FOUND` rows are free |
 | Serpstat | An `error` envelope (bad token, exhausted limit, "Data not found") is free; otherwise rows in `result.data[]`, or `result.data.top[]` for `getKeywordTop`, floored at the documented 1-credit minimum on an empty list; any other response shape settles at the estimate |
+| SpyFu | Rows in `results[]` at the per-row price, capped at the hold; an empty list is free and any other shape settles at the estimate |
 | TheCompaniesAPI companies search | `simplified=true` is free on endpoints that declare it in `input.queryParams`; otherwise one credit per company in `companies[]`, capped at the requested `size` |
 | Findymail employee search | One finder credit per contact in the returned list (`_rows_billed_micro`); an empty list is a free miss where the estimate used to bill the hold |
 | You.com Contents | Reserve for each requested URL, then count objects in the returned bare array at the frozen per-page price, capped at the hold. An unreadable response keeps the estimate. Search modes that may trigger live page fetches stay BYOK because the response does not identify the billed pages |
@@ -576,7 +577,7 @@ Multiplying it by `unit_micro` billed a 30-credit Datagma phone lookup as 900 cr
 
 The row-count signal for that estimate (`resolve._LIMIT_PARAMS` / `_body_limit`) reads the caller's
 `limit`/`count`/`size`/`per_page`… in the query or body, the camelCase spellings (`pageSize`,
-`numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`), a nested `pagination.{size,…}`, and — for providers that
+`numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`, SpyFu's one-row-per-month `pastNMonths`), a nested `pagination.{size,…}`, and — for providers that
 bill one row per listed item — the length of `targets`/`keywords`/`domains`/`urls`/`lookups`/
 `emails`. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
 settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
