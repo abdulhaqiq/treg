@@ -288,6 +288,11 @@ bump; a script's amounts change only with a new version of run.js.
 
 ## The surfaces
 
+- **Hub apps** (behind their own flag): an optional web page per tool, `/apps/<team>/<name>`, with
+  an optional password that, while the app is on, also locks the tool for other teams. See
+  `architecture/hub-apps.md`. **Vibe-it** (behind its own flag) builds a hub tool in conversation
+  with treg's agent; see `architecture/vibe-it.md`.
+
 - **The front door for agents:** `skill.md` and `llms.txt` carry a hub section inside
   `<!--hub-->…<!--/hub-->` blocks that `routers/web.py` strips while the flag is off (as it
   strips the routed-discovery blocks); `scripts/build_plugin.py` drops the block the same way and
