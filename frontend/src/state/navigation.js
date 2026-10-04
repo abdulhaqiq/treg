@@ -15,7 +15,7 @@ go(v, fromPop){ this.resetConfirms(); this.mobileNav=false; this.drawerTool=null
       // push history so browser Back navigates BETWEEN views instead of leaving the app; the '/app'
       // pathname also walks back from a /app/skills/<x> detail URL so reload doesn't reopen the detail
       if(!fromPop) history.pushState({view:v}, '',
-        this.publicCatalog && v==='catalog' ? '/catalog' : '/app#'+v);
+        this.publicCatalog && v==='catalog' ? '/catalog' : v==='openenrich' ? '/openenrich' : '/app#'+v);
       if(!fromPop) window.scrollTo(0,0);
       this.startAgentOpen=false; this.orgMenu=false;
       if(this.elements.accountMenu) this.elements.accountMenu.open=false; },

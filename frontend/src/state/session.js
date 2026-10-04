@@ -19,7 +19,7 @@ save(){ storageSet(LS, JSON.stringify(this.cfg)); },
 connected(slug){ return this.sessionMode || !!this.cfg.orgs[slug]; },
 toggleTheme(){ this.theme=this.theme==='dark'?'light':'dark'; document.documentElement.dataset.theme=this.theme; storageSet('treg-theme',this.theme); },
 _stashNext(){  // OAuth callbacks land on /app, losing a /app/skills/<x> deep link — stash it to restore after boot
-      const d=this.routeFromPath(location.pathname)||this.mkFromPath(location.pathname);
+      const d=this.routeFromPath(location.pathname)||this.mkFromPath(location.pathname)||this.oeFromPath(location.pathname);
       if(d) storageSet('treg-next', location.pathname); },
 githubLogin(){ this._stashNext(); location.href='/auth/github'; },
 googleLogin(){ this._stashNext(); location.href='/auth/google'; },
@@ -70,6 +70,7 @@ async loadAll(){ const live=this.ticket('all', false); this.err=''; this.loading
             || ((this.isPersonal(a)?1:0)-(this.isPersonal(b)?1:0)) );
           this.activeSlug=byTools[0].slug; storageSet('treg-active',this.activeSlug);
         }
+        this.probeOpenEnrich();   // the openenrich entry follows the active team too
         this.probeHub();   // the Hub entry follows the active team (TREG_HUB_TEAMS), so it asks once that team is settled; not awaited
         // Re-mint the bearer whenever the ACTIVE org changes: the token now bakes the org slug in
         // (so it works as a bare MCP Authorization bearer), and a stale one would name the old team.

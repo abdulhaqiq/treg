@@ -1,0 +1,309 @@
+<script setup>
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { cellFrom, cellValue, fillInputs, host, listRecords, readAnswer, rowId, satisfies, toCsv, usd } from './jobs.js'
+import ColumnPanel from './ColumnPanel.vue'
+import { loadTable, toStoredRows } from './client.js'
+
+const props = defineProps({ table: Object })
+const emit = defineEmits(['open', 'balance'])
+const api = inject('oeApi')
+
+const t = ref(props.table)
+const adding = ref(false)
+const detail = ref(null)       // {row, column} shown in the side panel
+const run = ref(null)          // {done, total, spent, stopping}
+const banner = ref('')
+const menu = ref(null)         // the column whose header menu is open
+
+const CONCURRENCY = 10   // a waterfall row takes 5-15 s, so rows run side by side
+const DONE = new Set(['hit', 'miss'])
+
+const groups = computed(() => {
+  const seen = new Map()
+  for (const c of t.value.columns) if (c.job && !seen.has(c.job.group)) seen.set(c.job.group, c)
+  return seen
+})
+
+// --- saving: the table lives in treg; only what changed since the last sync is sent ----------------
+let saveTimer = null
+const synced = new Map()       // table name -> {columns: json, rows: Map(row id -> json)}
+const children = new Map()     // linked tables written by "Find people at company": name -> {table, replaced}
+const rowJson = (r) => JSON.stringify(r.cells) + '|' + (r._parent || '')
+function remember(table) {
+  synced.set(table.name, { columns: JSON.stringify(table.columns), rows: new Map(table.rows.map((r) => [r.id, rowJson(r)])) })
+}
+remember(t.value)
+
+function save() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(flush, 600)
+}
+let flushing = Promise.resolve()
+function flush() {
+  clearTimeout(saveTimer)
+  flushing = flushing.then(async () => {
+    await flushTable(t.value, null)
+    for (const c of children.values()) { await flushTable(c.table, c.replaced); c.replaced = new Set() }
+  }).catch((e) => { banner.value = `Could not save: ${e.message}` })
+  return flushing
+}
+async function flushTable(table, replaced) {
+  const last = synced.get(table.name) || { columns: '', rows: new Map() }
+  if (JSON.stringify(table.columns) !== last.columns) await api.update(table.name, { columns: table.columns })
+  const parents = replaced && replaced.size ? [...replaced] : null
+  const changed = table.rows.filter((r) => (parents && parents.includes(r._parent)) || last.rows.get(r.id) !== rowJson(r))
+  if (changed.length || parents) await api.upsertRows(table.name, toStoredRows(changed), parents)
+  remember(table)
+}
+
+// --- running a column -----------------------------------------------------------------------------
+async function runGroup(group, howMany, again = false) {
+  if (run.value) return
+  const cols = t.value.columns.filter((c) => c.job?.group === group)
+  // re-running replays each answered row from treg for nothing (same Idempotency-Key)
+  if (again) for (const r of t.value.rows) for (const c of cols) r.cells[c.id] = null
+  const job = cols[0].job
+  const todo = t.value.rows.filter((r) => !DONE.has(r.cells[cols[0].id]?.state))
+  const queue = howMany === 'all' ? todo : todo.slice(0, howMany)
+  if (!queue.length) return
+  banner.value = ''
+  run.value = { done: 0, total: queue.length, spent: 0, stopping: false }
+  const child = job.linked ? await childTable(cols[0]) : null
+  for (const r of queue) for (const c of cols) r.cells[c.id] = { state: 'queued' }
+
+  // Each call holds up to its cap until it settles, so a low balance can refuse a hold while
+  // other rows still run: that row waits for them instead of stopping the run.
+  let inFlight = 0
+  const shared = new Map()      // rows with the same inputs share one call (one Idempotency-Key)
+  const worker = async () => {
+    while (queue.length && !run.value.stopping) {
+      const row = queue.shift()
+      inFlight++
+      const out = await runRow(row, cols, job, child, () => inFlight > 1, shared)
+      inFlight--
+      if (out === 'wait') {
+        queue.unshift(row)
+        await new Promise((ok) => setTimeout(ok, 1500))
+        continue
+      }
+      run.value.done++
+      save()
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker))
+  for (const r of queue) for (const c of cols) if (r.cells[c.id]?.state === 'queued') r.cells[c.id] = null
+  await flush()
+  run.value = null
+  emit('balance')
+}
+
+async function runRow(row, cols, job, child, othersRunning, shared) {
+  const inputs = fillInputs(job.inputs, row)
+  const fromRow = Object.fromEntries(Object.entries(job.inputs).filter(([, v]) => String(v).includes('{')))
+  if (!Object.keys(fillInputs(fromRow, row)).length || !satisfies(job.needs || [], inputs)) {
+    for (const c of cols) row.cells[c.id] = { state: 'skipped', inputs }
+    return
+  }
+  for (const c of cols) row.cells[c.id] = { state: 'running' }
+  const req = job.method === 'GET'
+    ? { method: 'GET', query: inputs }
+    : { method: job.method, body: job.linked ? { ...inputs, limit: job.limit } : inputs, maxCost: job.maxCost }
+  const key = JSON.stringify(req)
+  if (!shared.has(key)) shared.set(key, callWithRetry(job.tool, req))
+  const r = await shared.get(key)
+  const res = readAnswer(r)
+  const meta = { served_by: r.served_by, cost_micro: r.cost_micro, call_id: r.call_id, replay: r.replay, inputs }
+  run.value.spent += r.cost_micro || 0
+  if (res.state === 'stop' && res.low && othersRunning()) {
+    for (const c of cols) row.cells[c.id] = { state: 'queued' }
+    return 'wait'
+  }
+  if (res.state === 'stop') {
+    run.value.stopping = true
+    banner.value = res.error
+    for (const c of cols) row.cells[c.id] = null
+    return
+  }
+  if (res.state === 'hit' && job.linked) {
+    const count = addPeople(child, row, res, job.limit)
+    row.cells[cols[0].id] = { value: count, state: 'hit', link: child.name, ...meta }
+    return
+  }
+  for (const c of cols) {
+    row.cells[c.id] = res.state === 'hit'
+      ? { value: cellFrom(res.rows, c.job.field), state: 'hit', answer: res.rows.length > 1 ? res.rows : res.rows[0], ...meta }
+      : { value: null, state: res.state, error: res.error, ...meta }
+  }
+}
+
+// 429, or the same key still running from an earlier run: wait and ask again (a finished call
+// answers from treg's replay, free)
+async function callWithRetry(tool, req) {
+  for (let attempt = 0; ; attempt++) {
+    const r = await api.run(tool, req)
+    const busy = r.status === 429 || (r.status === 409 && /in progress/i.test(JSON.stringify(r.answer)))
+    if (!busy || attempt >= 5) return r
+    await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1)))
+  }
+}
+
+// "Find people at company": a linked people table, one call per company row. The column keeps its
+// table's name, so a re-run writes to the same one.
+async function childTable(col) {
+  let child = null
+  if (col.job.child) { try { child = await loadTable(api, col.job.child) } catch {} }
+  if (!child) {
+    const made = await api.create({ name: `${t.value.name}-people`, kind: 'people', parent: { table: t.value.name, column: col.id } })
+    child = { name: made.name, kind: 'people', parent: made.parent, columns: [], rows: [] }
+    col.job.child = made.name
+    await flush()
+  }
+  remember(child)
+  children.set(child.name, { table: child, replaced: new Set() })
+  return child
+}
+
+function addPeople(child, parentRow, res, limit) {
+  const company = cellValue(parentRow.cells.name ?? parentRow.cells.company_name ?? parentRow.cells.company) ?? ''
+  const { records, ids: kept } = listRecords('people', res.rows, res.columns, limit)
+  const ids = ['company_name', 'company_domain', ...kept.filter((c) => c !== 'company')]
+  for (const id of ids) if (!child.columns.some((c) => c.id === id)) child.columns.push({ id, label: id })
+  child.rows = child.rows.filter((r) => r._parent !== parentRow.id)
+  children.get(child.name)?.replaced.add(parentRow.id)
+  for (const p of records) {
+    child.rows.push({
+      id: rowId(), _parent: parentRow.id,
+      cells: Object.fromEntries(child.columns.map((c) => [c.id,
+        c.id === 'company_name' ? company : c.id === 'company_domain' ? host(cellValue(parentRow.cells[domainColumn()])) : p[c.id] ?? null])),
+    })
+  }
+  return records.length
+}
+
+const domainColumn = () => (t.value.columns.find((c) => ['domain', 'company_domain', 'website'].includes(c.id)) || {}).id
+
+// --- columns --------------------------------------------------------------------------------------
+async function addColumns({ columns, rows }) {
+  adding.value = false
+  t.value.columns.push(...columns)
+  await flush()
+  await runGroup(columns[0].job.group, rows)
+}
+
+async function removeColumn(col) {
+  if (!confirm(`Delete column "${col.label}"${col.job ? ' and the columns filled by the same call' : ''}?`)) return
+  const drop = new Set(t.value.columns.filter((c) => c === col || (col.job && c.job?.group === col.job.group)).map((c) => c.id))
+  t.value.columns = t.value.columns.filter((c) => !drop.has(c.id))
+  for (const r of t.value.rows) for (const id of drop) delete r.cells[id]
+  await flush()
+}
+
+function remaining(col) {
+  return t.value.rows.filter((r) => !DONE.has(r.cells[col.id]?.state)).length
+}
+
+// --- cells ----------------------------------------------------------------------------------------
+// typeof first: every string has a built-in `.link` method
+const linkOf = (cell) => (cell && typeof cell === 'object' && typeof cell.link === 'string' ? cell.link : null)
+
+function show(cell) {
+  if (cell == null || typeof cell !== 'object') return cell ?? ''
+  return cell.value === true ? '✓' : cell.value === false ? '✗' : cell.value ?? ''
+}
+
+// A cell that has no value to show says why, as a small status pill.
+function pill(cell) {
+  if (!cell || typeof cell !== 'object') return ''
+  if (cell.state === 'hit') return ''
+  return { queued: 'Queued', running: 'Running', miss: 'No result', skipped: 'Missing input', error: 'Error' }[cell.state] ?? ''
+}
+
+function exportCsv() {
+  const blob = new Blob([toCsv(t.value.columns, t.value.rows)], { type: 'text/csv' })
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${t.value.name}.csv` })
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+// A teammate (or later an agent) may change the table while the page is open: reload it on focus.
+async function reload() {
+  if (run.value || adding.value) return
+  await flushing
+  try { t.value = await loadTable(api, t.value.name); remember(t.value) } catch {}
+}
+onMounted(() => window.addEventListener('focus', reload))
+onUnmounted(() => window.removeEventListener('focus', reload))
+</script>
+
+<template>
+  <div class="sheet">
+    <div class="bar">
+      <a v-if="t.parent" class="crumb-link" href="#" @click.prevent="emit('open', t.parent.table)">← {{ t.parent.table }}</a>
+      <strong class="title">{{ t.name }}</strong>
+      <span class="muted small">{{ t.rows.length }} rows · {{ t.columns.length }} columns</span>
+      <span v-if="run" class="run-status">
+        <span class="dot" /> Running {{ run.done }} / {{ run.total }} · {{ usd(run.spent) }}
+        <button class="ghost" :disabled="run.stopping" @click="run.stopping = true">{{ run.stopping ? 'Stopping…' : 'Stop' }}</button>
+      </span>
+      <span class="spacer" />
+      <button @click="exportCsv">Export CSV</button>
+      <button class="primary" :disabled="!!run" @click="adding = true; detail = null">+ Add column</button>
+    </div>
+    <p v-if="banner" class="oe-banner">{{ banner }}</p>
+
+    <div class="oe-layout">
+      <div class="oe-grid-wrap" @click="menu = null">
+        <table class="oe-grid ui-table">
+          <thead>
+            <tr>
+              <th class="num">#</th>
+              <th v-for="c in t.columns" :key="c.id" :class="{ jobcol: c.job, open: menu === c.id }" @click.stop="menu = menu === c.id ? null : c.id">
+                <span class="th-label">{{ c.label }}</span>
+                <span class="caret">▾</span>
+                <div v-if="menu === c.id" class="menu" @click.stop>
+                  <template v-if="c.job">
+                    <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
+                    <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
+                    <button :disabled="!!run" @click="menu = null; runGroup(c.job.group, 'all', true)">Re-run all rows</button>
+                    <hr />
+                  </template>
+                  <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(r, i) in t.rows" :key="r.id">
+              <td class="num">{{ i + 1 }}</td>
+              <td v-for="c in t.columns" :key="c.id" :class="['cell', r.cells[c.id]?.state, { picked: detail?.row === r && detail?.column === c }]"
+                  @click="r.cells[c.id]?.state && (detail = { row: r, column: c }, adding = false)">
+                <a v-if="linkOf(r.cells[c.id])" class="pill link" href="#" @click.prevent.stop="emit('open', linkOf(r.cells[c.id]))">
+                  {{ r.cells[c.id].value }} {{ r.cells[c.id].value === 1 ? 'person' : 'people' }} →
+                </a>
+                <span v-else-if="pill(r.cells[c.id])" :class="['pill', r.cells[c.id].state]">{{ pill(r.cells[c.id]) }}</span>
+                <template v-else>{{ show(r.cells[c.id]) }}</template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ColumnPanel v-if="adding" :table="t" @close="adding = false" @add="addColumns" />
+
+      <aside v-else-if="detail" class="oe-side">
+        <header class="side-head">
+          <strong>{{ detail.column.label }} · row {{ t.rows.indexOf(detail.row) + 1 }}</strong>
+          <button class="icon" title="Close" @click="detail = null">✕</button>
+        </header>
+        <div class="side-body">
+          <dl class="detail">
+            <template v-for="(v, k) in detail.row.cells[detail.column.id]" :key="k">
+              <dt>{{ k.replace(/_/g, ' ') }}</dt>
+              <dd>{{ k === 'cost_micro' ? usd(v) : typeof v === 'object' ? JSON.stringify(v, null, 1) : v }}</dd>
+            </template>
+          </dl>
+        </div>
+      </aside>
+    </div>
+  </div>
+</template>

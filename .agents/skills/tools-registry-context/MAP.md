@@ -39,6 +39,14 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/onboarding/OnboardingFlow.vue` | interface/onboarding.md |
 | `frontend/src/onboarding/calls.ts` | interface/onboarding.md |
 | `frontend/src/onboarding/extract.ts` | interface/onboarding.md |
+| `frontend/src/openenrich/ColumnPanel.vue` | architecture/tables.md |
+| `frontend/src/openenrich/OpenEnrichPage.vue` | architecture/tables.md |
+| `frontend/src/openenrich/SourceForm.vue` | architecture/tables.md |
+| `frontend/src/openenrich/TableView.vue` | architecture/tables.md |
+| `frontend/src/openenrich/client.js` | architecture/tables.md |
+| `frontend/src/openenrich/icons.js` | architecture/tables.md |
+| `frontend/src/openenrich/jobs.js` | architecture/tables.md |
+| `frontend/src/openenrich/style.css` | architecture/tables.md |
 | `frontend/src/pages/GettingStartedPage.vue` | interface/onboarding.md |
 | `frontend/src/pages/HubPage.vue` | architecture/hub.md |
 | `frontend/src/pages/HubRunPage.vue` | architecture/hub.md |
@@ -56,6 +64,7 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/state/session.js` | architecture/auth-secrets.md |
 | `frontend/src/styles/base.css` | interface/dashboard.md |
 | `frontend/src/views.ts` | interface/dashboard.md |
+| `frontend/tests/openenrich.test.ts` | architecture/tables.md |
 | `hatch_build.py` | ops/deploy.md |
 | `package.json` | interface/skill.md |
 | `plugin/.codex-plugin/plugin.json` | interface/skill.md |
@@ -141,6 +150,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0059_web_arena_seed_start.py` | interface/web-arena.md |
 | `src/treg/alembic/versions/0060_web_arena_seed_progress.py` | interface/web-arena.md |
 | `src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0063_openenrich_tables.py` | architecture/tables.md |
 | `src/treg/analytics.py` | architecture/data-model.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/landing-sandbox.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -196,6 +206,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/search_experiment.py` | architecture/search-experiment.md |
 | `src/treg/application/signup.py` | architecture/ads-conversions.md, architecture/money.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/application/table.py` | architecture/table.md |
+| `src/treg/application/tables.py` | architecture/tables.md |
 | `src/treg/application/web_arena.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_calls.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_publications.py` | interface/web-arena.md |
@@ -433,7 +444,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/maintenance.py` | architecture/data-model.md, ops/deploy.md |
 | `src/treg/mcp.py` | architecture/catalog.md, architecture/hub.md, architecture/instagram-oauth.md, architecture/mcp-oauth.md |
 | `src/treg/mcp_install.py` | interface/skill.md |
-| `src/treg/models.py` | architecture/data-model.md, architecture/hub.md, architecture/media.md, architecture/money.md, architecture/multi-tenancy.md, interface/enrich-arena.md, interface/web-arena.md |
+| `src/treg/models.py` | architecture/data-model.md, architecture/hub.md, architecture/media.md, architecture/money.md, architecture/multi-tenancy.md, architecture/tables.md, interface/enrich-arena.md, interface/web-arena.md |
 | `src/treg/oauth.py` | architecture/auth-secrets.md |
 | `src/treg/oauth_providers.py` | architecture/auth-secrets.md, guides/expanding-a-category.md |
 | `src/treg/providers.py` | interface/env-import.md |
@@ -461,7 +472,8 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/resources.py` | architecture/auth-secrets.md, architecture/composition.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/routers/signup_cookies.py` | interface/api.md |
 | `src/treg/routers/table.py` | architecture/table.md |
-| `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, interface/api.md, interface/dashboard.md, interface/landing-sandbox.md, interface/seo.md, interface/skill.md |
+| `src/treg/routers/tables.py` | architecture/tables.md |
+| `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, architecture/tables.md, interface/api.md, interface/dashboard.md, interface/landing-sandbox.md, interface/seo.md, interface/skill.md |
 | `src/treg/routers/web_arena.py` | interface/web-arena.md |
 | `src/treg/runner.py` | interface/api.md |
 | `src/treg/sandbox.py` | interface/landing-sandbox.md |
@@ -617,6 +629,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_ssrf_public_addresses.py` | architecture/proxy-model.md |
 | `tests/test_table.py` | architecture/table.md |
 | `tests/test_table_oauth.py` | architecture/table.md |
+| `tests/test_tables.py` | architecture/tables.md |
 | `tests/test_tag_billing.py` | architecture/proxy-model.md |
 | `tests/test_tag_billing_adversarial.py` | architecture/proxy-model.md |
 | `tests/test_team_limit.py` | architecture/multi-tenancy.md |
@@ -651,6 +664,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/search-experiment.md` | `catalog_search.py`, `search_experiment.py`, `interleave.py`, `judge.py`, `0041_searchlog.py`, `0056_searchlog_verdict.py`, `search_experiment_report.sql`, `search_agent_bench.py`, `test_search_experiment.py`, `test_catalog_search.py`, `test_search_agent_bench.py` |
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |
+| `architecture/tables.md` | `models.py`, `0063_openenrich_tables.py`, `tables.py`, `tables.py`, `web.py`, `OpenEnrichPage.vue`, `SourceForm.vue`, `TableView.vue`, `ColumnPanel.vue`, `client.js`, `jobs.js`, `icons.js`, `style.css`, `test_tables.py`, `openenrich.test.ts` |
 | `foundation/charter.md` | `2026-06-30-jason-tools-registry.md`, `README.md` |
 | `guides/expanding-a-category.md` | `oauth_providers.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `connect.py`, `connections.py`, `config.py` |
 | `interface/api.md` | `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py` |

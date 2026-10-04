@@ -8,6 +8,12 @@ async probeHub(){ const live=this.ticket('hubProbe'); let on=false;
       if(this.meta.hub){ try{ const r=await fetch('/hub/tools/mine',{credentials:'include', headers:this.headers()}); on=r.status!==404; }catch(e){} }
       if(!live()) return; this.hubOn=on;
       if(!this.hubOn && (this.view==='hub' || this.view==='run')) this.go('start'); },
+// openenrich (docs/context/architecture/tables.md) shares /table/'s flag: /tables answers 404 when it
+// is off for this person or team, so the nav entry follows the active team like the Hub's.
+async probeOpenEnrich(){ const live=this.ticket('oeProbe'); let on=false;
+      try{ const r=await fetch('/tables',{credentials:'include', headers:this.headers()}); on=r.ok; }catch(e){}
+      if(!live()) return; this.oeOn=on; },
+oeFromPath(path){ return /^\/openenrich(\/[a-z0-9][a-z0-9-]{0,79})?\/?$/.test(path||'') ? path : null; },
 runFromPath(path){ const m=/^\/app\/runs\/([A-Za-z0-9_:-]+)$/.exec(path||''); return m ? m[1] : null; },
 async loadHub(){ if(!this.authed) return; this.hub={...this.hub, loading:true, err:''};
   try{ const tools=await this.api('/hub/tools/mine'); this.hub={...this.hub, tools, loading:false};

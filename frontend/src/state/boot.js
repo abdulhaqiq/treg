@@ -30,6 +30,7 @@ export default async function boot(){
       if(d){ this.openDetail(d.kind, d.name, true); return; }
       const rid=(e.state&&e.state.run)||this.runFromPath(location.pathname);
       if(rid){ this.openRun(rid, true); return; }
+      if(this.oeFromPath(location.pathname)){ if(this.view!=='openenrich') this.go('openenrich', true); return; }  // the page follows its own table paths
       // The first entry of a page opened at a public catalog URL (/catalog, /catalog/<slug>) carries no
       // state and no hash: resolve it from the path, as the first load did, not as the tools view.
       const cr=!(e.state&&e.state.view) && !location.hash && this.catalogFromPath(location.pathname);
@@ -73,6 +74,7 @@ export default async function boot(){
     let route=this.routeFromPath(location.pathname);
     let mkRoute=this.mkFromPath(location.pathname);
     const runRoute=this.runFromPath(location.pathname);   // /app/runs/<id>: the hub's run page, members only
+    let oeRoute=this.oeFromPath(location.pathname);       // /openenrich[/<table>]: the team's tables, members only
     // A public catalog URL renders the marketplace views with or without a session. Set BEFORE the
     // /auth/me check so the first paint is already in public mode, and drop the server-rendered
     // fallback (see `_spa_catalog_page`) now that the real UI is about to take over.
@@ -80,9 +82,9 @@ export default async function boot(){
     if(catRoute){ this.publicCatalog=true; document.getElementById('prerender')?.remove(); }
     const stashed=storageGet('treg-next');
     if(stashed){ storageRemove('treg-next');
-      if(!route && !mkRoute){
-        route=this.routeFromPath(stashed); mkRoute=this.mkFromPath(stashed);
-        if(route||mkRoute) history.replaceState(null,'',stashed);
+      if(!route && !mkRoute && !oeRoute){
+        route=this.routeFromPath(stashed); mkRoute=this.mkFromPath(stashed); oeRoute=this.oeFromPath(stashed);
+        if(route||mkRoute||oeRoute) history.replaceState(null,'',stashed);
       } }
     this._restoreAgent();
     const me = await meReq.catch(()=>null);
@@ -97,6 +99,7 @@ export default async function boot(){
       if(this.findResume()){ this.maybeOnboard(); return; }
       if(mkRoute){ this.maybeOnboard(); this.openProvider(mkRoute, true); return; }
       if(runRoute){ this.maybeOnboard(); this.openRun(runRoute, true); return; }
+      if(oeRoute){ this.maybeOnboard(); this.go('openenrich', true); return; }
       // Signed in on a /catalog URL: the same views, but as a member — so `publicCatalog` is
       // dropped and the shell comes back in full (vault, activity, try-it).
       // /search stays a public page for members too: it is a place to ask, not a dashboard view.
@@ -124,6 +127,7 @@ export default async function boot(){
         return; }
       const pfTok=this.platformFromHash();
       if(runRoute){ this.openRun(runRoute, true); return; }
+      if(oeRoute){ this.go('openenrich', true); return; }
       if(mkRoute) this.openProvider(mkRoute, true); else if(pfTok) this.openPlatform(pfTok, true); else if(route) this.openDetail(route.kind, route.name, true);
       else { const hv=this.viewFromHash(); if(hv) this.go(hv, true);
         else { this.go('start', true); history.replaceState({view:'start'},'','/app#start'); } }
@@ -140,7 +144,7 @@ export default async function boot(){
       // renders blank in an incognito window.
       if(catRoute.view==='find'){ this.view='find'; this.loadPlatforms(); } else if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='catalog'; this.loadConnections(); }
       return; }
-    if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !ref && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
+    if(!inv && !linkOrg && !route && !oeRoute && !qs.get('invite_expired') && !ref && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
     if(route){ this.shareGate=route; this.demo.signin=true; }  // shared link while logged out: the focused gate (no sandbox mint, no tour); after sign-in the boot lands on it (email verify reloads in place; OAuth restores via the treg-next stash)
     else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=) and every other logged-out flow open sign-in; nothing mints a sandbox any more
     if(inv){ this.invitePrefill=inv; this.emailInput=inv; this.emailStage=false; this.demo.signin=true; }  // legacy code link while logged out: prefill + open sign-in; the invite auto-accepts after login (maybeOnboard)

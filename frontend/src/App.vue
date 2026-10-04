@@ -11,9 +11,9 @@ import SignInDialog from './components/SignInDialog.vue'
 const {
   catalog: CatalogPage, connections: ConnectionsPage, find: SearchPage, provider: ProviderPage, platform: PlatformPage, tools: ToolsPage,
   detail: DetailPage, secrets: SecretsPage, resources: TeamResourcesPage, orgs: TeamPage, activity: ActivityPage,
-  admin: AdminPage, start: GettingStartedPage, referrals: ReferralsPage, hub: HubPage, run: HubRunPage, help: HelpPage,
+  admin: AdminPage, start: GettingStartedPage, referrals: ReferralsPage, hub: HubPage, run: HubRunPage, help: HelpPage, openenrich: OpenEnrichPage,
 } = pages
-export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ConnectionsPage, ProviderPage, PlatformPage, LegacyPlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
+export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ConnectionsPage, ProviderPage, PlatformPage, LegacyPlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, OpenEnrichPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
 </script>
 
 <template>
@@ -98,6 +98,7 @@ export default { ...controller, components: { ...controller.components, ...dialo
         <ReferralsPage v-if="view==='referrals'" />
         <HubPage v-if="view==='hub'" />
         <HubRunPage v-if="view==='run'" />
+        <OpenEnrichPage v-if="view==='openenrich'" />
 
         <!-- HELP -->
         <HelpPage v-if="view==='help'" />

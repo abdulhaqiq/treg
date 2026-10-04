@@ -69,6 +69,7 @@ export const pages = {
   referrals: lazy(() => import('./pages/ReferralsPage.vue')),
   hub: lazy(() => import('./pages/HubPage.vue')),
   run: lazy(() => import('./pages/HubRunPage.vue')),
+  openenrich: lazy(() => import('./openenrich/OpenEnrichPage.vue')),
   help: lazy(() => Promise.all([
     import('./pages/HelpPage.vue'), loadScript('/tutorial.js'), loadScript('/dashboard-tour/tour.js'),
   ]).then(([page]) => page)),
@@ -112,6 +113,7 @@ function initialView(): View {
   const catalog = route.catalogFromPath!(path)
   if (catalog) return catalog.view
   if (route.runFromPath!(path)) return 'run'
+  if (route.oeFromPath!(path)) return 'openenrich'
   if (route.mkFromPath!(path)) return 'provider'
   if (route.routeFromPath!(path)) return 'detail'
   if (route.platformFromHash!()) return 'platform'

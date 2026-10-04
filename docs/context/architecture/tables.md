@@ -1,0 +1,97 @@
+---
+title: openenrich — the team's tables (`/tables`, `/openenrich`)
+status: phase 1 built (storage + the page; the browser runs the calls), behind the `/table/` flag (TREG_TABLE_ENABLED, TREG_TABLE_TEAMS, TREG_TABLE_USERS)
+sources:
+  - src/treg/models.py
+  - src/treg/alembic/versions/0063_openenrich_tables.py
+  - src/treg/application/tables.py
+  - src/treg/routers/tables.py
+  - src/treg/routers/web.py
+  - frontend/src/openenrich/OpenEnrichPage.vue
+  - frontend/src/openenrich/SourceForm.vue
+  - frontend/src/openenrich/TableView.vue
+  - frontend/src/openenrich/ColumnPanel.vue
+  - frontend/src/openenrich/client.js
+  - frontend/src/openenrich/jobs.js
+  - frontend/src/openenrich/icons.js
+  - frontend/src/openenrich/style.css
+  - tests/test_tables.py
+  - frontend/tests/openenrich.test.ts
+related:
+  - architecture/table.md
+  - architecture/catalog.md
+  - architecture/archive.md
+  - interface/dashboard.md
+---
+
+# openenrich: the team's tables
+
+A table is a list of companies or people with columns. A column is either a plain value or a
+**job**: a catalog or hub tool, how its inputs map to the row's columns (`{"domain": "{website}"}`,
+or a typed value), and the output field it fills. openenrich builds a table from a search (Find
+companies, Find people, Lookalikes), a CSV, or another table's column (Find people at company), and
+adds job columns from the catalog's People and Company shelves plus the signal capabilities.
+
+## Three phases, one model
+
+| Phase | Who loops over the rows | Status |
+|---|---|---|
+| 1 | the browser tab running `/openenrich`; each call is an ordinary `/table/<tool>` request | built |
+| 2 | treg's worker; agent tools on MCP v2 and the CLI use the same API | planned |
+| 3 | schedules: columns that run on new rows, re-pulled sources, new-since-last-run | planned |
+
+Phase 1 stores state the later phases read: every job cell keeps its `state` (`queued`, `running`,
+`hit`, `miss`, `error`, `skipped`) and the `inputs` it ran on, so "pending" and "failed" rows can be
+computed, and every job column keeps its `group` and settings.
+
+## Storage (`application.tables`, `/tables`)
+
+`TableDoc` (one per table: `org_id`, unique `name`, `kind`, `parent_id`/`parent_column` for a linked
+table, `source`, `columns` as JSON) and `TableRow` (`table_id`, `row_key` the id clients address,
+`parent_row`, `position`, `cells` as JSON). A table belongs to the team: every member reads and
+writes it; another team's request answers 404.
+
+- `GET /tables`: the team's tables, newest first, with row and column counts.
+- `POST /tables`: `{name, kind?, columns?, rows?, source?, parent?: {table, column}}`. The name is
+  made unique in the team (`software`, `software-2`); rows without an id get one.
+- `GET /tables/{name}`: the table and a page of rows (`items`, `offset`, `has_more`, at most 5,000);
+  `?format=csv` answers every row, a job cell as its value.
+- `PATCH /tables/{name}`: rename, or replace the column list (the page owns columns and their order).
+- `POST /tables/{name}/rows`: merge rows by id. A known id replaces only the cells it sends, so a
+  teammate's or another run's cells stay; an unknown id is added at the end. `replace_parent_rows`
+  first removes those parents' rows (re-running Find people at company for a company replaces its
+  people).
+- `POST /tables/{name}/rows/delete`, `DELETE /tables/{name}` (a linked table made from it stays,
+  unlinked).
+
+Limits: 500 tables per team, 10,000 rows per table, 64 KB of cells per row, 256 KB of columns.
+
+The same flag and lists as `/table/` gate it (`application.table.enabled_for`); off, every route is
+a plain 404, and the dashboard's nav entry (`probeOpenEnrich`) stays hidden.
+
+## Money and the archive
+
+Nothing in `/tables` calls a provider or moves money. The page calls `/table/<tool>` row by row, each
+an ordinary call with its own hold, under an `Idempotency-Key` made from the tool, its inputs and its
+route excludes (`client.idempotencyKey`), so a re-run, or the same lookup in another row or table,
+replays for nothing; rows with identical inputs in one run share one call. Routed calls carry a
+per-row `X-Treg-Route-Max-Cost` cap. A cell keeps the extracted value and its `call_id`; the raw
+answer stays in the call record and the archive, which a table never replaces.
+
+## The page (`frontend/src/openenrich/`)
+
+`/openenrich` and `/openenrich/<table>` serve the dashboard (`routers/web.py`) and open the
+`openenrich` view (`oeFromPath` in `state/hub.js`, boot and popstate in `state/boot.js`); a signed-out
+visitor gets sign-in and returns to the same path. The page uses only the dashboard session
+(`client.makeClient(dash.headers)`), saves only the rows whose cells changed since the last sync,
+reloads the table on focus, and refreshes the header balance after a run. Its CSS is scoped under
+`.oe`, its colliding class names are `oe-` prefixed, and its grid is a `.ui-table` so the dashboard's
+global table rules skip it.
+
+`jobs.js` holds the rules a column follows, pure and tested by `frontend/tests/openenrich.test.ts`:
+which enrichments are offered (the shelves' per-row capabilities, routed ones as one entry,
+providers otherwise, tools needing a provider record id or not callable on treg's key hidden), how
+inputs map (aliases, snake/camel names, settings from the catalog's example, test request or enum),
+how an answer is read (flat, list, nested, a provider 404 as no result, 402 `insufficient_balance` vs
+`route_max_cost`), and how real-answer columns are picked (bookkeeping fields skipped). Phase 2 moves
+these rules to the server.
