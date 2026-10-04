@@ -8,6 +8,8 @@ from sqlmodel import select
 
 from ...models import (
     AdConversion,
+    TableDoc,
+    TableRow,
     ApiKey,
     ApiKeyEvent,
     ArenaEvaluation,
@@ -260,6 +262,7 @@ ORG_SCOPED_MODELS = (
     CallReview,
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
+    TableDoc,     # openenrich's tables (their rows go first, below: a row names its table, not the team)
     Membership,   # last: it is what makes the caller a member of the org being deleted
 )
 
@@ -306,6 +309,10 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     # by number: a caller's runs go with the caller; a maker's deletion leaves callers' traces.
     for run in (await db.execute(select(HubRun).where(HubRun.caller_org_id == org.id))).scalars().all():
         await db.delete(run)
+    # TableRow names its table, not the team: a team's table rows go before the tables themselves.
+    for row in (await db.execute(select(TableRow).join(TableDoc, TableRow.table_id == TableDoc.id)
+                                 .where(TableDoc.org_id == org.id))).scalars().all():
+        await db.delete(row)
     await db.flush()
     for model in ORG_SCOPED_MODELS:
         for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():

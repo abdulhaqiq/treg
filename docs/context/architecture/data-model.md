@@ -133,6 +133,10 @@ See [signup eligibility](money.md#signup-credit-eligibility).
 
 ## Registry tables
 
+- **`TableDoc` / `TableRow`** - openenrich's team tables: a table's name (unique in the team),
+  kind, linked parent and column list (plain values or a job), and its rows (`row_key`, `parent_row`,
+  `position`, `cells` as JSON). Revision `0063`; `application.tables` is the only writer. Team
+  deletion removes the rows (through their tables) and then the tables. See [tables](tables.md).
 - **`OnboardingProfile`** - one new user's first-run lookup: `user_id` (unique, no FK, like
   `ArenaRun`), the team it made, `status` (pending | running | done | failed), an encrypted payload
   (setup rows, evidence, ranked tasks, filled inputs) and what the lookup cost the house team.

@@ -90,3 +90,19 @@ async def test_another_team_cannot_see_or_touch_a_table(clients: AsyncClient, ta
     assert (await clients.get("/tables/secret", headers=stranger)).status_code == 404
     assert (await clients.post("/tables/secret/rows", headers=stranger, json={"rows": []})).status_code == 404
     assert (await clients.delete("/tables/secret", headers=stranger)).status_code == 404
+
+
+async def test_deleting_the_team_deletes_its_tables_and_rows(clients: AsyncClient, table_on):
+    from sqlalchemy import func, select
+    from treg.infra.db import session_maker
+    from treg.models import TableDoc, TableRow
+    other = await verified_signup(clients, json={"email": "tables-leaver@example.com"})
+    h = {"X-Treg-Token": other.json()["token"]}
+    org = await clients.post("/orgs", headers=h, json={"name": "leaver-team"})
+    h = {"X-Treg-Token": org.json()["token"]}
+    await clients.post("/tables", headers=h, json={"name": "t", "rows": [{"cells": {"a": 1}}, {"cells": {"a": 2}}]})
+    r = await clients.delete(f"/orgs/{org.json()['org_id']}?confirm={org.json()['org']}", headers=h)
+    assert r.status_code == 200, r.text
+    async with session_maker() as db:
+        assert (await db.execute(select(func.count(TableDoc.id)).where(TableDoc.org_id == org.json()["org_id"]))).scalar_one() == 0
+        assert (await db.execute(select(func.count(TableRow.id)))).scalar_one() == 0

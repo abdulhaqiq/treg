@@ -98,6 +98,15 @@ token, because the vendor's fetcher has none. 30 MB per file, 300 MB per org per
 `image/*` / `audio/*` / `video/*` only, refused in the sandbox. Refusals: 415 type, 413 size, 429
 quota, 403 sandbox. Not metered. See [media](../architecture/media.md).
 
+## Team tables (openenrich)
+
+`/tables` stores a team's openenrich tables (see [tables](../architecture/tables.md)): `GET/POST
+/tables`, `GET/PATCH/DELETE /tables/{name}` (`?format=csv` answers every row as CSV),
+`POST /tables/{name}/rows` (merge by row id, only the sent cells change; `replace_parent_rows`) and
+`POST /tables/{name}/rows/delete`. Members of the team only, behind the same flag and lists as
+`/table/`; a caller outside them, or another team, gets a plain 404. Nothing here calls a provider
+or moves money.
+
 ## Provider resources
 
 `GET /orgs/{id}/provider-resources` is the unified HTTP/curl read for durable provider resources.
