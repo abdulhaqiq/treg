@@ -4,8 +4,6 @@
 export const SOURCES = [
   {
     id: 'companies', label: 'Find companies', kind: 'companies', tool: 'treg.companies.search',
-    // tomba answers a filtered search with the same big-company list, ignoring country and limit
-    exclude: ['tomba'],
     hint: 'Filter by industry, technology or country',
     // no free-text field: treg sends a description to one provider only, with thin rows
     fields: [
