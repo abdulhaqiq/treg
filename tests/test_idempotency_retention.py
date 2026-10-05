@@ -251,3 +251,77 @@ async def test_result_includes_page_timeouts_field(clients):
     assert result.page_timeouts == 0, "no timeouts in normal operation"
     assert result.deleted == 1
     assert result.complete is True
+
+
+# ---- trimming a live row's copy of an archived answer (finding 4, 2026-09-21) --------------------
+async def _link(row_id: int, *, call_ref: str, archived: bytes | None, hash_only: bool = False,
+                age_s: int = 3600) -> str:
+    """Give a seeded retry row a call record and (optionally) the archive's copy of an answer."""
+    from datetime import datetime, timedelta, timezone
+
+    from treg import archive
+    from treg.models import ArchiveKey, ArchiveSnapshot, CallRecord
+
+    async with session_maker() as db:
+        row = await db.get(IdempotentCall, row_id)
+        row.call_ref = call_ref
+        row.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=age_s)
+        body_hash = archive.content_hash(archived if archived is not None else row.response_body)
+        db.add(CallRecord(org_id=row.org_id, user_email="t@x.dev", tool_name="t", call_ref=call_ref, endpoint_id=EP, method="GET", path="/x",
+                          status_code=200, archive_key_hash="key-" + call_ref, archive_content_hash=body_hash))
+        if archived is not None:
+            key = ArchiveKey(key_hash="key-" + call_ref, endpoint_id=EP)
+            db.add(key)
+            await db.flush()
+            db.add(ArchiveSnapshot(key_id=key.id, content_hash=body_hash, size_bytes=len(archived),
+                                   body=None if hash_only else archived, body_storage=None if hash_only else "db"))
+        await db.commit()
+        return body_hash
+
+
+async def test_a_live_answer_the_archive_holds_drops_its_copy_and_still_replays(clients, platform_on):
+    body = b'{"rows":[1,2,3]}'
+    row_id = await _seed_answer(clients, "kept-twice", body=body)
+    await _link(row_id, call_ref="call-twice", archived=body)
+    dry = await idempotency.trim_archived_answers(dry_run=True, pause_s=0)
+    assert (dry.trimmed, dry.bytes_freed) == (1, len(body))
+    result = await idempotency.trim_archived_answers(pause_s=0)
+    assert (result.trimmed, result.bytes_freed, result.complete) == (1, len(body), True)
+    async with session_maker() as db:
+        row = await db.get(IdempotentCall, row_id)
+    assert row.response_body is None and row.archive_content_hash and row.archive_key_hash == "key-call-twice"
+    before = await _balance(clients)
+    replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "kept-twice"})
+    assert replay.status_code == 200 and replay.content == body
+    assert replay.headers["X-Treg-Idempotent-Replay"] == "true" and await _balance(clients) == before
+    assert (await idempotency.trim_archived_answers(pause_s=0)).trimmed == 0       # nothing left to drop
+
+
+@pytest.mark.parametrize("case", ["no_archive", "hash_only", "different_bytes", "too_young", "no_call_record"])
+async def test_a_copy_is_kept_unless_the_archive_holds_the_same_bytes(clients, platform_on, case):
+    body = b'{"mine":true}'
+    row_id = await _seed_answer(clients, "keep-" + case, body=body)
+    if case != "no_call_record":
+        await _link(row_id, call_ref="call-" + case,
+                    archived={"no_archive": None, "hash_only": body, "different_bytes": b'{"other":1}',
+                              "too_young": body}[case],
+                    hash_only=case == "hash_only", age_s=60 if case == "too_young" else 3600)
+    assert (await idempotency.trim_archived_answers(pause_s=0)).trimmed == 0
+    async with session_maker() as db:
+        assert (await db.get(IdempotentCall, row_id)).response_body == body
+
+
+async def test_a_trimmed_answer_the_archive_lost_answers_410_and_never_runs_again(clients, platform_on):
+    from treg.models import ArchiveSnapshot
+
+    body = b'{"gone":"soon"}'
+    row_id = await _seed_answer(clients, "lost-later", body=body)
+    await _link(row_id, call_ref="call-lost", archived=body)
+    assert (await idempotency.trim_archived_answers(pause_s=0)).trimmed == 1
+    async with session_maker() as db:
+        await db.execute(delete(ArchiveSnapshot))
+        await db.commit()
+    before = await _balance(clients)
+    replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "lost-later"})
+    assert replay.status_code == 410 and replay.json()["detail"]["error"] == "idempotency_response_lost"
+    assert replay.json()["detail"]["call_id"] == "call-lost" and await _balance(clients) == before

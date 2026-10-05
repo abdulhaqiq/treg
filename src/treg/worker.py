@@ -377,7 +377,7 @@ async def _idempotency_prune(args) -> int:
     import logging
 
     from .infra.db import verify_db
-    from .application.call.idempotency import prune_expired_idempotency
+    from .application.call.idempotency import prune_expired_idempotency, trim_archived_answers
 
     await verify_db()
     logging.basicConfig(level=logging.INFO)
@@ -385,8 +385,17 @@ async def _idempotency_prune(args) -> int:
         batch_size=args.batch_size, pause_s=args.pause_seconds,
         max_batches=args.max_batches, dry_run=args.dry_run,
     )
-    print(json.dumps(asdict(result), default=str, sort_keys=True))
-    return 0 if result.complete else 1
+    out = asdict(result)
+    trim = None
+    if not getattr(args, "skip_trim", False):
+        # Live rows whose answer the archive holds byte for byte drop their own copy (finding 4).
+        trim = await trim_archived_answers(
+            batch_size=args.batch_size, pause_s=args.pause_seconds,
+            max_batches=args.max_batches, dry_run=args.dry_run,
+        )
+        out["trim"] = asdict(trim)
+    print(json.dumps(out, default=str, sort_keys=True))
+    return 0 if result.complete and (trim is None or trim.complete) else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -462,6 +471,8 @@ def main(argv: list[str] | None = None) -> int:
     prune.add_argument("--batch-size", type=int, default=200)
     prune.add_argument("--pause-seconds", type=float, default=0.25)
     prune.add_argument("--max-batches", type=int, default=10000)
+    prune.add_argument("--skip-trim", action="store_true",
+                       help="only delete expired rows; keep live rows' copies of archived answers")
     prune.set_defaults(fn=_idempotency_prune)
     args = ap.parse_args(argv)
     _need_server()

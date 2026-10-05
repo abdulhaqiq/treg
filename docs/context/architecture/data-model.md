@@ -29,6 +29,7 @@ sources:
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
+  - src/treg/alembic/versions/0063_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0034_managed_api_keys.py
@@ -367,6 +368,12 @@ uses this metadata, never the encrypted token's shape.
   No retention index or schema migration is needed for this single cursor traversal. After a large
   first prune, run `VACUUM (ANALYZE) idempotentcall` once to reclaim dead tuple space; routine hourly
   cleanup leaves vacuuming to Postgres autovacuum.
+  The same run then calls `trim_archived_answers`: a live `done` 2xx row at least ten minutes old
+  drops `response_body` when its call's `CallRecord` names an archive answer, `archive.bytes_on_file`
+  confirms that answer still carries bytes, and the row's own sha256 equals it. The row keeps
+  `archive_key_hash` / `archive_content_hash` (Alembic `0063`); a replay reads the bytes back with
+  `archive.answer_bytes` (hash-checked) and answers the 410 `idempotency_response_lost` when they are
+  gone, never a new run. `--skip-trim` runs only the expiry delete.
 
 - **`ToolRequest`** - a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty -

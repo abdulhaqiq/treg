@@ -1257,6 +1257,47 @@ async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | N
     }
 
 
+async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Which `(key_hash, content_hash)` answers still carry their bytes: in object storage, in the
+    row, or through a `body_of` carrier. A hash-only version (licence or size refused the bytes) is
+    not on file. Metadata only: no body is read. For retry rows dropping their own copy."""
+    from sqlalchemy import or_, select
+
+    from .models import ArchiveKey, ArchiveSnapshot
+
+    if not pairs:
+        return set()
+    rows = (await session.execute(
+        select(ArchiveKey.key_hash, ArchiveSnapshot.content_hash)
+        .join(ArchiveSnapshot, ArchiveSnapshot.key_id == ArchiveKey.id)
+        .where(ArchiveKey.key_hash.in_({k for k, _ in pairs}),
+               ArchiveSnapshot.content_hash.in_({c for _, c in pairs}),
+               or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
+                   ArchiveSnapshot.body_of.is_not(None))))).all()
+    return {(k, c) for k, c in rows} & pairs
+
+
+async def answer_bytes(key_hash: str, body_hash: str) -> bytes | None:
+    """The exact bytes of one archived answer, or None when they are gone or do not match the hash.
+    No DB connection is held while object storage is read."""
+    from sqlalchemy import select
+
+    from .infra.db import session_maker
+    from .models import ArchiveKey, ArchiveSnapshot
+
+    async with session_maker() as session:
+        snap = (await session.execute(
+            select(ArchiveSnapshot).options(*archive_bodies.read_options("result"))
+            .join(ArchiveKey, ArchiveKey.id == ArchiveSnapshot.key_id)
+            .where(ArchiveKey.key_hash == key_hash, ArchiveSnapshot.content_hash == body_hash)
+            .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
+        if snap is None:
+            return None
+        pointer = await archive_bodies.pointer(session, snap, "result")
+    body = await archive_bodies.read(pointer, "result")
+    return body if body is not None and content_hash(body) == body_hash else None
+
+
 # ---------------------------------------------------------------------------------------------
 # Serving (PR 4) — the cache answers instead of the vendor, and NOTHING about money changes.
 # The lookup replaces only the network trip: reserve, settle, audit and the cost header all run

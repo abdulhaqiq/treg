@@ -1272,6 +1272,11 @@ class IdempotentCall(SQLModel, table=True):
     charged_micro: int = Field(default=0)
     created_at: NaiveUTC = Field(default_factory=_now)
     expires_at: NaiveUTC
+    # Set when the hourly `treg-worker idempotency prune` dropped `response_body` because the archive
+    # holds the same bytes (`ArchiveKey.key_hash`, `ArchiveSnapshot.content_hash`); a replay then
+    # reads them from there. The same answer was kept twice before (finding 4, 2026-09-21).
+    archive_key_hash: str | None = Field(default=None)
+    archive_content_hash: str | None = Field(default=None)
 
 
 class Feedback(SQLModel, table=True):
