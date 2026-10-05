@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,9 +22,81 @@ NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 ROW_KEY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_TABLES = 500                 # per team
 MAX_ROWS = 10_000                # per table
-MAX_ROW_BYTES = 64 * 1024        # one row's cells, as JSON
+MAX_ROW_BYTES = 64 * 1024        # one row's cells and runs, as JSON
 MAX_COLUMNS_BYTES = 256 * 1024   # a table's column list, as JSON
 MAX_PAGE = 5_000                 # rows one read returns
+
+
+# ---- the schema every writer meets (the page now; the worker and agents in phase 2) ----------------
+
+COLUMN_ID = r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$"
+# What a column holds, detected from its values (or judged by Jev) so a job's inputs map by type.
+COLUMN_TYPES = ("company_name", "domain", "website", "email", "person_name", "first_name", "last_name",
+                "linkedin_person", "linkedin_company", "job_title", "phone", "location", "industry",
+                "x_handle", "ip", "number", "boolean", "other")
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class Judge(_Strict):
+    """An AI judgment column (Jev through `openrouter.ai-judge.decide`): a yes/no, a label or a score
+    over the row's evidence columns."""
+    type: Literal["noul", "choice", "score"]
+    instructions: str = Field(min_length=1, max_length=2000)
+    labels: list[str] = Field(default_factory=list, max_length=50)
+    levels: int | None = Field(default=None, ge=2, le=10)
+    evidence: list[str] = Field(default_factory=list, max_length=100)
+
+
+class Job(_Strict):
+    """What fills a column: a catalog or hub tool, how its inputs come from the row (`{column}`
+    templates or a typed value), the output field it takes, and the group of columns one call fills."""
+    group: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    tool: str = Field(pattern=r"^[\w.@-]{1,200}$")
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "POST"
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    field: str | None = None
+    needs: list[list[str]] = Field(default_factory=list)
+    maxCost: float | None = Field(default=None, ge=0, le=100)   # noqa: N815 — the page's spelling
+    linked: bool = False
+    limit: int | None = Field(default=None, ge=1, le=100)
+    child: str | None = None
+    judge: Judge | None = None
+    policy: Literal["manual", "auto"] = "manual"
+
+
+class Column(_Strict):
+    id: str = Field(pattern=COLUMN_ID)
+    label: str = Field(default="", max_length=200)
+    type: Literal[COLUMN_TYPES] | None = None  # type: ignore[valid-type]
+    job: Job | None = None
+
+
+class Run(_Strict):
+    """One call for one row and one column group, kept once however many columns it fills: the
+    cells hold only the values, the call's evidence lives here (the raw answer stays with the call
+    record and the archive, reached by `call_id`)."""
+    state: Literal["queued", "running", "hit", "miss", "error", "skipped"]
+    call_id: str | None = None
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    served_by: str | None = None
+    cost_micro: int = Field(default=0, ge=0)
+    replay: bool = False
+    error: str | None = Field(default=None, max_length=2000)
+    link: str | None = None          # a linked table this run wrote (Find people at company)
+    confidence: float | None = None  # a judgment's probability
+    at: str | None = None
+
+
+def _validate(model: type[BaseModel], value: Any, error: str) -> Any:
+    try:
+        return model.model_validate(value).model_dump(exclude_none=True, exclude_defaults=True)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        where = ".".join(str(p) for p in first.get("loc", ()))
+        raise TableError(422, error, f"{where}: {first.get('msg')}") from None
 
 
 class TableError(Exception):
@@ -42,8 +115,9 @@ def _size(value: Any) -> int:
 
 
 def _columns(columns: Any) -> list[dict]:
-    if not isinstance(columns, list) or not all(isinstance(c, dict) and isinstance(c.get("id"), str) for c in columns):
+    if not isinstance(columns, list):
         raise TableError(422, "bad_columns", "columns must be a list of objects, each with a string id")
+    columns = [_validate(Column, c, "bad_columns") for c in columns]
     ids = [c["id"] for c in columns]
     if len(ids) != len(set(ids)):
         raise TableError(422, "bad_columns", "column ids must be unique")
@@ -140,10 +214,16 @@ def _clean_rows(rows: list) -> list[dict]:
         cells = r.get("cells") or {}
         if not isinstance(cells, dict):
             raise TableError(422, "bad_rows", "a row's cells are an object keyed by column id")
-        if _size(cells) > MAX_ROW_BYTES:
-            raise TableError(413, "row_too_large", f"one row's cells are at most {MAX_ROW_BYTES} bytes")
+        runs = r.get("runs") or {}
+        if not isinstance(runs, dict):
+            raise TableError(422, "bad_rows", "a row's runs are an object keyed by column group")
+        # a run of None clears that group (a column re-run from scratch, or deleted)
+        runs = {g: (None if v is None else _validate(Run, v, "bad_rows")) for g, v in runs.items()}
+        if _size(cells) + _size(runs) > MAX_ROW_BYTES:
+            raise TableError(413, "row_too_large", f"one row's cells and runs are at most {MAX_ROW_BYTES} bytes")
         parent_row = r.get("parent_row")
-        out.append({"id": key, "cells": cells, "parent_row": parent_row if isinstance(parent_row, str) else None})
+        out.append({"id": key, "cells": cells, "runs": runs,
+                    "parent_row": parent_row if isinstance(parent_row, str) else None})
     return out
 
 
@@ -153,7 +233,8 @@ def _insert(db: AsyncSession, table_id: int, rows: list[dict], *, start: int) ->
     for i, r in enumerate(rows):
         key = r["id"] or "r" + secrets.token_hex(6)
         keys.append(key)
-        db.add(TableRow(table_id=table_id, row_key=key, parent_row=r["parent_row"], position=start + i, cells=r["cells"]))
+        db.add(TableRow(table_id=table_id, row_key=key, parent_row=r["parent_row"], position=start + i,
+                        cells=r["cells"], runs={g: v for g, v in r["runs"].items() if v is not None}))
     return keys
 
 
@@ -167,7 +248,7 @@ async def get_table(db: AsyncSession, *, org_id: int, name: str, offset: int = 0
     out["parent"] = await _parent_view(db, doc)
     out["offset"] = offset
     out["has_more"] = offset + len(rows) < total
-    out["items"] = [{"id": r.row_key, "parent_row": r.parent_row, "cells": r.cells} for r in rows]
+    out["items"] = [{"id": r.row_key, "parent_row": r.parent_row, "cells": r.cells, "runs": r.runs or {}} for r in rows]
     return out
 
 
@@ -218,9 +299,11 @@ async def upsert_rows(db: AsyncSession, *, org_id: int, name: str, rows: list,
         if row is None:
             continue
         merged = {**row.cells, **r["cells"]}
-        if _size(merged) > MAX_ROW_BYTES:
-            raise TableError(413, "row_too_large", f"one row's cells are at most {MAX_ROW_BYTES} bytes")
-        row.cells, row.updated_at = merged, now
+        runs = {**(row.runs or {}), **r["runs"]}
+        runs = {g: v for g, v in runs.items() if v is not None}
+        if _size(merged) + _size(runs) > MAX_ROW_BYTES:
+            raise TableError(413, "row_too_large", f"one row's cells and runs are at most {MAX_ROW_BYTES} bytes")
+        row.cells, row.runs, row.updated_at = merged, runs, now
     added = _insert(db, doc.id, new, start=(last if last is not None else -1) + 1)
     doc.updated_at = now
     await db.commit()

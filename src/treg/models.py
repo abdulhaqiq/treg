@@ -2057,7 +2057,8 @@ class TableDoc(SQLModel, table=True):
 
 class TableRow(SQLModel, table=True):
     """One row of a TableDoc. `row_key` is the id clients address it by; `cells` maps a column id to
-    a plain value or a job cell ({value, state, served_by, cost_micro, call_id, inputs, ...})."""
+    its value; `runs` maps a job's column group to the one call that filled those columns (state,
+    call_id, inputs, served_by, cost): kept once per call, not once per column."""
 
     __table_args__ = (UniqueConstraint("table_id", "row_key", name="uq_tablerow_table_key"),)
 
@@ -2067,4 +2068,5 @@ class TableRow(SQLModel, table=True):
     parent_row: str | None = Field(default=None)     # in a linked table, the parent row's key
     position: int = Field(default=0)
     cells: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    runs: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     updated_at: NaiveUTC = Field(default_factory=_now)

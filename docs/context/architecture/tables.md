@@ -28,7 +28,9 @@ related:
 
 A table is a list of companies or people with columns. A column is either a plain value or a
 **job**: a catalog or hub tool, how its inputs map to the row's columns (`{"domain": "{website}"}`,
-or a typed value), and the output field it fills. openenrich builds a table from a search (Find
+or a typed value), and the output field it fills. A column may carry a **type** (`domain`,
+`person_name`, `linkedin_person`, …) saying what it holds; a job's inputs map to columns by type
+first and by header name second. openenrich builds a table from a search (Find
 companies, Find people, Lookalikes), a CSV, or another table's column (Find people at company), and
 adds job columns from the catalog's People and Company shelves plus the signal capabilities.
 
@@ -40,9 +42,25 @@ adds job columns from the catalog's People and Company shelves plus the signal c
 | 2 | treg's worker; agent tools on MCP v2 and the CLI use the same API | planned |
 | 3 | schedules: columns that run on new rows, re-pulled sources, new-since-last-run | planned |
 
-Phase 1 stores state the later phases read: every job cell keeps its `state` (`queued`, `running`,
+Phase 1 stores state the later phases read: every call keeps its `state` (`queued`, `running`,
 `hit`, `miss`, `error`, `skipped`) and the `inputs` it ran on, so "pending" and "failed" rows can be
-computed, and every job column keeps its `group` and settings.
+computed, and every job column keeps its `group`, settings and `policy`.
+
+## The schema (`application.tables`)
+
+Every write meets typed models (pydantic, unknown keys refused), so a later writer (the worker, an
+agent) cannot leave a cell the page cannot read:
+
+- `Column {id, label, type?, job?}`; `type` is one of `COLUMN_TYPES`.
+- `Job {group, tool, method, inputs, field?, needs, maxCost?, linked, limit?, child?, judge?, policy}`.
+- `Judge {type: noul|choice|score, instructions, labels, levels?, evidence}`: an AI judgment column.
+- `Run {state, call_id?, inputs, served_by?, cost_micro, replay, error?, link?, confidence?, at?}`.
+
+**One run per call, not per column.** A row's `cells` hold only values (`email`, `verified`); its
+`runs` map a job's column group to the one call that filled those columns. Several columns from one
+answer share one run; the raw answer is not copied into the table (it stays with the call record and
+the archive, reached by `call_id`). Values stay in the cells: the archive has retention and evidence
+blanking, so a table rebuilt from it would empty itself over time.
 
 ## Storage (`application.tables`, `/tables`)
 
@@ -57,14 +75,15 @@ writes it; another team's request answers 404.
 - `GET /tables/{name}`: the table and a page of rows (`items`, `offset`, `has_more`, at most 5,000);
   `?format=csv` answers every row, a job cell as its value.
 - `PATCH /tables/{name}`: rename, or replace the column list (the page owns columns and their order).
-- `POST /tables/{name}/rows`: merge rows by id. A known id replaces only the cells it sends, so a
-  teammate's or another run's cells stay; an unknown id is added at the end. `replace_parent_rows`
+- `POST /tables/{name}/rows`: merge rows by id. A known id replaces only the cells and runs it sends
+  (a run of `null` removes that group's run), so a teammate's or another run's cells stay; an
+  unknown id is added at the end. `replace_parent_rows`
   first removes those parents' rows (re-running Find people at company for a company replaces its
   people).
 - `POST /tables/{name}/rows/delete`, `DELETE /tables/{name}` (a linked table made from it stays,
   unlinked).
 
-Limits: 500 tables per team, 10,000 rows per table, 64 KB of cells per row, 256 KB of columns.
+Limits: 500 tables per team, 10,000 rows per table, 64 KB of cells and runs per row, 256 KB of columns.
 
 The same flag and lists as `/table/` gate it (`application.table.enabled_for`); off, every route is
 a plain 404, and the dashboard's nav entry (`probeOpenEnrich`) stays hidden.
@@ -87,6 +106,17 @@ visitor gets sign-in and returns to the same path. The page uses only the dashbo
 reloads the table on focus, and refreshes the header balance after a run. Its CSS is scoped under
 `.oe`, its colliding class names are `oe-` prefixed, and its grid is a `.ui-table` so the dashboard's
 global table rules skip it.
+
+**Column types.** A search or a job knows what its fields hold (`typeOfField`). An imported CSV is
+typed from its values first (`detectType`: email, LinkedIn person or company, website, domain,
+phone, IP, number, boolean; most of a sample must agree), then its header (`typeOfHeader`), then
+one Jev call for the columns still unclear (`typeQuestion`, `applyTypeAnswers`; a guess under 60%
+stays untyped). The column menu corrects a type.
+
+**AI judgment columns.** "Ask AI to judge" is a job on `openrouter.ai-judge.decide` (Jev): one
+question per row over the evidence columns the user picks, sent as escaped, bounded Markdown
+(`judgeBody`), answered as Yes/No with a probability, a label from the user's set, or a 1–N score
+(`judgeValue`). It judges; it never writes text, which stays the user's agent's job.
 
 `jobs.js` holds the rules a column follows, pure and tested by `frontend/tests/openenrich.test.ts`:
 which enrichments are offered (the shelves' per-row capabilities, routed ones as one entry,

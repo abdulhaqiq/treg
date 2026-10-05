@@ -1,7 +1,7 @@
 <script setup>
 import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { iconFor } from './icons.js'
-import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd } from './jobs.js'
+import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd, typeOfField, JEV_TOOL, COLUMN_TYPES } from './jobs.js'
 
 const props = defineProps({ table: Object })
 const emit = defineEmits(['close', 'add'])
@@ -59,9 +59,25 @@ const fromPrice = (j) => {
 
 
 
+// ---- an AI judgment column (Jev): what to ask, of which columns ----
+const judgeType = ref('noul')
+const judgeInstr = ref('')
+const judgeLabels = ref('')
+const judgeLevels = ref(5)
+const judgeEvidence = ref([])
+const judgeName = ref('ai_judgment')
+const isJudge = computed(() => !!job.value?.judge)
+const labelList = computed(() => [...new Set(judgeLabels.value.split(',').map((x) => x.trim()).filter(Boolean))])
+
 async function pick(j) {
   job.value = j
   error.value = ''
+  if (j.judge) {
+    // every column that is not itself a judgment is evidence by default
+    judgeEvidence.value = props.table.columns.filter((c) => !c.job?.judge).map((c) => c.id)
+    tools[j.tool] ||= await api.tool(j.tool).catch(() => null)
+    return
+  }
   loading.value = true
   for (const k of Object.keys(mapping)) delete mapping[k]
   for (const k of Object.keys(custom)) delete custom[k]
@@ -118,12 +134,19 @@ const inputs = computed(() => {
 // a row is ready when it has what the tool needs, and at least one input from the row itself
 const fromRow = computed(() => Object.fromEntries(Object.entries(inputs.value).filter(([k]) => !custom[k] || /\{/.test(inputs.value[k]))))
 const ready = computed(() => props.table.rows.filter((r) => {
+  if (isJudge.value) return judgeEvidence.value.some((id) => r.cells[id] != null && r.cells[id] !== '')
   const filled = fillInputs(inputs.value, r)
   return Object.keys(fillInputs(fromRow.value, r)).length && satisfies(needs.value, filled)
 }).length)
 const price = computed(() => priceOf(tool.value, Object.keys(inputs.value)))
-const needsTest = computed(() => !job.value?.linked && !contract.value && !test.value)
-const canRun = computed(() => ready.value && (job.value?.linked || keep.value.length) && !needsTest.value)
+const needsTest = computed(() => !isJudge.value && !job.value?.linked && !contract.value && !test.value)
+const canRun = computed(() => {
+  if (isJudge.value) {
+    return ready.value && judgeInstr.value.trim() && judgeEvidence.value.length
+      && (judgeType.value !== 'choice' || labelList.value.length >= 2)
+  }
+  return ready.value && (job.value?.linked || keep.value.length) && !needsTest.value
+})
 
 // Run the first ready row once and take the columns from the real answer. The run replays that
 // row from treg for nothing (same inputs, same Idempotency-Key).
@@ -153,6 +176,14 @@ async function testRow() {
 
 function add(rows) {
   const group = `g${Date.now().toString(36)}`
+  if (isJudge.value) {
+    const judge = { type: judgeType.value, instructions: judgeInstr.value.trim(), evidence: [...judgeEvidence.value],
+      ...(judgeType.value === 'choice' ? { labels: labelList.value } : {}),
+      ...(judgeType.value === 'score' ? { levels: Number(judgeLevels.value) || 5 } : {}) }
+    const id = uniqueColumnId(props.table.columns, judgeName.value || 'ai_judgment')
+    return emit('add', { rows, columns: [{ id, label: judgeName.value || 'ai_judgment',
+      job: { group, tool: job.value.tool, method: 'POST', field: 'value', judge } }] })
+  }
   const maxCost = tool.value?.endpoint?.kind === 'routed' ? ROUTE_CAP_USD : undefined
   const base = { group, tool: job.value.tool, method: method.value, inputs: { ...inputs.value }, needs: needs.value, maxCost }
   if (job.value.linked) {
@@ -163,7 +194,8 @@ function add(rows) {
   }
   const columns = []
   for (const field of keep.value) {
-    columns.push({ id: uniqueColumnId([...props.table.columns, ...columns], field), label: field, job: { ...base, field } })
+    const type = typeOfField(field, props.table.kind)
+    columns.push({ id: uniqueColumnId([...props.table.columns, ...columns], field), label: field, ...(type ? { type } : {}), job: { ...base, field } })
   }
   emit('add', { rows, columns })
 }
@@ -205,6 +237,33 @@ function add(rows) {
         <button class="icon" title="Close" @click="emit('close')">✕</button>
       </header>
       <div v-if="loading" class="side-body"><p class="muted">Loading…</p></div>
+      <div v-else-if="isJudge" class="side-body">
+        <p class="muted small">Jev reads the columns you pick and answers one question per row. It judges; it does not write.</p>
+        <h4>Answer</h4>
+        <div class="chips">
+          <label v-for="[v, l] in [['noul', 'Yes / No'], ['choice', 'Pick a label'], ['score', 'Score']]" :key="v"
+                 :class="['oe-chip', { on: judgeType === v }]"><input v-model="judgeType" type="radio" :value="v" hidden />{{ l }}</label>
+        </div>
+        <h4>Question</h4>
+        <textarea v-model="judgeInstr" rows="3" class="oe-textarea"
+                  :placeholder="judgeType === 'noul' ? 'Is this company a B2B SaaS business?' : judgeType === 'choice' ? 'Which segment does this company sell to?' : 'How well does this company fit our ICP (mid-size B2B SaaS in the US)?'" />
+        <template v-if="judgeType === 'choice'">
+          <h4>Labels</h4>
+          <input v-model="judgeLabels" placeholder="SMB, Mid-market, Enterprise" />
+        </template>
+        <template v-if="judgeType === 'score'">
+          <h4>Scale</h4>
+          <div class="input-row"><span class="input-name">1 to</span><div class="input-src"><input v-model.number="judgeLevels" type="number" min="2" max="10" /></div></div>
+        </template>
+        <h4>Evidence</h4>
+        <div class="chips">
+          <label v-for="c in table.columns.filter((x) => !x.job?.judge)" :key="c.id" :class="['oe-chip', { on: judgeEvidence.includes(c.id) }]">
+            <input v-model="judgeEvidence" type="checkbox" :value="c.id" hidden />{{ c.label || c.id }}
+          </label>
+        </div>
+        <h4>Column name</h4>
+        <input v-model="judgeName" placeholder="ai_judgment" />
+      </div>
       <div v-else class="side-body">
         <p v-if="job.about || job.note" class="muted small">{{ job.about || job.note }}.</p>
 
@@ -258,7 +317,8 @@ function add(rows) {
       <footer v-if="!loading" class="side-foot">
         <p class="small">
           <strong>{{ ready }}</strong> of {{ table.rows.length }} rows have the inputs.
-          <template v-if="price.known">
+          <template v-if="isJudge">About $0.0001 a row (a fraction of a cent, settled at the provider's reported cost).</template>
+          <template v-else-if="price.known">
             From {{ usd(price.min * 1e6) }} a row<template v-if="price.cap">, never over {{ usd(price.cap * (job.linked ? Number(peopleLimit) || 1 : 1) * 1e6) }}</template>.
             <template v-if="tool?.endpoint?.cost?.type === 'per_success'">No result, no charge.</template>
           </template>

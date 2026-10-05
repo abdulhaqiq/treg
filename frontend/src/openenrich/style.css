@@ -159,3 +159,9 @@
   .oe .oe-layout, .oe .finder { flex-direction: column; }
   .oe .oe-side, .oe .filters { width: 100%; margin-left: 0; }
 }
+
+.oe .grid th .th-type, .oe .oe-grid th .th-type { margin-left: 6px; font-size: 10px; font-weight: 400; color: var(--muted); background: var(--gray-soft); border-radius: 999px; padding: 1px 6px; }
+.oe .menu .menu-type { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.oe .menu .menu-type select { width: auto; padding: 3px 6px; font-size: 12px; }
+
+.oe .oe-textarea { width: 100%; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 10px; font: inherit; resize: vertical; }

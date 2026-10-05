@@ -163,3 +163,58 @@ test('CSV export neutralises formulas in text', () => {
   assert.equal(out.split('\n')[1], "'=cmd()")
   assert.equal(out.split('\n')[2], '-5')
 })
+
+test('column types come from the values, then the header', async () => {
+  const { detectType, typeOfHeader, detectColumns } = await import('../src/openenrich/jobs.js')
+  assert.equal(detectType(['ramp.com', 'mercury.com', '']), 'domain')
+  assert.equal(detectType(['https://www.linkedin.com/in/a', 'linkedin.com/in/b']), 'linkedin_person')
+  assert.equal(detectType(['https://www.linkedin.com/company/stripe']), 'linkedin_company')
+  assert.equal(detectType(['eric@ramp.com', 'x@y.io']), 'email')
+  assert.equal(detectType(['https://ramp.com/about']), 'website')
+  assert.equal(detectType(['+1 (415) 555-0100', '+44 20 7946 0958']), 'phone')
+  assert.equal(detectType(['1000000', '250']), 'number')
+  assert.equal(detectType(['Ramp', 'Mercury']), null)
+  assert.equal(typeOfHeader('Company Name'), 'company_name')
+  const cols = detectColumns([{ id: 'who', label: 'Contact' }, { id: 'site', label: 'Site' }, { id: 'n', label: 'Notes' }],
+    [{ cells: { who: 'Eric Glyman', site: 'ramp.com', n: 'met at SaaStr' } }])
+  assert.deepEqual(cols.map((c) => c.type), ['person_name', 'domain', undefined])
+})
+
+test('inputs map by column type before header names', async () => {
+  const { autoMap } = await import('../src/openenrich/jobs.js')
+  const cols = [{ id: 'who', label: 'Contact', type: 'person_name' }, { id: 'site', label: 'Site', type: 'website' },
+    { id: 'li', label: 'LI', type: 'linkedin_person' }]
+  assert.deepEqual(autoMap([['domain', 'full_name'], ['linkedin_url']], cols, 'people'),
+    { domain: '{site}', full_name: '{who}', linkedin_url: '{li}' })
+})
+
+test('Jev types the unclear columns in one call and only keeps confident answers', async () => {
+  const { typeQuestion, applyTypeAnswers } = await import('../src/openenrich/jobs.js')
+  const cols = [{ id: 'a', label: 'A', type: 'domain' }, { id: 'b', label: 'Kunde' }, { id: 'c', label: 'Notiz' }]
+  const ask = typeQuestion(cols, [{ cells: { a: 'x.com', b: 'Ramp <Inc>', c: 'hi' } }])
+  assert.deepEqual(ask.ids, ['b', 'c'])
+  assert.ok(ask.body.state.includes('Ramp &lt;Inc&gt;'), 'evidence is escaped')
+  assert.deepEqual(Object.keys(ask.body.questions), ['c0', 'c1'])
+  const typed = applyTypeAnswers(cols, ask.ids, { 'answers.c0.choice': 'company_name', 'answers.c0.confidence': 0.9,
+    'answers.c1.choice': 'company_name', 'answers.c1.confidence': 0.4 })
+  assert.deepEqual(typed.map((c) => c.type), ['domain', 'company_name', undefined])
+})
+
+test('a judgment column asks one question over the evidence and reads the answer', async () => {
+  const { judgeBody, judgeValue } = await import('../src/openenrich/jobs.js')
+  const cols = [{ id: 'name', label: 'name' }, { id: 'desc', label: 'description' }, { id: 'x', label: 'x' }]
+  const row = { cells: { name: 'Ramp', desc: 'Corporate cards <b>for</b> finance teams', x: '' } }
+  const judge = { type: 'noul', instructions: 'Is this B2B?', evidence: ['name', 'desc', 'x'] }
+  const body = judgeBody(judge, row, cols)
+  assert.equal(body.model, 'typesafe/jev-1.13')
+  assert.ok(body.state.includes('<field name="name">Ramp</field>') && body.state.includes('&lt;b&gt;'))
+  assert.ok(!body.state.includes('name="x"'), 'empty evidence is left out')
+  assert.equal(judgeBody(judge, { cells: {} }, cols), null)
+  assert.deepEqual(judgeValue(judge, { 'answers.q.noul': 0.9 }), { value: 'Yes', confidence: 0.9 })
+  assert.deepEqual(judgeValue({ type: 'choice', labels: ['SMB', 'Enterprise'] }, { 'answers.q.choice': 'SMB', 'answers.q.confidence': 0.7 }),
+    { value: 'SMB', confidence: 0.7 })
+  assert.equal(judgeValue({ type: 'choice', labels: ['SMB'] }, { 'answers.q.choice': 'Other' }).value, null)
+  assert.equal(judgeValue({ type: 'score', levels: 5 }, { 'answers.q.score': 3 }).value, 4)
+  const score = judgeBody({ type: 'score', levels: 3, instructions: 'Fit?', evidence: ['name'] }, row, cols)
+  assert.deepEqual(Object.keys(score.questions.q.criteria), ['1', '2', '3'])
+})

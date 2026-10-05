@@ -4,7 +4,7 @@
 import { onMounted, onUnmounted, provide, ref } from 'vue'
 import { useDashboard } from '../state/context'
 import { loadTable, makeClient } from './client.js'
-import { SOURCES, parseCsv, rowId, uniqueColumnId } from './jobs.js'
+import { JEV_TOOL, SOURCES, applyTypeAnswers, detectColumns, parseCsv, readAnswer, rowId, typeQuestion, uniqueColumnId } from './jobs.js'
 import SourceForm from './SourceForm.vue'
 import TableView from './TableView.vue'
 import './style.css'
@@ -71,12 +71,17 @@ async function importCsv(e) {
   const [header = [], ...lines] = parseCsv(await file.text())
   const columns = []
   for (const label of header) columns.push({ id: uniqueColumnId(columns, label), label })
-  const names = header.map((h) => h.toLowerCase())
-  const kind = names.some((n) => /first.?name|last.?name|full.?name|email|title/.test(n)) ? 'people' : 'companies'
-  await created({
-    name: file.name.replace(/\.csv$/i, ''), kind, columns,
-    rows: lines.map((l) => ({ id: rowId(), cells: Object.fromEntries(columns.map((c, i) => [c.id, l[i] ?? ''])) })),
-  })
+  const rows = lines.map((l) => ({ id: rowId(), cells: Object.fromEntries(columns.map((c, i) => [c.id, l[i] ?? ''])) }))
+  // what each column holds: from its values, then its header, then one Jev call for the rest
+  let typed = detectColumns(columns, rows)
+  const ask = typeQuestion(typed, rows)
+  if (ask) {
+    const res = readAnswer(await api.run(JEV_TOOL, { method: 'POST', body: ask.body }))
+    if (res.state === 'hit') typed = applyTypeAnswers(typed, ask.ids, res.rows[0] || {})
+  }
+  const types = new Set(typed.map((c) => c.type))
+  const kind = ['person_name', 'first_name', 'last_name', 'email', 'linkedin_person', 'job_title'].some((t) => types.has(t)) ? 'people' : 'companies'
+  await created({ name: file.name.replace(/\.csv$/i, ''), kind, columns: typed, rows })
   e.target.value = ''
 }
 

@@ -19,12 +19,14 @@ const PATHS = {
   copy: 'M8 8h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2',
   at: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.9 7.9',
   search: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z M21 21l-4.3-4.3',
+  spark: 'M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z',
   message: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
   megaphone: 'M3 11l18-5v12L3 14v-3z M11.6 16.8a3 3 0 1 1-5.8-1.6',
 }
 
 // First match wins, so the specific words come before the general ones.
 const RULES = [
+  [/ai-judge/, 'spark'],
   [/\.posts$/, 'message'], [/ads[.-]|\.ads$|transparency/, 'megaphone'],
   [/verify/, 'check'], [/email_pattern|format/, 'at'], [/email/, 'mail'], [/phone/, 'phone'],
   [/funding|investment|acquisition/, 'dollar'], [/jobs?\b|jobs\./, 'briefcase'], [/news|filings/, 'news'],

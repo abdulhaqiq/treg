@@ -94,10 +94,10 @@ export async function loadTable(api, name) {
 export function fromStored(t) {
   return {
     name: t.name, kind: t.kind, parent: t.parent, source: t.source, columns: t.columns || [],
-    rows: (t.items || []).map((i) => ({ id: i.id, _parent: i.parent_row || null, cells: i.cells || {} })),
+    rows: (t.items || []).map((i) => ({ id: i.id, _parent: i.parent_row || null, cells: i.cells || {}, runs: i.runs || {} })),
   }
 }
 
 export function toStoredRows(rows) {
-  return rows.map((r) => ({ id: r.id, cells: r.cells, ...(r._parent ? { parent_row: r._parent } : {}) }))
+  return rows.map((r) => ({ id: r.id, cells: r.cells, runs: r.runs || {}, ...(r._parent ? { parent_row: r._parent } : {}) }))
 }

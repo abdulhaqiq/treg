@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
-import { cellFrom, cellValue, fillInputs, host, listRecords, readAnswer, rowId, satisfies, toCsv, usd } from './jobs.js'
+import { COLUMN_TYPES, cellFrom, cellValue, fillInputs, host, judgeBody, judgeValue, listRecords, readAnswer, rowId, satisfies, toCsv, typeOfField, usd } from './jobs.js'
 import ColumnPanel from './ColumnPanel.vue'
 import { loadTable, toStoredRows } from './client.js'
 
@@ -28,9 +28,10 @@ const groups = computed(() => {
 let saveTimer = null
 const synced = new Map()       // table name -> {columns: json, rows: Map(row id -> json)}
 const children = new Map()     // linked tables written by "Find people at company": name -> {table, replaced}
-const rowJson = (r) => JSON.stringify(r.cells) + '|' + (r._parent || '')
+const rowJson = (r) => JSON.stringify(r.cells) + '|' + JSON.stringify(r.runs || {}) + '|' + (r._parent || '')
 function remember(table) {
-  synced.set(table.name, { columns: JSON.stringify(table.columns), rows: new Map(table.rows.map((r) => [r.id, rowJson(r)])) })
+  synced.set(table.name, { columns: JSON.stringify(table.columns),
+    rows: new Map(table.rows.map((r) => [r.id, { json: rowJson(r), groups: Object.keys(r.runs || {}) }])) })
 }
 remember(t.value)
 
@@ -51,25 +52,38 @@ async function flushTable(table, replaced) {
   const last = synced.get(table.name) || { columns: '', rows: new Map() }
   if (JSON.stringify(table.columns) !== last.columns) await api.update(table.name, { columns: table.columns })
   const parents = replaced && replaced.size ? [...replaced] : null
-  const changed = table.rows.filter((r) => (parents && parents.includes(r._parent)) || last.rows.get(r.id) !== rowJson(r))
-  if (changed.length || parents) await api.upsertRows(table.name, toStoredRows(changed), parents)
+  const changed = table.rows.filter((r) => (parents && parents.includes(r._parent)) || last.rows.get(r.id)?.json !== rowJson(r))
+  // a group whose run was removed locally is sent as null so the server drops it too
+  const stored = toStoredRows(changed).map((r) => {
+    const gone = (last.rows.get(r.id)?.groups || []).filter((g) => !(g in (r.runs || {})))
+    return gone.length ? { ...r, runs: { ...r.runs, ...Object.fromEntries(gone.map((g) => [g, null])) } } : r
+  })
+  if (changed.length || parents) await api.upsertRows(table.name, stored, parents)
   remember(table)
 }
 
 // --- running a column -----------------------------------------------------------------------------
+// A job column's state is its group's run on that row: one call fills every column of the group.
+const runOf = (row, col) => (col.job ? row.runs?.[col.job.group] : null)
+const setRun = (row, group, value) => {
+  row.runs = { ...(row.runs || {}) }
+  if (value) row.runs[group] = { ...value, at: new Date().toISOString() }
+  else delete row.runs[group]
+}
+
 async function runGroup(group, howMany, again = false) {
   if (run.value) return
   const cols = t.value.columns.filter((c) => c.job?.group === group)
   // re-running replays each answered row from treg for nothing (same Idempotency-Key)
-  if (again) for (const r of t.value.rows) for (const c of cols) r.cells[c.id] = null
+  if (again) for (const r of t.value.rows) { setRun(r, group, null); for (const c of cols) r.cells[c.id] = null }
   const job = cols[0].job
-  const todo = t.value.rows.filter((r) => !DONE.has(r.cells[cols[0].id]?.state))
+  const todo = t.value.rows.filter((r) => !DONE.has(r.runs?.[group]?.state))
   const queue = howMany === 'all' ? todo : todo.slice(0, howMany)
   if (!queue.length) return
   banner.value = ''
   run.value = { done: 0, total: queue.length, spent: 0, stopping: false }
   const child = job.linked ? await childTable(cols[0]) : null
-  for (const r of queue) for (const c of cols) r.cells[c.id] = { state: 'queued' }
+  for (const r of queue) setRun(r, group, { state: 'queued' })
 
   // Each call holds up to its cap until it settles, so a low balance can refuse a hold while
   // other rows still run: that row waits for them instead of stopping the run.
@@ -91,49 +105,65 @@ async function runGroup(group, howMany, again = false) {
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
-  for (const r of queue) for (const c of cols) if (r.cells[c.id]?.state === 'queued') r.cells[c.id] = null
+  for (const r of queue) if (r.runs?.[group]?.state === 'queued') setRun(r, group, null)
   await flush()
   run.value = null
   emit('balance')
 }
 
 async function runRow(row, cols, job, child, othersRunning, shared) {
-  const inputs = fillInputs(job.inputs, row)
-  const fromRow = Object.fromEntries(Object.entries(job.inputs).filter(([, v]) => String(v).includes('{')))
-  if (!Object.keys(fillInputs(fromRow, row)).length || !satisfies(job.needs || [], inputs)) {
-    for (const c of cols) row.cells[c.id] = { state: 'skipped', inputs }
-    return
+  const group = job.group
+  let inputs, req
+  if (job.judge) {
+    // a judgment's input is the row's evidence columns, as one bounded Markdown state
+    const body = judgeBody(job.judge, row, t.value.columns)
+    if (!body) { setRun(row, group, { state: 'skipped' }); return }
+    inputs = { evidence: job.judge.evidence }
+    req = { method: 'POST', body }
+  } else {
+    inputs = fillInputs(job.inputs, row)
+    const fromRow = Object.fromEntries(Object.entries(job.inputs).filter(([, v]) => String(v).includes('{')))
+    if (!Object.keys(fillInputs(fromRow, row)).length || !satisfies(job.needs || [], inputs)) {
+      setRun(row, group, { state: 'skipped', inputs })
+      return
+    }
+    req = job.method === 'GET'
+      ? { method: 'GET', query: inputs }
+      : { method: job.method || 'POST', body: job.linked ? { ...inputs, limit: job.limit } : inputs, maxCost: job.maxCost }
   }
-  for (const c of cols) row.cells[c.id] = { state: 'running' }
-  const req = job.method === 'GET'
-    ? { method: 'GET', query: inputs }
-    : { method: job.method, body: job.linked ? { ...inputs, limit: job.limit } : inputs, maxCost: job.maxCost }
+  setRun(row, group, { state: 'running' })
   const key = JSON.stringify(req)
   if (!shared.has(key)) shared.set(key, callWithRetry(job.tool, req))
   const r = await shared.get(key)
   const res = readAnswer(r)
-  const meta = { served_by: r.served_by, cost_micro: r.cost_micro, call_id: r.call_id, replay: r.replay, inputs }
+  const meta = { call_id: r.call_id || undefined, served_by: r.served_by || undefined, cost_micro: r.cost_micro || 0,
+    replay: r.replay || undefined, inputs }
   run.value.spent += r.cost_micro || 0
   if (res.state === 'stop' && res.low && othersRunning()) {
-    for (const c of cols) row.cells[c.id] = { state: 'queued' }
+    setRun(row, group, { state: 'queued' })
     return 'wait'
   }
   if (res.state === 'stop') {
     run.value.stopping = true
     banner.value = res.error
-    for (const c of cols) row.cells[c.id] = null
+    setRun(row, group, null)
     return
   }
   if (res.state === 'hit' && job.linked) {
     const count = addPeople(child, row, res, job.limit)
-    row.cells[cols[0].id] = { value: count, state: 'hit', link: child.name, ...meta }
+    row.cells[cols[0].id] = count
+    setRun(row, group, { state: 'hit', link: child.name, ...meta })
     return
   }
-  for (const c of cols) {
-    row.cells[c.id] = res.state === 'hit'
-      ? { value: cellFrom(res.rows, c.job.field), state: 'hit', answer: res.rows.length > 1 ? res.rows : res.rows[0], ...meta }
-      : { value: null, state: res.state, error: res.error, ...meta }
+  if (res.state === 'hit' && job.judge) {
+    const { value, confidence } = judgeValue(job.judge, res.rows[0] || {})
+    row.cells[cols[0].id] = value
+    setRun(row, group, value == null ? { state: 'error', error: 'The judgment came back without an answer.', ...meta }
+      : { state: 'hit', confidence, ...meta })
+    return
   }
+  for (const c of cols) row.cells[c.id] = res.state === 'hit' ? cellFrom(res.rows, c.job.field) : null
+  setRun(row, group, res.state === 'hit' ? { state: 'hit', ...meta } : { state: res.state, error: res.error, ...meta })
 }
 
 // 429, or the same key still running from an earlier run: wait and ask again (a finished call
@@ -167,7 +197,11 @@ function addPeople(child, parentRow, res, limit) {
   const company = cellValue(parentRow.cells.name ?? parentRow.cells.company_name ?? parentRow.cells.company) ?? ''
   const { records, ids: kept } = listRecords('people', res.rows, res.columns, limit)
   const ids = ['company_name', 'company_domain', ...kept.filter((c) => c !== 'company')]
-  for (const id of ids) if (!child.columns.some((c) => c.id === id)) child.columns.push({ id, label: id })
+  for (const id of ids) {
+    if (child.columns.some((c) => c.id === id)) continue
+    const type = typeOfField(id, 'people')
+    child.columns.push(type ? { id, label: id, type } : { id, label: id })
+  }
   child.rows = child.rows.filter((r) => r._parent !== parentRow.id)
   children.get(child.name)?.replaced.add(parentRow.id)
   for (const p of records) {
@@ -194,28 +228,47 @@ async function removeColumn(col) {
   if (!confirm(`Delete column "${col.label}"${col.job ? ' and the columns filled by the same call' : ''}?`)) return
   const drop = new Set(t.value.columns.filter((c) => c === col || (col.job && c.job?.group === col.job.group)).map((c) => c.id))
   t.value.columns = t.value.columns.filter((c) => !drop.has(c.id))
-  for (const r of t.value.rows) for (const id of drop) delete r.cells[id]
+  for (const r of t.value.rows) {
+    for (const id of drop) delete r.cells[id]
+    if (col.job) setRun(r, col.job.group, null)
+  }
+  await flush()
+}
+
+// a column's type decides which tool inputs it feeds; the menu corrects a wrong guess
+async function setType(col, type) {
+  if (type) col.type = type
+  else delete col.type
   await flush()
 }
 
 function remaining(col) {
-  return t.value.rows.filter((r) => !DONE.has(r.cells[col.id]?.state)).length
+  return t.value.rows.filter((r) => !DONE.has(runOf(r, col)?.state)).length
 }
 
 // --- cells ----------------------------------------------------------------------------------------
-// typeof first: every string has a built-in `.link` method
-const linkOf = (cell) => (cell && typeof cell === 'object' && typeof cell.link === 'string' ? cell.link : null)
+const linkOf = (row, col) => runOf(row, col)?.link || null
 
-function show(cell) {
-  if (cell == null || typeof cell !== 'object') return cell ?? ''
-  return cell.value === true ? '✓' : cell.value === false ? '✗' : cell.value ?? ''
+function show(value) {
+  if (value == null) return ''
+  if (value === true) return '✓'
+  if (value === false) return '✗'
+  return typeof value === 'object' ? JSON.stringify(value) : value
 }
 
-// A cell that has no value to show says why, as a small status pill.
-function pill(cell) {
-  if (!cell || typeof cell !== 'object') return ''
-  if (cell.state === 'hit') return ''
-  return { queued: 'Queued', running: 'Running', miss: 'No result', skipped: 'Missing input', error: 'Error' }[cell.state] ?? ''
+// A job cell that has no value to show says why, as a small status pill.
+function pill(row, col) {
+  const state = runOf(row, col)?.state
+  if (!state || state === 'hit') return ''
+  return { queued: 'Queued', running: 'Running', miss: 'No result', skipped: 'Missing input', error: 'Error' }[state] ?? ''
+}
+
+// What the detail panel shows: the value, then the call that produced it.
+function details(row, col) {
+  const out = { value: row.cells[col.id] }
+  const r = runOf(row, col)
+  if (r) Object.assign(out, r)
+  return out
 }
 
 function exportCsv() {
@@ -259,6 +312,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
               <th class="num">#</th>
               <th v-for="c in t.columns" :key="c.id" :class="{ jobcol: c.job, open: menu === c.id }" @click.stop="menu = menu === c.id ? null : c.id">
                 <span class="th-label">{{ c.label }}</span>
+                <span v-if="c.type && !c.job" class="th-type">{{ c.type.replace(/_/g, ' ') }}</span>
                 <span class="caret">▾</span>
                 <div v-if="menu === c.id" class="menu" @click.stop>
                   <template v-if="c.job">
@@ -267,6 +321,13 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                     <button :disabled="!!run" @click="menu = null; runGroup(c.job.group, 'all', true)">Re-run all rows</button>
                     <hr />
                   </template>
+                  <label class="menu-type">Type
+                    <select :value="c.type || ''" @change="setType(c, $event.target.value)">
+                      <option value="">not set</option>
+                      <option v-for="ty in COLUMN_TYPES" :key="ty" :value="ty">{{ ty.replace(/_/g, ' ') }}</option>
+                    </select>
+                  </label>
+                  <hr />
                   <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
                 </div>
               </th>
@@ -275,13 +336,13 @@ onUnmounted(() => window.removeEventListener('focus', reload))
           <tbody>
             <tr v-for="(r, i) in t.rows" :key="r.id">
               <td class="num">{{ i + 1 }}</td>
-              <td v-for="c in t.columns" :key="c.id" :class="['cell', r.cells[c.id]?.state, { picked: detail?.row === r && detail?.column === c }]"
-                  @click="r.cells[c.id]?.state && (detail = { row: r, column: c }, adding = false)">
-                <a v-if="linkOf(r.cells[c.id])" class="pill link" href="#" @click.prevent.stop="emit('open', linkOf(r.cells[c.id]))">
-                  {{ r.cells[c.id].value }} {{ r.cells[c.id].value === 1 ? 'person' : 'people' }} →
+              <td v-for="c in t.columns" :key="c.id" :class="['cell', runOf(r, c)?.state, { picked: detail?.row === r && detail?.column === c }]"
+                  @click="runOf(r, c) && (detail = { row: r, column: c }, adding = false)">
+                <a v-if="linkOf(r, c)" class="pill link" href="#" @click.prevent.stop="emit('open', linkOf(r, c))">
+                  {{ r.cells[c.id] }} {{ r.cells[c.id] === 1 ? 'person' : 'people' }} →
                 </a>
-                <span v-else-if="pill(r.cells[c.id])" :class="['pill', r.cells[c.id].state]">{{ pill(r.cells[c.id]) }}</span>
-                <template v-else>{{ show(r.cells[c.id]) }}</template>
+                <span v-else-if="pill(r, c)" :class="['pill', runOf(r, c).state]">{{ pill(r, c) }}</span>
+                <template v-else>{{ show(r.cells[c.id]) }}<span v-if="runOf(r, c)?.confidence != null" class="muted small"> · {{ Math.round(runOf(r, c).confidence * 100) }}%</span></template>
               </td>
             </tr>
           </tbody>
@@ -297,7 +358,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
         </header>
         <div class="side-body">
           <dl class="detail">
-            <template v-for="(v, k) in detail.row.cells[detail.column.id]" :key="k">
+            <template v-for="(v, k) in details(detail.row, detail.column)" :key="k">
               <dt>{{ k.replace(/_/g, ' ') }}</dt>
               <dd>{{ k === 'cost_micro' ? usd(v) : typeof v === 'object' ? JSON.stringify(v, null, 1) : v }}</dd>
             </template>

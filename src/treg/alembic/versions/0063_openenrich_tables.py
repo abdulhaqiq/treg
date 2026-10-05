@@ -42,6 +42,7 @@ def upgrade() -> None:
         sa.Column("parent_row", sa.String(), nullable=True),
         sa.Column("position", sa.Integer(), nullable=False),
         sa.Column("cells", sa.JSON(), nullable=False),
+        sa.Column("runs", sa.JSON(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.UniqueConstraint("table_id", "row_key", name="uq_tablerow_table_key"),
     )

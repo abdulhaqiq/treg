@@ -38,14 +38,19 @@ async def test_create_read_merge_and_export(clients: AsyncClient, table_on):
     # a second table with the same name is made unique, never overwrites
     assert (await clients.post("/tables", json={"name": "Fintech Q4"})).json()["name"] == "fintech-q4-2"
 
-    # merge: only the sent cells change, a new id is added at the end
-    cell = {"value": "eric@ramp.com", "state": "hit", "served_by": "x.find", "cost_micro": 5000, "call_id": "c1"}
-    r = await clients.post("/tables/fintech-q4/rows", json={"rows": [{"id": "r1", "cells": {"email": cell}},
-                                                                    {"id": "r9", "cells": {"name": "Brex"}}]})
+    # merge: only the sent cells change, a new id is added at the end; a call's evidence is one run
+    run = {"state": "hit", "served_by": "x.find", "cost_micro": 5000, "call_id": "c1", "inputs": {"domain": "ramp.com"}}
+    r = await clients.post("/tables/fintech-q4/rows", json={"rows": [
+        {"id": "r1", "cells": {"email": "eric@ramp.com"}, "runs": {"g1": run}},
+        {"id": "r9", "cells": {"name": "Brex"}}]})
     assert r.json() == {"updated": 1, "added": ["r9"]}
     t = (await clients.get("/tables/fintech-q4")).json()
     row = {i["id"]: i for i in t["items"]}
-    assert row["r1"]["cells"] == {"name": "Ramp", "domain": "ramp.com", "email": cell}
+    assert row["r1"]["cells"] == {"name": "Ramp", "domain": "ramp.com", "email": "eric@ramp.com"}
+    assert row["r1"]["runs"] == {"g1": run}
+    # a run of None clears its group
+    await clients.post("/tables/fintech-q4/rows", json={"rows": [{"id": "r1", "cells": {}, "runs": {"g1": None}}]})
+    assert (await clients.get("/tables/fintech-q4")).json()["items"][0]["runs"] == {}
     assert [i["id"] for i in t["items"]][-1] == "r9"
 
     csv = (await clients.get("/tables/fintech-q4?format=csv")).text.splitlines()
@@ -74,6 +79,20 @@ async def test_a_linked_table_replaces_a_parents_rows_and_survives_its_parent(cl
 async def test_columns_rows_and_names_are_checked(clients: AsyncClient, table_on):
     bad = await clients.post("/tables", json={"name": "x", "columns": [{"id": "a"}, {"id": "a"}]})
     assert bad.status_code == 422 and bad.json()["detail"]["error"] == "bad_columns"
+    # the schema: unknown keys, a bad type or a malformed job are refused
+    for col in ({"id": "a", "colour": "red"}, {"id": "a", "type": "favourite"},
+                {"id": "a", "job": {"group": "g", "tool": "x", "method": "TRACE"}},
+                {"id": "a", "job": {"group": "g", "tool": "x", "judge": {"type": "noul"}}}):
+        r = await clients.post("/tables", json={"name": "x", "columns": [col]})
+        assert r.status_code == 422, col
+    ok = await clients.post("/tables", json={"name": "typed", "columns": [
+        {"id": "site", "label": "Site", "type": "website"},
+        {"id": "fit", "label": "fit", "job": {"group": "g2", "tool": "openrouter.ai-judge.decide", "field": "value",
+         "judge": {"type": "noul", "instructions": "Is this B2B SaaS?", "evidence": ["site"]}}}]})
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["columns"][0]["type"] == "website"
+    bad_run = await clients.post("/tables/typed/rows", json={"rows": [{"cells": {}, "runs": {"g2": {"state": "done"}}}]})
+    assert bad_run.status_code == 422
     await clients.post("/tables", json={"name": "t"})
     bad = await clients.post("/tables/t/rows", json={"rows": [{"id": "../x", "cells": {}}]})
     assert bad.status_code == 422
