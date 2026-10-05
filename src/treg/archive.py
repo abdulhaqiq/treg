@@ -1163,6 +1163,15 @@ async def prune_once() -> int:
             .order_by((ArchiveKey.ttl_s == TTL_NEVER).desc(), ArchiveKey.last_requested_at)
             .limit(2000))).scalars().all()
 
+        # Answers a live retry row points to instead of holding its own copy (idempotency trim,
+        # Alembic 0065/0066): stripping one would turn that row's replay into a 410 for an answer the
+        # team paid for, inside its window. Read once per pass, over the partial index.
+        from .models import IdempotentCall
+        retry_needed = set((await s.execute(
+            select(IdempotentCall.archive_content_hash).distinct()
+            .where(IdempotentCall.archive_content_hash.is_not(None),
+                   IdempotentCall.expires_at > _utcnow()))).scalars().all())
+
         for key in keys:
             if stripped >= batch:
                 break
@@ -1180,8 +1189,9 @@ async def prune_once() -> int:
                           and v.body is not None
                           and (key.ttl_s == TTL_NEVER or v.fetched_at <= min_age)]
             surviving = [v for v in versions if v not in candidates]
-            protected = ({v.id for v in surviving}
-                         | {v.body_of for v in surviving if v.body_of is not None})
+            needed = [v for v in versions if v.content_hash in retry_needed]
+            protected = ({v.id for v in surviving} | {v.id for v in needed}
+                         | {v.body_of for v in [*surviving, *needed] if v.body_of is not None})
             freed_bytes = 0
             freed_n = 0
             for v in candidates:

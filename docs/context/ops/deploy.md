@@ -69,15 +69,16 @@ closed maintenance loop. Calling `maintenance.upgrade()` directly does not dispo
 
 ## Replay-cache retention
 
-`treg-idempotency-prune` runs `treg-worker idempotency prune` at minute 43 each hour (UTC) on a
-Render starter cron, using only the database URL and the secret key needed by `verify_db`.
+An operator runs `treg-worker idempotency prune` on a schedule (hourly suits a 24-hour window), as a
+separate scheduled job that needs only the database URL and the secret key needed by `verify_db`.
 It runs independently of web workers and holds at most one database connection at a time.
 The command defaults to 200 rows per committed batch, a 250 ms pause outside the session, and
 10,000 batches maximum. `--dry-run` prints the fixed cutoff, upper ID and eligible count without
 writing; the final JSON includes eligible and deleted rows, batches, traversal completion, and
 page_timeouts. Counts accumulate from bounded metadata pages rather than full-table queries.
-Incomplete bounded runs exit nonzero so cron failures are visible. Render serializes runs of this cron.
-Retention uses the existing table and primary key; it requires no migration or web-service restart.
+Incomplete bounded runs exit nonzero so scheduler failures are visible. Run one instance at a time.
+The same command then runs `trim_archived_answers` (skip it with `--skip-trim`), which reads the
+partial index from Alembic 0066 and the archive.
 
 **Timeout resilience.** Page SELECTs use a 60-second timeout; DELETEs use 15 seconds. On a page
 timeout the cursor advances by batch size and processing continues, but the result remains incomplete

@@ -144,13 +144,12 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
             "idempotency_in_progress", status_code=409,
             detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
                     "is still in progress — retry shortly"))
-    body = row.response_body
-    if body is None and row.archive_content_hash:
-        body = await _archived_answer(row, key)
-        if body is None:
-            return _lost_answer(row, key)
+    # A trimmed row names its archive entry instead of carrying bytes. Not read here: this runs
+    # inside the request's session, and the read can go to object storage.
+    trimmed = row.response_body is None and bool(row.archive_content_hash)
     return IdempotentReplay(
-        body=body or b"",
+        body=row.response_body or b"",
+        archive=(row.archive_key_hash or "", row.archive_content_hash or "") if trimmed else None,
         status_code=row.response_status,
         media_type=row.response_media_type or "application/json",
         charged_micro=row.charged_micro,
@@ -287,26 +286,30 @@ async def _hold_claim_lease(state) -> None:
         await _renew_claim_lease(claim)
 
 
-async def _archived_answer(row: IdempotentCall, key: str) -> bytes | None:
-    """A trimmed row's answer, read back from the archive (hash-checked there). Never raises."""
+async def resolve_archived_replay(replay: IdempotentReplay, key: str) -> IdempotentReplay:
+    """A trimmed row's answer, read back from the archive (hash-checked there). Call it with NO
+    session held: `archive.answer_bytes` takes its own short session, then reads object storage.
+    When the bytes are gone the answer is the same 410 as an answer never kept; the key is not run
+    again, which would be a second charge. Never raises."""
+    if replay.archive is None:
+        return replay
     try:
-        return await archive.answer_bytes(row.archive_key_hash or "", row.archive_content_hash or "")
+        body = await archive.answer_bytes(*replay.archive)
     except Exception:  # noqa: BLE001 - a failed read is the 410 below, never a 500
         logging.getLogger("treg.idempotency").warning(
             "idempotency %s: archived answer unreadable", _idem_display(key), exc_info=True)
-        return None
-
-
-def _lost_answer(row: IdempotentCall, key: str) -> IdempotentReplay:
-    """The archive no longer has a trimmed row's answer: the same 410 as an answer never kept.
-    The key is not run again; that would be a second charge."""
-    detail = {"error": "idempotency_response_lost", "call_id": row.call_ref, "charged_micro": row.charged_micro,
+        body = None
+    if body is not None:
+        return IdempotentReplay(body=body, status_code=replay.status_code, media_type=replay.media_type,
+                                charged_micro=replay.charged_micro, call_ref=replay.call_ref)
+    detail = {"error": "idempotency_response_lost", "call_id": replay.call_ref,
+              "charged_micro": replay.charged_micro,
               "message": (f"the call with Idempotency-Key {_idem_display(key)!r} completed and was charged, "
-                          f"but its response could not be read back. GET /calls/{row.call_ref}/result may "
+                          f"but its response could not be read back. GET /calls/{replay.call_ref}/result may "
                           "still have it; send a new key to call again.")}
     return IdempotentReplay(body=json.dumps({"detail": detail}, separators=(",", ":")).encode(),
                             status_code=410, media_type="application/json",
-                            charged_micro=row.charged_micro, call_ref=row.call_ref or "")
+                            charged_micro=replay.charged_micro, call_ref=replay.call_ref)
 
 
 async def _release_idempotent_claim(claim: tuple[int, str, str] | None) -> None:
@@ -558,8 +561,7 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                                 make_session=session_maker) -> IdempotencyTrimResult:
     """Drop a live retry row's own copy of an answer the archive holds byte for byte.
 
-    The same answer was kept twice: `tikhub.tiktok.search.videos` held 6,023 MB in retry rows and
-    6,118 MB in the archive (finding 4, 2026-09-21). A row qualifies when its call's `CallRecord`
+    Without this the same answer is stored twice, once per table, for a day. A row qualifies when its call's `CallRecord`
     names an archive answer, that answer still carries its bytes (`archive.bytes_on_file`), and the
     sha256 of the row's own bytes equals it. Only then is `response_body` cleared and the archive
     entry named; a replay reads it from there (`_archived_answer`), and a 410 answers if it is gone.

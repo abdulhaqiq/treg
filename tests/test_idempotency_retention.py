@@ -325,3 +325,25 @@ async def test_a_trimmed_answer_the_archive_lost_answers_410_and_never_runs_agai
     replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "lost-later"})
     assert replay.status_code == 410 and replay.json()["detail"]["error"] == "idempotency_response_lost"
     assert replay.json()["detail"]["call_id"] == "call-lost" and await _balance(clients) == before
+
+
+async def test_a_trimmed_replay_reads_the_archive_with_no_db_connection_held(clients, platform_on, monkeypatch):
+    """Non-negotiable 3: the replay lookup runs inside the request's session, and the archive read
+    can go to object storage. The read happens after that session closes."""
+    from treg import archive
+    from treg.infra.db import _engine
+
+    body = b'{"rows":[4,5,6]}'
+    row_id = await _seed_answer(clients, "pool-check", body=body)
+    await _link(row_id, call_ref="call-pool", archived=body)
+    assert (await idempotency.trim_archived_answers(pause_s=0)).trimmed == 1
+    held: list[int] = []
+    real = archive.answer_bytes
+
+    async def watched(*a, **kw):
+        held.append(_engine.pool.checkedout())
+        return await real(*a, **kw)
+    monkeypatch.setattr(archive, "answer_bytes", watched)
+    replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "pool-check"})
+    assert replay.status_code == 200 and replay.content == body
+    assert held == [0], held

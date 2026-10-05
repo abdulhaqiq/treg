@@ -388,7 +388,7 @@ async def _idempotency_prune(args) -> int:
     out = asdict(result)
     trim = None
     if not getattr(args, "skip_trim", False):
-        # Live rows whose answer the archive holds byte for byte drop their own copy (finding 4).
+        # Live rows whose answer the archive holds byte for byte drop their own copy.
         trim = await trim_archived_answers(
             batch_size=args.batch_size, pause_s=args.pause_seconds,
             max_batches=args.max_batches, dry_run=args.dry_run,
