@@ -65,6 +65,74 @@
         "title": "AccessIn",
         "type": "object"
       },
+      "ActionIn": {
+        "additionalProperties": false,
+        "description": "A button the maker pressed. `password` goes to the app and nowhere else: never stored, never\nshown to the model.",
+        "properties": {
+          "always": {
+            "default": false,
+            "title": "Always",
+            "type": "boolean"
+          },
+          "clear": {
+            "default": false,
+            "title": "Clear",
+            "type": "boolean"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs"
+          },
+          "kind": {
+            "enum": [
+              "test",
+              "publish",
+              "app",
+              "password",
+              "skip"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 48,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ActionIn",
+        "type": "object"
+      },
       "AgentIn": {
         "properties": {
           "daily_call_cap": {
@@ -183,6 +251,28 @@
           }
         },
         "title": "AppIn",
+        "type": "object"
+      },
+      "Attachment": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 200000,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "text"
+        ],
+        "title": "Attachment",
         "type": "object"
       },
       "AutoTopupIn": {
@@ -454,6 +544,18 @@
               }
             ],
             "title": "Check"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "maxLength": 5000000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
           },
           "manifest": {
             "anyOf": [
@@ -741,6 +843,14 @@
       "MessageIn": {
         "additionalProperties": false,
         "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "maxItems": 5,
+            "title": "Attachments",
+            "type": "array"
+          },
           "text": {
             "maxLength": 8000,
             "minLength": 1,
@@ -754,9 +864,73 @@
         "title": "MessageIn",
         "type": "object"
       },
+      "MetaIn": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_test": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Test"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "MetaIn",
+        "type": "object"
+      },
       "NewIn": {
         "additionalProperties": false,
         "properties": {
+          "from_draft": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Draft"
+          },
+          "from_tool": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Tool"
+          },
           "title": {
             "default": "",
             "maxLength": 80,
@@ -1555,18 +1729,6 @@
           "email"
         ],
         "title": "TeammateIn",
-        "type": "object"
-      },
-      "TestIn": {
-        "additionalProperties": false,
-        "properties": {
-          "inputs": {
-            "additionalProperties": true,
-            "title": "Inputs",
-            "type": "object"
-          }
-        },
-        "title": "TestIn",
         "type": "object"
       },
       "TokenConnectIn": {
@@ -15535,6 +15697,7 @@
     },
     "/vibe/sessions": {
       "post": {
+        "description": "A new conversation, empty, started from one of the team's published tools (`from_tool`), or\ncontinuing a copy of one of this person's unpublished drafts (`from_draft`, a conversation id).",
         "operationId": "vibe_new_vibe_sessions_post",
         "parameters": [
           {
@@ -15743,11 +15906,173 @@
           }
         },
         "summary": "Vibe Get"
+      },
+      "patch": {
+        "description": "Rename, pin, or let the agent test-run without asking.",
+        "operationId": "vibe_meta_vibe_sessions__session_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vibe Meta Vibe Sessions  Session Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vibe Meta"
+      }
+    },
+    "/vibe/sessions/{session_id}/actions": {
+      "post": {
+        "description": "A button: run a test, publish, turn on the app, set its password, or say not now. The same\nhub routes as everywhere, as the maker; the result is stored as an event the agent reads.",
+        "operationId": "vibe_action_vibe_sessions__session_id__actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vibe Action Vibe Sessions  Session Id  Actions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vibe Action"
       }
     },
     "/vibe/sessions/{session_id}/draft": {
       "put": {
-        "description": "The maker's own edits to the files; the agent reads them on its next turn.",
+        "description": "The maker's own edits to the files; the agent reads them on its next turn. An empty `data`\nremoves data.csv.",
         "operationId": "vibe_draft_vibe_sessions__session_id__draft_put",
         "parameters": [
           {
@@ -15829,7 +16154,7 @@
     },
     "/vibe/sessions/{session_id}/messages": {
       "post": {
-        "description": "The maker says something; the agent works (searching, writing files, test runs it was allowed)\nuntil it answers. Can take a minute. The whole conversation comes back.",
+        "description": "The maker says something; the agent works (searching, writing files, asking for a test run)\nuntil it answers. Streams newline-delimited JSON events: `message` (a stored turn, step or\nevent), `delta` (the answer's text as it comes), `step` (a tool starting), `draft`, `pending`,\n`budget`, `error`, and `done` last.",
         "operationId": "vibe_message_vibe_sessions__session_id__messages_post",
         "parameters": [
           {
@@ -15886,11 +16211,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Vibe Message Vibe Sessions  Session Id  Messages Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -15909,10 +16230,10 @@
         "summary": "Vibe Message"
       }
     },
-    "/vibe/sessions/{session_id}/publish": {
+    "/vibe/sessions/{session_id}/regenerate": {
       "post": {
-        "description": "Publish the draft as the team's hub tool (a new version when it exists).",
-        "operationId": "vibe_publish_vibe_sessions__session_id__publish_post",
+        "description": "The agent answers the maker's last message again: its answer and steps go, the files go back\nto how they were when the message was sent, and the maker's own actions stay. Streams as\n`messages` does.",
+        "operationId": "vibe_regenerate_vibe_sessions__session_id__regenerate_post",
         "parameters": [
           {
             "in": "path",
@@ -15958,11 +16279,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Vibe Publish Vibe Sessions  Session Id  Publish Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -15978,13 +16295,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Vibe Publish"
+        "summary": "Vibe Regenerate"
       }
     },
-    "/vibe/sessions/{session_id}/test": {
-      "post": {
-        "description": "A real test run of the draft on the team's balance (`POST /hub/run`); nothing is published.",
-        "operationId": "vibe_test_vibe_sessions__session_id__test_post",
+    "/vibe/sessions/{session_id}/status": {
+      "get": {
+        "description": "The published tool's state, and what to fix before a test run.",
+        "operationId": "vibe_tool_status_vibe_sessions__session_id__status_get",
         "parameters": [
           {
             "in": "path",
@@ -16026,23 +16343,13 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestIn"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Vibe Test Vibe Sessions  Session Id  Test Post",
+                  "title": "Response Vibe Tool Status Vibe Sessions  Session Id  Status Get",
                   "type": "object"
                 }
               }
@@ -16060,7 +16367,79 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Vibe Test"
+        "summary": "Vibe Tool Status"
+      }
+    },
+    "/vibe/sessions/{session_id}/stop": {
+      "post": {
+        "description": "Ask the agent to stop; it does within a second or two, keeping what it already did.",
+        "operationId": "vibe_stop_vibe_sessions__session_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vibe Stop Vibe Sessions  Session Id  Stop Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vibe Stop"
       }
     },
     "/vibe/sessions/{session_id}/validate": {
@@ -16134,9 +16513,243 @@
         "summary": "Vibe Validate"
       }
     },
+    "/vibe/sessions/{session_id}/versions": {
+      "get": {
+        "description": "Every version of the files, newest first: who made it, and what it became when published.",
+        "operationId": "vibe_versions_vibe_sessions__session_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vibe Versions Vibe Sessions  Session Id  Versions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vibe Versions"
+      }
+    },
+    "/vibe/sessions/{session_id}/versions/{n}": {
+      "get": {
+        "description": "One version's files and the version before it (the page draws the diff).",
+        "operationId": "vibe_version_vibe_sessions__session_id__versions__n__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "title": "N",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vibe Version Vibe Sessions  Session Id  Versions  N  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vibe Version"
+      }
+    },
+    "/vibe/sessions/{session_id}/versions/{n}/restore": {
+      "post": {
+        "description": "Bring back version `n` as the newest version (history only grows).",
+        "operationId": "vibe_restore_vibe_sessions__session_id__versions__n__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "title": "N",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vibe Restore Vibe Sessions  Session Id  Versions  N  Restore Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vibe Restore"
+      }
+    },
     "/vibe/state": {
       "get": {
-        "description": "The budget left, and this team's conversations.",
+        "description": "The budget left, and this person's conversations in this team.",
         "operationId": "vibe_state_vibe_state_get",
         "parameters": [
           {

@@ -60,7 +60,12 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/state/onboarding.js` | interface/onboarding.md |
 | `frontend/src/state/session.js` | architecture/auth-secrets.md |
 | `frontend/src/styles/base.css` | interface/dashboard.md |
+| `frontend/src/vibe/AskCard.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/EventCard.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/FilesPanel.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/StepCard.vue` | architecture/vibe-it.md |
 | `frontend/src/vibe/VibePage.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/markdown.ts` | architecture/vibe-it.md |
 | `frontend/src/views.ts` | interface/dashboard.md |
 | `frontend/vibe.html` | architecture/vibe-it.md |
 | `hatch_build.py` | ops/deploy.md |
@@ -208,6 +213,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/table.py` | architecture/table.md |
 | `src/treg/application/vibe/__init__.py` | architecture/vibe-it.md |
 | `src/treg/application/vibe/agent.py` | architecture/vibe-it.md |
+| `src/treg/application/vibe/status.py` | architecture/vibe-it.md |
 | `src/treg/application/web_arena.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_calls.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_publications.py` | interface/web-arena.md |
@@ -670,7 +676,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/search-experiment.md` | `catalog_search.py`, `search_experiment.py`, `interleave.py`, `judge.py`, `0041_searchlog.py`, `0056_searchlog_verdict.py`, `search_experiment_report.sql`, `search_agent_bench.py`, `test_search_experiment.py`, `test_catalog_search.py`, `test_search_agent_bench.py` |
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |
-| `architecture/vibe-it.md` | `__init__.py`, `agent.py`, `vibe.py`, `llm.py`, `0066_vibe.py`, `VibePage.vue`, `vibe.html`, `test_vibe.py` |
+| `architecture/vibe-it.md` | `__init__.py`, `agent.py`, `status.py`, `vibe.py`, `llm.py`, `0066_vibe.py`, `VibePage.vue`, `FilesPanel.vue`, `AskCard.vue`, `EventCard.vue`, `StepCard.vue`, `markdown.ts`, `vibe.html`, `test_vibe.py` |
 | `foundation/charter.md` | `2026-06-30-jason-tools-registry.md`, `README.md` |
 | `guides/expanding-a-category.md` | `oauth_providers.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `connect.py`, `connections.py`, `config.py` |
 | `interface/api.md` | `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py` |

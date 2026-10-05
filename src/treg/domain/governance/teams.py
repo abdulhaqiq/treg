@@ -25,6 +25,7 @@ from ...models import (
     Hold,
     HubApp,
     HubListing,
+    VibeDraft,
     VibeMessage,
     VibeSession,
     HubRun,
@@ -311,11 +312,12 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     # by number: a caller's runs go with the caller; a maker's deletion leaves callers' traces.
     for run in (await db.execute(select(HubRun).where(HubRun.caller_org_id == org.id))).scalars().all():
         await db.delete(run)
-    # A vibe-it conversation names its team; its messages name only the conversation, so they go
-    # first, then the conversations go with ORG_SCOPED_MODELS.
-    for msg in (await db.execute(select(VibeMessage).where(VibeMessage.session_id.in_(
-            select(VibeSession.id).where(VibeSession.org_id == org.id))))).scalars().all():
-        await db.delete(msg)
+    # A vibe-it conversation names its team; its messages and file versions name only the
+    # conversation, so they go first, then the conversations go with ORG_SCOPED_MODELS.
+    for child in (VibeMessage, VibeDraft):
+        for r in (await db.execute(select(child).where(child.session_id.in_(
+                select(VibeSession.id).where(VibeSession.org_id == org.id))))).scalars().all():
+            await db.delete(r)
     await db.flush()
     for model in ORG_SCOPED_MODELS:
         for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():

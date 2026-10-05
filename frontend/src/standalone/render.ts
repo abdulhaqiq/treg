@@ -27,6 +27,15 @@ export function safeHref(v: string): string | null {
   } catch { return null }
 }
 
+// A link as a person reads it in a cell: the host and the start of the path, never the query.
+export function shortUrl(href: string): string {
+  try {
+    const u = new URL(href)
+    const path = u.pathname === '/' ? '' : u.pathname.length > 28 ? u.pathname.slice(0, 27) + '…' : u.pathname
+    return u.host.replace(/^www\./, '') + path
+  } catch { return href }
+}
+
 export function cell(v: unknown): string {
   if (v === null || v === undefined) return ''
   if (typeof v === 'string') return v

@@ -1,7 +1,7 @@
 """Vibe-it: a maker and treg's agent build a hub tool in conversation
 (docs/context/architecture/vibe-it.md).
 
-The only writer of `VibeSession`, `VibeMessage` and `VibeBudget`. Everything the agent does to the
+The only writer of `VibeSession`, `VibeMessage`, `VibeDraft` and `VibeBudget`. Everything the agent does to the
 team (validate, test run, publish, turn on an app) goes through the hub's own routes as the
 signed-in maker, so it can do nothing the maker could not. treg pays for the model, up to
 `vibe_budget_usd` per person; a test run's steps are charged to the maker's team as always.
@@ -13,17 +13,21 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import get_settings
-from ...models import VibeBudget, VibeMessage, VibeSession
+from ...models import VibeBudget, VibeDraft, VibeMessage, VibeSession
 from ...timeutil import utcnow_naive
 from ..hub import enabled_for as hub_enabled_for
 
-DRAFT_KEYS = ("manifest", "script", "check", "readme")
+DRAFT_KEYS = ("manifest", "script", "check", "readme", "data")
 TITLE_MAX = 80
 TEXT_MAX = 8000
+ATTACH_MAX = 200_000          # characters across one message's attachments
+DATA_MAX = 5_000_000          # data.csv, the hub's own cap
+RESULT_SHOWN = 4000           # characters of a step's result the page can expand
+RUN_STALE = timedelta(minutes=15)   # an agent marked running longer than this died with its process
 
 
 def enabled_for(org_slug: str | None, email: str | None = None) -> bool:
@@ -67,6 +71,8 @@ def clean_draft(draft: Any) -> dict[str, Any]:
     for k in ("script", "readme"):
         if isinstance(d.get(k), str):
             out[k] = d[k][:200_000]
+    if isinstance(d.get("data"), str) and len(d["data"]) <= DATA_MAX:
+        out["data"] = d["data"]
     return out
 
 
@@ -90,6 +96,19 @@ async def list_for(db: AsyncSession, *, user_id: int, org_id: int) -> list[VibeS
         .order_by(VibeSession.updated_at.desc()).limit(100))).scalars().all())
 
 
+async def drafts_of(db: AsyncSession, *, user_id: int, org_id: int, exclude: int | None = None) -> list[VibeSession]:
+    """This person's unpublished drafts in this team: conversations with files and no tool yet."""
+    rows = await list_for(db, user_id=user_id, org_id=org_id)
+    return [r for r in rows if r.id != exclude and not r.tool_id and clean_draft(r.draft)]
+
+
+async def copy_draft(db: AsyncSession, session: VibeSession, source: VibeSession) -> VibeDraft | None:
+    """Continue a draft in another conversation: its files are copied in as a new version here.
+    A copy, not a link: the two conversations no longer affect each other."""
+    return await set_draft(db, session, source.draft, author="load", note=f"copied from the draft “{source.title}”",
+                           replace=True)
+
+
 async def messages(db: AsyncSession, session_id: int) -> list[VibeMessage]:
     return list((await db.execute(select(VibeMessage).where(VibeMessage.session_id == session_id)
                                   .order_by(VibeMessage.id))).scalars().all())
@@ -103,18 +122,131 @@ async def add_message(db: AsyncSession, session: VibeSession, role: str, content
     return msg
 
 
-async def set_draft(db: AsyncSession, session: VibeSession, draft: Any) -> VibeSession:
-    session.draft = {**(session.draft or {}), **clean_draft(draft)}
-    name = (session.draft.get("manifest") or {}).get("name")
+async def set_draft(db: AsyncSession, session: VibeSession, draft: Any, *, author: str,
+                    note: str = "", replace: bool = False) -> VibeDraft | None:
+    """Change the files and keep the version. `replace` takes `draft` as the whole set (a load or a
+    restore); otherwise omitted files keep their content. Returns the new version, or None when
+    nothing changed."""
+    files = clean_draft(draft) if replace else {**clean_draft(session.draft), **clean_draft(draft)}
+    if files == clean_draft(session.draft):
+        return None
+    session.draft = files
+    name = (files.get("manifest") or {}).get("name")
     if isinstance(name, str) and name and session.title in ("", "New tool"):
         session.title = name[:TITLE_MAX]
     session.updated_at = utcnow_naive()
+    n = (await db.execute(select(func.max(VibeDraft.n)).where(VibeDraft.session_id == session.id))).scalar() or 0
+    last = (await db.execute(select(func.max(VibeMessage.id)).where(VibeMessage.session_id == session.id))).scalar()
+    row = VibeDraft(session_id=session.id, n=n + 1, files=files, author=author, note=note[:200],
+                    message_id=last, created_at=utcnow_naive())
+    db.add(row)
     await db.flush()
-    return session
+    return row
+
+
+async def versions(db: AsyncSession, session_id: int) -> list[VibeDraft]:
+    return list((await db.execute(select(VibeDraft).where(VibeDraft.session_id == session_id)
+                                  .order_by(VibeDraft.n.desc()))).scalars().all())
+
+
+async def version(db: AsyncSession, session_id: int, n: int) -> VibeDraft | None:
+    return (await db.execute(select(VibeDraft).where(VibeDraft.session_id == session_id, VibeDraft.n == n))).scalars().first()
+
+
+async def restore(db: AsyncSession, session: VibeSession, n: int) -> VibeDraft | None:
+    """Bring back version `n` as a new version (history only grows). None when `n` is unknown or
+    already what the files are."""
+    old = await version(db, session.id, n)
+    if old is None:
+        return None
+    return await set_draft(db, session, old.files, author="restore", note=f"restored draft {n}", replace=True)
+
+
+async def mark_published(db: AsyncSession, session: VibeSession, hub_version: int) -> None:
+    """The files as they stand became the hub tool's version `hub_version`."""
+    row = (await db.execute(select(VibeDraft).where(VibeDraft.session_id == session.id)
+                            .order_by(VibeDraft.n.desc()).limit(1))).scalars().first()
+    if row is not None and row.files == clean_draft(session.draft):
+        row.published_version = hub_version
+        await db.flush()
+
+
+async def files_before(db: AsyncSession, session: VibeSession, message_id: int) -> dict[str, Any]:
+    """The files as they stood when message `message_id` was sent (a regenerate goes back to them)."""
+    row = (await db.execute(select(VibeDraft).where(
+        VibeDraft.session_id == session.id, or_(VibeDraft.message_id.is_(None), VibeDraft.message_id <= message_id))
+        .order_by(VibeDraft.n.desc()).limit(1))).scalars().first()
+    return dict(row.files) if row else {}
+
+
+def view_version(v: VibeDraft, *, files: bool = False) -> dict[str, Any]:
+    out: dict[str, Any] = {"n": v.n, "author": v.author, "note": v.note, "published_version": v.published_version,
+                           "at": v.created_at.isoformat()}
+    if files:
+        out["files"] = v.files
+    return out
+
+
+async def set_pending(db: AsyncSession, session: VibeSession, pending: dict | None) -> None:
+    session.pending = pending
+    await db.flush()
+
+
+async def update_meta(db: AsyncSession, session: VibeSession, *, title: str | None = None,
+                      pinned: bool | None = None, auto_test: bool | None = None) -> None:
+    if title is not None and title.strip():
+        session.title = title.strip()[:TITLE_MAX]
+    if pinned is not None:
+        session.pinned = pinned
+    if auto_test is not None:
+        session.auto_test = auto_test
+    await db.flush()
+
+
+def running(session: VibeSession) -> bool:
+    return session.running_since is not None and session.running_since > utcnow_naive() - RUN_STALE
+
+
+async def claim_run(db: AsyncSession, session_id: int) -> bool:
+    """Mark the agent at work on this conversation, unless it already is (on any instance). A mark
+    older than `RUN_STALE` belonged to a process that died."""
+    now = utcnow_naive()
+    r = await db.execute(update(VibeSession).where(
+        VibeSession.id == session_id,
+        or_(VibeSession.running_since.is_(None), VibeSession.running_since < now - RUN_STALE))
+        .values(running_since=now, stop_requested=False))
+    return (r.rowcount or 0) == 1
+
+
+async def release_run(db: AsyncSession, session_id: int) -> None:
+    await db.execute(update(VibeSession).where(VibeSession.id == session_id)
+                     .values(running_since=None, stop_requested=False))
+
+
+async def request_stop(db: AsyncSession, session_id: int) -> None:
+    await db.execute(update(VibeSession).where(VibeSession.id == session_id, VibeSession.running_since.is_not(None))
+                     .values(stop_requested=True))
+
+
+async def stop_wanted(db: AsyncSession, session_id: int) -> bool:
+    return bool((await db.execute(select(VibeSession.stop_requested).where(VibeSession.id == session_id))).scalar())
+
+
+async def last_user_message(db: AsyncSession, session_id: int) -> VibeMessage | None:
+    return (await db.execute(select(VibeMessage).where(VibeMessage.session_id == session_id, VibeMessage.role == "user")
+                             .order_by(VibeMessage.id.desc()).limit(1))).scalars().first()
+
+
+async def drop_answer(db: AsyncSession, session_id: int, after_id: int) -> None:
+    """A regenerate: the agent's turns and steps after the maker's message go. The maker's own
+    actions (events: test runs, publishes) stay, because they happened."""
+    await db.execute(delete(VibeMessage).where(VibeMessage.session_id == session_id, VibeMessage.id > after_id,
+                                               VibeMessage.role.in_(("assistant", "tool"))))
 
 
 async def remove(db: AsyncSession, session: VibeSession) -> None:
     await db.execute(delete(VibeMessage).where(VibeMessage.session_id == session.id))
+    await db.execute(delete(VibeDraft).where(VibeDraft.session_id == session.id))
     await db.delete(session)
     await db.flush()
 
@@ -123,6 +255,7 @@ async def forget_user(db: AsyncSession, user_id: int) -> None:
     """A person is deleted: their conversations and their budget row go too."""
     ids = select(VibeSession.id).where(VibeSession.user_id == user_id)
     await db.execute(delete(VibeMessage).where(VibeMessage.session_id.in_(ids)))
+    await db.execute(delete(VibeDraft).where(VibeDraft.session_id.in_(ids)))
     await db.execute(delete(VibeSession).where(VibeSession.user_id == user_id))
     await db.execute(delete(VibeBudget).where(VibeBudget.user_id == user_id))
     await db.flush()
@@ -130,19 +263,33 @@ async def forget_user(db: AsyncSession, user_id: int) -> None:
 
 def view_session(s: VibeSession) -> dict[str, Any]:
     return {"id": s.id, "title": s.title, "tool_id": s.tool_id, "updated_at": s.updated_at.isoformat(),
-            "trimmed": bool(s.summary)}
+            "trimmed": bool(s.summary), "pinned": bool(s.pinned), "busy": running(s),
+            "has_files": bool(clean_draft(s.draft)), "name": (clean_draft(s.draft).get("manifest") or {}).get("name")}
 
 
 def view_message(m: VibeMessage) -> dict[str, Any]:
-    """What the page shows: a user's text, the agent's text, and each tool step in short."""
+    """What the page shows: the maker's text and attachments, the agent's text and cost, each tool
+    step with its arguments and result, and each action the maker took (an event)."""
     c = m.content or {}
     out: dict[str, Any] = {"id": m.id, "role": m.role, "at": m.created_at.isoformat()}
     if m.role == "tool":
-        out.update({"name": c.get("name"), "summary": c.get("summary") or "", "ok": c.get("ok", True)})
+        result = c.get("result") or ""
+        out.update({"name": c.get("name"), "summary": c.get("summary") or "", "ok": c.get("ok", True),
+                    "args": c.get("arguments"), "result": result[:RESULT_SHOWN], "version": c.get("version"),
+                    "prev_version": c.get("prev_version")})
+    elif m.role == "event":
+        out.update({k: c.get(k) for k in ("kind", "summary", "ok", "detail", "cost_micro", "inputs", "tool_id",
+                                           "version", "status", "url")})
     else:
         out["text"] = c.get("text") or ""
-        if c.get("tool_calls"):
-            out["calls"] = [t.get("name") for t in c["tool_calls"]]
+        if m.role == "assistant":
+            out["cost_micro"] = int(m.cost_micro or 0)
+            if c.get("stopped"):
+                out["stopped"] = True
+            if c.get("tool_calls"):
+                out["calls"] = [t.get("name") for t in c["tool_calls"]]
+        if c.get("attachments"):
+            out["attachments"] = [{"name": a.get("name"), "size": len(a.get("text") or "")} for a in c["attachments"]]
     return out
 
 

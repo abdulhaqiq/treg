@@ -4,8 +4,8 @@ Revision ID: 0066
 Revises: 0065
 Create Date: 2026-10-05
 
-`vibesession` (one conversation and its draft files), `vibemessage` (its turns) and `vibebudget`
-(what treg has spent on one person's agent; not ledger money).
+`vibesession` (one conversation and its draft files), `vibemessage` (its turns), `vibedraft` (every
+version of the files) and `vibebudget` (what treg has spent on one person's agent; not ledger money).
 """
 from collections.abc import Sequence
 
@@ -28,6 +28,11 @@ def upgrade() -> None:
         sa.Column("draft", sa.JSON(), nullable=False),
         sa.Column("tool_id", sa.String(), nullable=True),
         sa.Column("summary", sa.String(), nullable=True),
+        sa.Column("pinned", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("auto_test", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("pending", sa.JSON(), nullable=True),
+        sa.Column("running_since", sa.DateTime(), nullable=True),
+        sa.Column("stop_requested", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
@@ -45,6 +50,19 @@ def upgrade() -> None:
     )
     op.create_index("ix_vibemessage_session_id", "vibemessage", ["session_id"])
     op.create_table(
+        "vibedraft",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("session_id", sa.Integer(), sa.ForeignKey("vibesession.id"), nullable=False),
+        sa.Column("n", sa.Integer(), nullable=False),
+        sa.Column("files", sa.JSON(), nullable=False),
+        sa.Column("author", sa.String(), nullable=False),
+        sa.Column("note", sa.String(), nullable=False, server_default=""),
+        sa.Column("message_id", sa.Integer(), nullable=True),
+        sa.Column("published_version", sa.Integer(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.UniqueConstraint("session_id", "n", name="uq_vibedraft_session_n"),
+    )
+    op.create_table(
         "vibebudget",
         sa.Column("user_id", sa.Integer(), sa.ForeignKey("user.id"), primary_key=True),
         sa.Column("spent_micro", sa.BigInteger(), nullable=False, server_default="0"),
@@ -54,6 +72,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("vibebudget")
+    op.drop_table("vibedraft")
     op.drop_index("ix_vibemessage_session_id", table_name="vibemessage")
     op.drop_table("vibemessage")
     op.drop_index("ix_vibesession_updated_at", table_name="vibesession")

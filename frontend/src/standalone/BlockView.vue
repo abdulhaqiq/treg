@@ -1,12 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { label } from './form'
-import { download, toCsv, type Block } from './render'
+import { download, safeHref, shortUrl, toCsv, type Block } from './render'
 
 const props = defineProps<{ block: Block, nested?: boolean }>()
 const title = computed(() => label(props.block.label))
 const sortBy = ref(-1)
 const sortDir = ref(1)
+const open = ref<Set<string>>(new Set())
+const LONG = 90        // characters past which a cell is clamped to a few lines until clicked
+
+function toggle(key: string) {
+  const s = new Set(open.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  open.value = s
+}
+const href = (v: string) => (/^https?:\/\//i.test(v) ? safeHref(v) : null)
 
 const rows = computed(() => {
   const b = props.block
@@ -58,16 +67,25 @@ async function copy(text: string) {
       <img class="sa-image" :src="block.src" :alt="title" loading="lazy" referrerpolicy="no-referrer"/>
     </a>
     <ul v-else-if="block.kind === 'list'" class="sa-list"><li v-for="(item, i) in block.items" :key="i">{{ item }}</li></ul>
-    <div v-else-if="block.kind === 'table'" class="sa-table-wrap">
+    <div v-else-if="block.kind === 'table'">
       <p class="sa-muted sa-count">{{ block.rows.length }} row{{ block.rows.length === 1 ? '' : 's' }}</p>
+      <div class="sa-table-wrap">
       <table class="sa-table">
         <thead><tr>
           <th v-for="(c, i) in block.columns" :key="c">
             <button type="button" @click="sort(i)">{{ c }}<span v-if="sortBy === i">{{ sortDir > 0 ? ' ↑' : ' ↓' }}</span></button>
           </th>
         </tr></thead>
-        <tbody><tr v-for="(r, i) in rows" :key="i"><td v-for="(v, j) in r" :key="j">{{ v }}</td></tr></tbody>
+        <tbody><tr v-for="(r, i) in rows" :key="i">
+          <td v-for="(v, j) in r" :key="j" :class="{ num: /^-?[\d,.]+%?$/.test(v) }">
+            <a v-if="href(v)" :href="href(v)!" target="_blank" rel="noopener noreferrer" :title="v">{{ shortUrl(v) }}</a>
+            <span v-else-if="v.length > LONG" class="sa-cell" :class="{ open: open.has(`${i}-${j}`) }" :title="open.has(`${i}-${j}`) ? '' : v"
+                  role="button" tabindex="0" @click="toggle(`${i}-${j}`)" @keydown.enter="toggle(`${i}-${j}`)">{{ v }}</span>
+            <template v-else>{{ v }}</template>
+          </td>
+        </tr></tbody>
       </table>
+      </div>
     </div>
     <div v-else-if="block.kind === 'section'" class="sa-section">
       <BlockView v-for="b in block.blocks" :key="b.label" :block="b" nested/>

@@ -598,6 +598,14 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "PATCH"
+    ],
+    "name": "vibe_meta",
+    "path": "/vibe/sessions/{session_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "DELETE"
     ],
     "name": "vibe_delete",
@@ -606,10 +614,43 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_tool_status",
+    "path": "/vibe/sessions/{session_id}/status"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "vibe_message",
     "path": "/vibe/sessions/{session_id}/messages"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_regenerate",
+    "path": "/vibe/sessions/{session_id}/regenerate"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_stop",
+    "path": "/vibe/sessions/{session_id}/stop"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_action",
+    "path": "/vibe/sessions/{session_id}/actions"
   },
   {
     "kind": "APIRoute",
@@ -630,18 +671,28 @@
   {
     "kind": "APIRoute",
     "methods": [
-      "POST"
+      "GET",
+      "HEAD"
     ],
-    "name": "vibe_test",
-    "path": "/vibe/sessions/{session_id}/test"
+    "name": "vibe_versions",
+    "path": "/vibe/sessions/{session_id}/versions"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_version",
+    "path": "/vibe/sessions/{session_id}/versions/{n}"
   },
   {
     "kind": "APIRoute",
     "methods": [
       "POST"
     ],
-    "name": "vibe_publish",
-    "path": "/vibe/sessions/{session_id}/publish"
+    "name": "vibe_restore",
+    "path": "/vibe/sessions/{session_id}/versions/{n}/restore"
   },
   {
     "kind": "APIRoute",

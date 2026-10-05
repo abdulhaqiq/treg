@@ -31,6 +31,38 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: un
   return data as T
 }
 
+// A streamed answer: newline-delimited JSON events, each handed to `onEvent` as it arrives.
+export async function stream(path: string, init: RequestInit & { json?: unknown }, onEvent: (e: any) => void): Promise<void> {
+  const headers: Record<string, string> = { ...(init.headers as Record<string, string> || {}) }
+  if (team) headers['X-Treg-Org'] = team
+  let body = init.body
+  if (init.json !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    body = JSON.stringify(init.json)
+  }
+  const r = await fetch(path, { ...init, body, headers, credentials: 'include' })
+  if (!r.ok || !r.body) {
+    const text = await r.text()
+    let data: any = null
+    try { data = text ? JSON.parse(text) : null } catch { data = text }
+    throw new ApiError(r.status, data && typeof data === 'object' && 'detail' in data ? data.detail : data)
+  }
+  const reader = r.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (line) { try { onEvent(JSON.parse(line)) } catch { /* a torn line: the database has it */ } }
+    }
+  }
+}
+
 export type Team = { slug: string, name: string, role: string }
 
 export async function me(): Promise<{ email: string } | null> {

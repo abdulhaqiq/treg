@@ -38,7 +38,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Discovery experiment — a relevance judge behind catalog search, measured on what the caller does next; the job-first answer served to agents](architecture/search-experiment.md) | building | catalog_search.py, search_experiment.py, interleave.py, judge.py, … |
 | [Super-admin — cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
 | [The table layer — one call, answered as rows and columns (`/table/`)](architecture/table.md) | built, behind `table_enabled` (TREG_TABLE_ENABLED), off by default | __init__.py, table.py, table.py, call.py, … |
-| [Vibe-it — build a hub tool in conversation](architecture/vibe-it.md) | building; behind `vibe_enabled` (TREG_VIBE_ENABLED) and the hub's own flag | __init__.py, agent.py, vibe.py, llm.py, … |
+| [Vibe-it — build a hub tool in conversation](architecture/vibe-it.md) | building; behind `vibe_enabled` (TREG_VIBE_ENABLED) and the hub's own flag | __init__.py, agent.py, status.py, vibe.py, … |
 
 ## Interfaces (API · CLI · skill)
 

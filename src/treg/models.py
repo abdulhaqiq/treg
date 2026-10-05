@@ -1374,10 +1374,11 @@ class HubListing(SQLModel, table=True):
 
 class VibeSession(SQLModel, table=True):
     """One vibe-it conversation (docs/context/architecture/vibe-it.md): a maker and treg's agent
-    shaping one hub tool. `draft` holds the four files as they stand ({manifest, script, check,
-    readme}); `tool_id` is set once it is published. Deleted with its user, or by the user.
+    shaping one hub tool. `draft` holds the files as they stand ({manifest, script, check, readme,
+    data}); `tool_id` is set once it is published or loaded. Deleted with its user, or by the user.
     `summary` replaces old messages once the session has been idle long enough (the transcript is
-    trimmed, the work is kept)."""
+    trimmed, the work is kept). `pending` is the one action the agent asked the maker to approve;
+    `running_since` marks the agent at work (any instance), `stop_requested` asks it to stop."""
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
@@ -1386,8 +1387,31 @@ class VibeSession(SQLModel, table=True):
     draft: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     tool_id: str | None = Field(default=None)
     summary: str | None = Field(default=None)
+    pinned: bool = Field(default=False)
+    auto_test: bool = Field(default=False)          # the maker let the agent test-run without asking
+    pending: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    running_since: datetime | None = Field(default=None)
+    stop_requested: bool = Field(default=False)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now, index=True)
+
+
+class VibeDraft(SQLModel, table=True):
+    """One version of a conversation's files, numbered from 1: who made it (agent, maker, load,
+    restore), the last message when it was made (a regenerate goes back to it), and the hub version
+    it became when published."""
+
+    __table_args__ = (UniqueConstraint("session_id", "n", name="uq_vibedraft_session_n"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="vibesession.id")
+    n: int
+    files: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    author: str
+    note: str = Field(default="")
+    message_id: int | None = Field(default=None)
+    published_version: int | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_now)
 
 
 class VibeMessage(SQLModel, table=True):
@@ -1427,6 +1451,7 @@ class HubApp(SQLModel, table=True):
     tool_id: str = Field(primary_key=True)           # `<slug>.<name>` of the hub tool
     org_id: int = Field(foreign_key="org.id", index=True)
     name: str                                        # the last part of the URL; unique per team
+    old_names: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
     enabled: bool = Field(default=True)
     password_hash: str | None = Field(default=None)  # `scrypt$n$r$p$salt$hash`; None = no password
     password_version: int = Field(default=0)
@@ -1451,7 +1476,6 @@ class HubRun(SQLModel, table=True):
     status: str                                      # ok | failed | stopped
     steps: int = Field(default=0)                    # steps counted against the caps (items included)
     cost_micro: int = Field(default=0)               # what the steps charged the caller
-    old_names: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
     price_micro: int = Field(default=0)              # the seller's price paid (phase 6; 0 until then)
     duration_ms: int = Field(default=0)
     inputs: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))   # secrets masked
