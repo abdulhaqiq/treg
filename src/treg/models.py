@@ -1419,7 +1419,8 @@ class HubApp(SQLModel, table=True):
 
     `password_hash` is optional. While the app is on and a password is set, it guards the app page
     and the tool itself for every other team. `password_version` moves on each change, so an unlock
-    remembered under the old password stops working."""
+    remembered under the old password stops working. `old_names` keeps the names it had before a
+    rename (newest first), so a link to an old name redirects instead of breaking."""
 
     __table_args__ = (UniqueConstraint("org_id", "name", name="uq_hubapp_org_name"),)
 
@@ -1450,6 +1451,7 @@ class HubRun(SQLModel, table=True):
     status: str                                      # ok | failed | stopped
     steps: int = Field(default=0)                    # steps counted against the caps (items included)
     cost_micro: int = Field(default=0)               # what the steps charged the caller
+    old_names: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
     price_micro: int = Field(default=0)              # the seller's price paid (phase 6; 0 until then)
     duration_ms: int = Field(default=0)
     inputs: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))   # secrets masked

@@ -39,6 +39,12 @@ slug in front already carries the identity, so a name is only a clean URL part
 to the tool's own name. Any live tool of the team may have one, listed or not. `enabled` false takes
 the page down and keeps the row, its name and its password. The row goes with the team.
 
+**Links survive a rename.** A renamed app keeps up to `MAX_OLD_NAMES` earlier names (`old_names`,
+newest first), and a team that changed its slug keeps the old one (`Org.previous_slug`): the page at
+an old path answers 308 to where the app is now, query string kept (`apps.moved`). A current name
+always wins: another app of the team may take a freed name, and then the path is that app's. A
+deleted team's slug is not reserved ([hub](hub.md#the-makers-road-routershubpy-applicationhub__init__py)).
+
 ## The password and the lock
 
 Optional, 8 to 128 characters, stored only as `scrypt$n$r$p$salt$hash` (stdlib `hashlib.scrypt`, a
@@ -76,7 +82,7 @@ The visitor's:
 
 | route | needs | does |
 |---|---|---|
-| `GET /apps/{team}/{name}` | - | the page (`noindex`); 404 when off, unknown, or rejected by treg's review |
+| `GET /apps/{team}/{name}` | - | the page (`noindex`); 404 when off, unknown, or rejected by treg's review; 308 from a name or slug from before a rename |
 | `GET /apps/{team}/{name}/contract` | unlock if locked | the public contract: inputs, output fields, price line, health, readme; never the script, `uses` or a key |
 | `POST /apps/{team}/{name}/unlock` | same origin | `{password}` |
 | `POST /apps/{team}/{name}/run` | signed-in member, unlock, same origin | `run_call_surface` on `<tool_id>`: the one call road; cookies are not forwarded |
@@ -93,8 +99,9 @@ the redesign's light system without the Dashboard's shell. `form.ts` maps each i
 control (`int`/`float` bounded, `bool` a toggle, `list` one per line or JSON, `object` JSON, `secret`
 masked and never pre-filled) and builds the run body. `render.ts` turns the answer into blocks by
 shape: short values side by side as tiles, URLs as links (http(s) only), image URLs as images, lists
-of objects as sortable tables with CSV export, nested objects as sections, deeper ones as JSON;
-copy and download JSON for the whole answer. Everything renders as text; nothing is maker HTML.
+of objects as sortable tables with CSV export (a wide table scrolls sideways in its card rather than
+squeezing its columns; long cells clamp to a few lines until clicked; links show as host and path), nested objects as sections, deeper ones as JSON;
+copy and download JSON for the whole answer, and Expand to read it over the whole window. Everything renders as text; nothing is maker HTML.
 The visitor picks the paying team; a person with no team is told to make one.
 
 ## The maker's surfaces

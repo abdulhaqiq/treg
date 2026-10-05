@@ -12,7 +12,7 @@ from treg.config import get_settings
 from treg.domain.hub import ManifestError
 from treg.domain.hub.apps import default_app_name, hash_password, validate_app_name, validate_password, verify_password
 from treg.infra.db import session_maker
-from treg.models import HubApp, HubTool, Membership
+from treg.models import HubApp, HubTool, Membership, Org
 from tests.test_hub import _publish_live, hub_on  # noqa: F401 - the hub flag, through the environment
 
 
@@ -117,6 +117,31 @@ async def test_rename_and_refusals(clients: AsyncClient, apps_on):
     r = await clients.put(f"/hub/tools/{other}/app", json={"name": "leads"})   # taken within the team
     assert r.status_code == 422 and "already uses" in r.json()["detail"]["rule"]
     assert (await clients.put(f"/hub/tools/{other}/app", json={"name": "other"})).status_code == 200
+
+
+async def test_old_links_redirect_after_a_rename(clients: AsyncClient, apps_on):
+    """A shared link outlives a rename: the app's old name and the team's old slug redirect to
+    where the app is now. A current name always wins over another app's old one."""
+    tool_id = await _publish_live(clients)
+    team = tool_id.split(".", 1)[0]
+    await clients.put(f"/hub/tools/{tool_id}/app", json={})
+    await clients.put(f"/hub/tools/{tool_id}/app", json={"name": "leads"})
+    r = await clients.get(f"/apps/{team}/leads-db?x=1", follow_redirects=False)
+    assert r.status_code == 308 and r.headers["location"] == f"/apps/{team}/leads?x=1"
+    assert (await clients.get(f"/apps/{team}/leads", follow_redirects=False)).status_code != 308   # current
+    assert (await clients.get(f"/apps/{team}/never-was", follow_redirects=False)).status_code == 404
+    # another app may take the old name; then it is that app's, no redirect
+    other = await _publish_another(clients, "other-tool")
+    await clients.put(f"/hub/tools/{other}/app", json={"name": "leads-db"})
+    assert (await clients.get(f"/apps/{team}/leads-db", follow_redirects=False)).status_code != 308
+    assert (await clients.get(f"/apps/{team}/leads-db/contract")).json()["name"] == "other-tool"
+    # the team renames itself: its old slug still finds the app
+    async with session_maker() as s:
+        org = (await s.execute(select(Org).where(Org.slug == team))).scalars().one()
+        org.previous_slug, org.slug = team, "renamed-team"
+        await s.commit()
+    r = await clients.get(f"/apps/{team}/leads", follow_redirects=False)
+    assert r.status_code == 308 and r.headers["location"] == "/apps/renamed-team/leads"
 
 
 async def test_needs_a_live_version(clients: AsyncClient, apps_on):

@@ -25,6 +25,7 @@ def upgrade() -> None:
         sa.Column("tool_id", sa.String(), primary_key=True),
         sa.Column("org_id", sa.Integer(), sa.ForeignKey("org.id"), nullable=False),
         sa.Column("name", sa.String(), nullable=False),
+        sa.Column("old_names", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("password_hash", sa.String(), nullable=True),
         sa.Column("password_version", sa.Integer(), nullable=False, server_default="0"),

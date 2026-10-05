@@ -81,9 +81,29 @@ async def enable(db: AsyncSession, *, org: Org, tool_id: str, name: str | None, 
                      created_at=now, updated_at=now)
         db.add(app)
     else:
+        if new_name != app.name:
+            # remember the old name, so links to it redirect (`moved`); a name taken back leaves the list
+            app.old_names = [app.name, *[n for n in (app.old_names or []) if n not in (new_name, app.name)]][:MAX_OLD_NAMES]
         app.name, app.enabled, app.updated_at = new_name, True, now
     await db.flush()
     return app
+
+
+async def moved(db: AsyncSession, team_slug: str, name: str) -> str | None:
+    """Where an app moved: the path of the app a link to `/apps/<team>/<name>` meant, when the team
+    has since changed its slug (`Org.previous_slug`) or the app its name (`HubApp.old_names`). None
+    when the path is current or meant nothing. A current name always wins over an old one."""
+    org = (await db.execute(select(Org).where(Org.slug == team_slug))).scalars().first()
+    if org is None:
+        org = (await db.execute(select(Org).where(Org.previous_slug == team_slug))).scalars().first()
+    if org is None:
+        return None
+    apps = (await db.execute(select(HubApp).where(HubApp.org_id == org.id))).scalars().all()
+    current = next((a for a in apps if a.name == name), None)
+    if current is not None:
+        return f"/apps/{org.slug}/{name}" if org.slug != team_slug else None
+    old = next((a for a in apps if name in (a.old_names or [])), None)
+    return f"/apps/{org.slug}/{old.name}" if old is not None and old.enabled else None
 
 
 async def disable(db: AsyncSession, *, org_id: int, tool_id: str) -> HubApp | None:
@@ -112,6 +132,7 @@ async def set_password(db: AsyncSession, *, org_id: int, tool_id: str, password:
 # The visitor's side: find the app, unlock it, run it, read your own runs.
 
 UNLOCK_TTL_S = 8 * 3600
+MAX_OLD_NAMES = 10           # earlier names an app answers with a redirect
 # Password tries, counted before the hash is checked: per (app, client) and per app, per window.
 TRIES_PER_CLIENT = 10
 TRIES_PER_APP = 200

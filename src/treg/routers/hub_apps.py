@@ -8,7 +8,7 @@ visitor's (`/apps/<team>/<name>`).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,11 +115,17 @@ class UnlockIn(BaseModel):
     password: str = Field(max_length=256)
 
 
-async def _found(request: Request, team: str, name: str, db: AsyncSession, caller: Caller | None = None):
+async def _gate(request: Request, db: AsyncSession, caller: Caller | None = None) -> tuple:
+    """(team slug, email) of the reader, or 404 when apps are off or the hub is off for them."""
     from .hub_gate import reader
     who = (caller.org.slug, caller.email) if caller is not None else await reader(request, db)
     if not get_settings().hub_apps_enabled or not hub_app.visible_to(*who):
         raise HTTPException(status_code=404, detail="Not Found")
+    return who
+
+
+async def _found(request: Request, team: str, name: str, db: AsyncSession, caller: Caller | None = None):
+    who = await _gate(request, db, caller)
     found = await hub_apps.by_path(db, team, name, reader_slug=who[0], reader_email=who[1])
     if found is None:
         raise HTTPException(status_code=404, detail="no such app")
@@ -147,7 +153,13 @@ def _require_same_origin(request: Request) -> None:
 
 @app.get("/apps/{team}/{name}", include_in_schema=False)
 async def app_page(team: str, name: str, request: Request, db: AsyncSession = Depends(get_session)):
-    """The app page itself, `noindex`. A missing or turned-off app is a 404 here, before any script."""
+    """The app page itself, `noindex`. A missing or turned-off app is a 404 here, before any script.
+    A link from before a rename (the team's slug or the app's name) redirects to where it is now."""
+    await _gate(request, db)
+    target = await hub_apps.moved(db, team, name)
+    if target:
+        q = request.url.query
+        return RedirectResponse(target + (f"?{q}" if q else ""), status_code=308)
     await _found(request, team, name, db)
     return page_entry("apps")
 
