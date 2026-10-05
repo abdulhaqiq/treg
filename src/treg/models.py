@@ -79,6 +79,9 @@ class Org(SQLModel, table=True):
     autotopup_threshold_micro: int = Field(default=0)   # 0 = "use the configured default"
     autotopup_amount_micro: int = Field(default=0)      # 0 = "use the configured default"
     autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = "use the configured default"
+    # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
+    # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
+    autotopup_max_per_hour: int = Field(default=0)
     # WHEN the org agreed to the threshold/amount it is being charged on. The MIT mandate: a compliance
     # record, which is why it is a timestamp and not a boolean — "they ticked a box at some point" is
     # not defensible in a dispute, "they agreed on 2026-07-30T11:02Z" is.
@@ -446,6 +449,10 @@ class CallRecord(SQLModel, table=True):
     # this row by id and both targets carry their own index. Last columns (alembic appends).
     archive_key_hash: str | None = Field(default=None)
     archive_content_hash: str | None = Field(default=None)
+    # The provider's share of `duration_ms` (set by the call path; see `upstream_ms` there): the
+    # request until its answer is read. NULL when no request reached the provider, and on rows
+    # written before 2026-10-05.
+    upstream_ms: int | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):

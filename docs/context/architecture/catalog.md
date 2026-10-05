@@ -1851,6 +1851,11 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   the plan with the reason, not ranked down like an ignored filter: a title-only search asked for
   one company's CEO returns title-matched strangers for any company and bills them as a hit. The
   rule is per candidate, so `{q, company_domain}` also drops the `q`-only providers.
+  `prefer` is the contract's default provider order, used when the caller sends no
+  `X-Treg-Route-Prefer` (a caller's header replaces it). Cost per hit ignores time:
+  `ai-search.perplexity.answer` sets `prefer: [dataforseo]` because cost per hit ranked cloro first
+  (60% ok, 64 s median) over dataforseo (99.98% ok, 4 s, 2026-10-05). Its `source_kind` output says
+  whether the answer read the Perplexity website (`website`, cloro) or its model API (`model_api`).
 - **Adapters** — `adapters.yaml`, one per endpoint: `accepts` (identity variants), `in` (contract
   field → `queryParams.x` / `body.x`), `const` (fixed provider params), `out` (core field →
   expression over the body), `miss`, and `route: false` for an adapter that only judges hit/miss

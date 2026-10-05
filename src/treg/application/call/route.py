@@ -339,7 +339,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                 kept.append(c)
         cands = kept
     return Plan(contract=contract, identity=identity, variant=variant,
-                candidates=rank(cands, prefer=options.prefer, exclude=options.exclude,
+                candidates=rank(cands, prefer=options.prefer or list(contract.prefer), exclude=options.exclude,
                                 given={k for k, v in (identity_given or {}).items() if v not in (None, "")},
                                 derive=contract.derive), dropped=dropped)
 

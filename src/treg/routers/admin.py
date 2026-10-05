@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -20,7 +20,7 @@ from ..config import get_settings
 from ..infra import kv
 from ..infra.db import get_admin_session
 from ..domain import money
-from ..models import ArchiveEndpointStat, ArchiveKey, ArchiveSnapshot, Bundle, CallRecord, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
+from ..models import ArchiveEndpointStat, ArchiveKey, ArchiveSnapshot, Bundle, CallRecord, EndpointDayStat, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from ..domain.identity.access import require_superadmin
@@ -41,55 +41,65 @@ def _tally(items) -> dict:
 
 @app.get("/admin/stats")
 async def admin_stats(_: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session)) -> dict:
-    async def n(model) -> int:
-        return (await db.execute(select(func.count()).select_from(model))).scalar() or 0
+    """Platform totals for the admin page. Every count runs in the database.
 
-    tools = (await db.execute(select(Tool))).scalars().all()
-    secrets = (await db.execute(select(Secret))).scalars().all()
-    # THREE COLUMNS, not the whole row. This is an unbounded read of the largest table in the
-    # database (tens of thousands of rows), and every one of them was being materialised as a full
-    # ORM object to count three fields. It matters more now that `callrecord` carries the failure
-    # evidence columns, which are wide and are read by nothing here.
-    calls = (await db.execute(
-        select(CallRecord.org_id, CallRecord.created_at, CallRecord.status_code))).all()
-    users = (await db.execute(select(User))).scalars().all()
-    orgs = (await db.execute(select(Org))).scalars().all()
-    # Sandbox onboarding data isn't real platform usage — exclude the demo footprint from totals so
-    # metrics stay honest (fake teammates, demo teams, and everything scoped to them).
-    demo_org_ids = {o.id for o in orgs if o.demo}
-    users = [u for u in users if not u.demo]
-    orgs = [o for o in orgs if not o.demo]
-    tools = [t for t in tools if t.org_id not in demo_org_ids]
-    secrets = [s for s in secrets if s.org_id not in demo_org_ids]
-    calls = [c for c in calls if c.org_id not in demo_org_ids]
+    It used to load the whole call table to count it in Python: 12,493,056 rows on 2026-09-21, past
+    120 s, so the page got a 502. Call counts now come from `endpointdaystat` (one row per endpoint
+    per day, folded by the `treg-worker catalog stats` cron): calls the provider saw, as of that
+    job's last run. The all-time total is Postgres's own row estimate, not an exact count.
+    """
     now = _utcnow_naive()
+    demo_orgs = select(Org.id).where(Org.demo)
 
-    def since(rows, days, pred=lambda r: True):
-        cut = now - timedelta(days=days)
-        return sum(1 for r in rows if _as_naive(r.created_at) >= cut and pred(r))
+    async def n(stmt) -> int:
+        return int((await db.execute(stmt)).scalar() or 0)
 
-    ok = sum(1 for c in calls if c.status_code < 400)
+    def recent(model, days: int):
+        return model.created_at >= now - timedelta(days=days)
+
+    users = select(func.count()).select_from(User).where(User.demo.is_(False))
+    orgs = select(func.count()).select_from(Org).where(Org.demo.is_(False))
+    # `or_(is_(None))`: NOT IN drops a NULL org_id, and a tool or secret with no team still counts.
+    tools = (await db.execute(select(Tool).where(
+        or_(Tool.org_id.is_(None), Tool.org_id.not_in(demo_orgs))))).scalars().all()
+    secret_health = (await db.execute(select(Secret.health_status).where(
+        or_(Secret.org_id.is_(None), Secret.org_id.not_in(demo_orgs))))).scalars().all()
+
+    async def calls_since(days: int) -> tuple[int, int]:
+        day = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+        row = (await db.execute(select(func.sum(EndpointDayStat.n), func.sum(EndpointDayStat.ok))
+                                .where(EndpointDayStat.day >= day))).one()
+        return int(row[0] or 0), int(row[1] or 0)
+
+    calls_7d, _ok_7d = await calls_since(7)
+    calls_30d, ok_30d = await calls_since(30)
+    if db.bind.dialect.name == "postgresql":
+        total_calls = await n(text(
+            "SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = 'callrecord'::regclass"))
+    else:
+        total_calls = await n(select(func.count()).select_from(CallRecord))
     return {
         "totals": {
-            "users": len(users), "orgs": len(orgs), "tools": len(tools),
-            "secrets": len(secrets), "bundles": await n(Bundle), "calls": len(calls),
-            "superadmins": sum(1 for u in users if u.is_superadmin),
-            "suspended_orgs": sum(1 for o in orgs if o.suspended),
+            "users": await n(users), "orgs": await n(orgs), "tools": len(tools),
+            "secrets": len(secret_health), "bundles": await n(select(func.count()).select_from(Bundle)),
+            "calls": total_calls,
+            "superadmins": await n(users.where(User.is_superadmin)),
+            "suspended_orgs": await n(orgs.where(Org.suspended)),
         },
         "tools_by_injector": _tally(b.get("injector", "?") for t in tools for b in t.bindings),
         "tools_by_host": _tally(t.host for t in tools),
-        "credential_health": _tally(s.health_status for s in secrets),
+        "credential_health": _tally(secret_health),
         "calls": {
-            "last_7d": since(calls, 7), "last_30d": since(calls, 30), "total": len(calls),
-            "success_rate": round(ok / len(calls), 3) if calls else None,
+            "last_7d": calls_7d, "last_30d": calls_30d, "total": total_calls,
+            "success_rate": round(ok_30d / calls_30d, 3) if calls_30d else None,
         },
         "growth": {
-            "new_users_7d": since(users, 7), "new_users_30d": since(users, 30),
-            "new_orgs_7d": since(orgs, 7), "new_orgs_30d": since(orgs, 30),
+            "new_users_7d": await n(users.where(recent(User, 7))),
+            "new_users_30d": await n(users.where(recent(User, 30))),
+            "new_orgs_7d": await n(orgs.where(recent(Org, 7))),
+            "new_orgs_30d": await n(orgs.where(recent(Org, 30))),
         },
     }
-
-
 
 
 @app.get("/admin/orgs")

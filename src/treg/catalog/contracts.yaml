@@ -1115,6 +1115,22 @@ contracts:
     idempotent: true
 
   # ---- open web -----------------------------------------------------------------------------
+  ai-search.perplexity.answer:
+    summary: "Ask Perplexity a question — the answer text and its cited sources; `source_kind` says whether it came from the Perplexity website or its model API"
+    identity:
+      - {prompt: str}
+    filters:
+      country: {type: str, default: "US", note: "ISO 3166-1 alpha-2: where the question is asked from"}
+    output:
+      answer: {type: str, required: true}
+      sources: {type: list, note: "the provider's own cited-source objects; raw is the same body"}
+      source_kind: {type: str, note: "website = the public Perplexity site, as a user there sees it; model_api = Perplexity's model API (sonar). The two cite different sources: 3 of 10 shared on one live question (2026-10-05)"}
+    miss: "answer == null"
+    idempotent: true
+    # 2026-10-05, 30 days: dataforseo 99.98% ok at 4 s median; cloro 60% ok at 64 s. Cloro reads the
+    # website itself; a caller who needs that sends X-Treg-Route-Prefer: cloro or calls it directly.
+    prefer: [dataforseo]
+
   web.search:
     summary: "Search the open web — provider-native result rows in `results`"
     identity:

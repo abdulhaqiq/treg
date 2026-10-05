@@ -4198,7 +4198,7 @@ def _topup_auto(args, cfg) -> None:
     turning_on = args.auto == "on"
     body: dict = {"enabled": turning_on, "consent": False}
     for key, val in (("threshold_usd", args.threshold), ("amount_usd", args.auto_amount),
-                     ("monthly_cap_usd", args.auto_cap)):
+                     ("monthly_cap_usd", args.auto_cap), ("per_hour", getattr(args, "auto_per_hour", None))):
         if val is not None:
             body[key] = val
     if turning_on:
@@ -4207,7 +4207,9 @@ def _topup_auto(args, cfg) -> None:
         t = f"${threshold}" if isinstance(threshold, (int, float)) else threshold
         a = f"${amount}" if isinstance(amount, (int, float)) else amount
         print(f"\n  {_AM}Auto top-up charges your saved card when nobody is at the keyboard.{_R}")
-        print(f"  {_M}Whenever your balance drops below {t}, we charge {a} to the card on file.{_R}\n")
+        n = getattr(args, "auto_per_hour", None) or "up to 5"
+        print(f"  {_M}Whenever your balance drops below {t}, we charge {a} to the card on file, "
+              f"{n} times per hour at most.{_R}\n")
         if not _confirm_consent():
             sys.exit("cancelled — auto top-up is unchanged.")
         body["consent"] = True
@@ -4229,7 +4231,8 @@ def _topup_auto(args, cfg) -> None:
         print(f"\n  {_M}Auto top-up switches on by itself once the card is saved.{_R}\n")
         return
     print(f"\n  {_G}Auto top-up is on.{_R} Add {_usd(auto.get('amount_micro') or 0)} whenever the "
-          f"balance drops below {_usd(auto.get('threshold_micro') or 0)}.")
+          f"balance drops below {_usd(auto.get('threshold_micro') or 0)}, at most "
+          f"{auto.get('per_hour') or 5} times per hour.")
     print(f"  {_M}Monthly ceiling {_usd(auto.get('monthly_cap_micro') or 0)} — we stop there, "
           f"whatever happens.{_R}\n")
 
@@ -6892,6 +6895,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="with --auto on: how many dollars to add on each automatic refill")
     tu.add_argument("--cap", dest="auto_cap", type=float, default=None,
                     help="with --auto on: the most auto top-up may charge in a calendar month")
+    tu.add_argument("--per-hour", dest="auto_per_hour", type=int, default=None,
+                    help="with --auto on: how many automatic refills may run in one hour (1-60, default 5)")
     tu.set_defaults(fn=cmd_topup)
 
     # ---- health + oauth ----

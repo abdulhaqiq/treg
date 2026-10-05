@@ -199,6 +199,17 @@
             ],
             "title": "Monthly Cap Usd"
           },
+          "per_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Hour"
+          },
           "setup_url": {
             "default": true,
             "title": "Setup Url",
@@ -3357,6 +3368,7 @@
     },
     "/admin/stats": {
       "get": {
+        "description": "Platform totals for the admin page. Every count runs in the database.\n\nIt used to load the whole call table to count it in Python: 12,493,056 rows on 2026-09-21, past\n120 s, so the page got a 502. Call counts now come from `endpointdaystat` (one row per endpoint\nper day, folded by the `treg-worker catalog stats` cron): calls the provider saw, as of that\njob's last run. The all-time total is Postgres's own row estimate, not an exact count.",
         "operationId": "admin_stats_admin_stats_get",
         "parameters": [
           {

@@ -29,7 +29,7 @@ sources:
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
-  - src/treg/alembic/versions/0063_idempotentcall_archive_link.py
+  - src/treg/alembic/versions/0065_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0034_managed_api_keys.py
@@ -336,6 +336,10 @@ uses this metadata, never the encrypted token's shape.
   fields added by `0011`. Archive storage, eligibility and retention belong to
   [archive](archive.md); caller tags and money joins are covered below.
 
+  `upstream_ms` (Alembic `0063`) is the provider's share of `duration_ms`: from sending the request
+  until its answer is read (or, when the answer streams on, until its headers arrive). It leaves
+  out token refresh, archive lookup, a `retry-after` sleep and treg's own work. NULL when no
+  request reached the provider, and on rows before 2026-10-05.
 - **`IdempotentCall`** - a caller-scoped, 24-hour replay cache for metered successes, keyed by
   `(membership_id, key)` and also carrying `org_id` for team cleanup. It is not an audit record: once
   the membership is revoked there is no valid caller that can replay it. `delete_membership` removes
@@ -349,6 +353,9 @@ uses this metadata, never the encrypted token's shape.
   `idempotency_response_lost` with the charge when the owner's ledger shows one, else
   `idempotency_outcome_unknown`. The key is never run again: a lapsed lease does not prove its owner
   stopped. Rows without a `call_ref` (written before this) keep answering 409 until they expire.
+  A kept answer over `archive_max_body_bytes` (2 MB, the archive's own limit) is not stored:
+  `_store_idempotent` keeps a terminal 410 `idempotency_response_too_large` (`call_id`, charge,
+  `size_bytes`) instead. The caller already received the full answer; a retry never runs again.
   The per-call expired-label sweep reads `(membership_id, expires_at)` (Alembic `0053`), so its
   cost is the expired rows, not every label the caller holds.
   `prune_expired_idempotency` additionally sweeps completed, expired responses globally from the
@@ -371,7 +378,7 @@ uses this metadata, never the encrypted token's shape.
   The same run then calls `trim_archived_answers`: a live `done` 2xx row at least ten minutes old
   drops `response_body` when its call's `CallRecord` names an archive answer, `archive.bytes_on_file`
   confirms that answer still carries bytes, and the row's own sha256 equals it. The row keeps
-  `archive_key_hash` / `archive_content_hash` (Alembic `0063`); a replay reads the bytes back with
+  `archive_key_hash` / `archive_content_hash` (Alembic `0065`); a replay reads the bytes back with
   `archive.answer_bytes` (hash-checked) and answers the 410 `idempotency_response_lost` when they are
   gone, never a new run. `--skip-trim` runs only the expiry delete.
 

@@ -432,9 +432,12 @@ without that split would have rejected the default $5 threshold on every enable.
 **A saved card arms a consented policy from either webhook.** The modal records consent first
 (`set_autotopup` → `no_card`) and relies on the top-up Checkout to save the card, so there is no
 SetupIntent in that flow: `_set_default_pm` - called by both `_on_checkout_completed` and
-`_on_setup_succeeded` - runs `_arm_if_waiting_for_card`, which turns the policy on only from the
-explicit `no_card` state. A decline, 3DS, or a deliberate off (reason `None`, consent still on
-file) stays off; a redelivered payment webhook must not switch a policy back on.
+`_on_setup_succeeded` (and `_on_payment_succeeded`) - runs `_arm_if_waiting_for_card`. It turns
+the policy back on from `no_card` once a card exists, and from repeated declines
+(`max_attempts:*`) only when the card is proven: it just paid (`paid=True`, both payment webhooks)
+or it is a newly saved card. The declined card saved again is not proof. 3DS
+(`authentication_required`) and a deliberate off (reason `None`, consent still on file) stay off;
+a redelivered payment webhook must not switch a deliberately disabled policy back on.
 
 Turning `invoice_creation` on makes Stripe emit `invoice.created` / `invoice.paid` for every top-up.
 `handle_webhook_event` drops them, deliberately: crediting on an invoice event as well as on the
@@ -465,6 +468,15 @@ cooldown stamped in the DB *before* the charge so a second web worker sees it, a
 limit, and an idempotency key derived from the threshold crossing - so a burst of concurrent calls
 that all notice the low balance produces exactly ONE charge.
 
+The wait between charges (`billing.autotopup_wait_s`) is one hour after a FAILED charge
+(`autotopup_cooldown_s`), else one hour divided by the team's `autotopup_max_per_hour` (0 = the
+default `autotopup_default_per_hour`, 5; 1-60 via `POST /billing/autotopup` `per_hour`, `treg topup
+--per-hour`, or the billing page). The number is part of the mandate text. A call refused for
+balance also calls `maybe_schedule_autotopup` (`reserve.py`, one read of the org by primary key):
+before 2026-10-05 only a call that got through did, so a team at $0 stayed empty until something
+else ran - one team refused 54,974 calls in 4 hours. The scheduler checks the wait in memory first,
+so a team refusing thousands of calls an hour does not start a task per call.
+
 Authorization splits by WHAT, not by who. `_billing_org` (the `/billing/*` routes - cards, top-ups,
 auto-top-up policy, payment history, the portal) requires **admin or owner**: a card, a spend policy
 and an invoice archive are the org's money, not a member's preference.
@@ -477,7 +489,7 @@ admin-only, which meant a machine identity could not read the balance it was spe
 (Reported by Jason, 2026-08-07.)
 
 The 402 also carries `autotopup_enabled` and an `auto top-up:` line in `message`. Off → the one
-command that turns it on. On → the amount, threshold, cooldown and monthly cap, plus the flags that
+command that turns it on. On → the amount, threshold, charges per hour and monthly cap, plus the flags that
 raise them - because a team that is out of money *with* auto top-up on is being held by the cooldown
 or the cap, and "add funds" alone reads as "auto top-up is broken" (cobl.ai, 2026-08-25: ~1,500
 refusals between hourly $20 refills against a $60/day burn). The org fields are read **before**

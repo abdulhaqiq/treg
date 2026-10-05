@@ -268,3 +268,22 @@ async def test_manual_grant_uses_configured_database_without_cloud_credentials(c
         credits = [entry for entry in entries if entry.meta.get("ref") == "maintenance-test"]
         assert len(credits) == 1
         assert credits[0].amount_micro == 1_250_000
+
+
+async def test_stats_count_calls_from_the_day_table_not_the_call_table(c):
+    """Finding 16 (2026-09-21): it loaded every call row (12,493,056) to count them, ran past 120 s
+    and answered 502. Windowed call numbers now come from `endpointdaystat`."""
+    from datetime import datetime, timedelta, timezone
+    from treg.infra.db import session_maker
+    from treg.models import EndpointDayStat
+
+    await _seed(c)
+    today = datetime.now(timezone.utc).date()
+    async with session_maker() as db:
+        for days_ago, n, ok in ((1, 100, 90), (10, 50, 40), (45, 1000, 0)):  # the last is outside 30 d
+            db.add(EndpointDayStat(endpoint_id="e.x", day=(today - timedelta(days=days_ago)).isoformat(),
+                                   n=n, ok=ok))
+        await db.commit()
+    calls = (await c.get("/admin/stats", headers=_a())).json()["calls"]
+    assert calls["last_7d"] == 100 and calls["last_30d"] == 150
+    assert calls["success_rate"] == round(130 / 150, 3)
