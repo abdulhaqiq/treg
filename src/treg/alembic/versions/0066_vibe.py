@@ -32,6 +32,7 @@ def upgrade() -> None:
         sa.Column("auto_test", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("pending", sa.JSON(), nullable=True),
         sa.Column("running_since", sa.DateTime(), nullable=True),
+        sa.Column("run_token", sa.String(), nullable=True),
         sa.Column("stop_requested", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),

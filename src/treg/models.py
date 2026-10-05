@@ -1378,7 +1378,8 @@ class VibeSession(SQLModel, table=True):
     data}); `tool_id` is set once it is published or loaded. Deleted with its user, or by the user.
     `summary` replaces old messages once the session has been idle long enough (the transcript is
     trimmed, the work is kept). `pending` is the one action the agent asked the maker to approve;
-    `running_since` marks the agent at work (any instance), `stop_requested` asks it to stop."""
+    `running_since` marks the agent at work (any instance) under `run_token`, `stop_requested` asks it
+    to stop."""
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
@@ -1390,7 +1391,8 @@ class VibeSession(SQLModel, table=True):
     pinned: bool = Field(default=False)
     auto_test: bool = Field(default=False)          # the maker let the agent test-run without asking
     pending: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
-    running_since: datetime | None = Field(default=None)
+    running_since: datetime | None = Field(default=None)   # refreshed every turn and step while it works
+    run_token: str | None = Field(default=None)            # the run holding the mark; only it may release it
     stop_requested: bool = Field(default=False)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now, index=True)

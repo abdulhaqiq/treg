@@ -77,16 +77,20 @@ goes to `PUT /hub/tools/{id}/app/password` only: it is never stored in a message
 model. A password press with no password is refused (422 `vibe_password_missing`) unless it says
 `clear`: a button meant to set one must never silently remove a lock. A new maker message clears an open ask.
 
-**Stop and regenerate.** `running_since` marks the agent at work on a conversation (one at a time,
-on any instance; a mark older than `RUN_STALE` belonged to a dead process); `stop_requested` asks
-it to stop, read before each turn and step and every `STOP_POLL_S` while the model streams. A
+**Stop and regenerate.** `running_since` marks the agent (or a pressed button) at work on a
+conversation, one at a time on any instance, under a `run_token`: the run refreshes the mark every
+turn and step (`touch_run`), only the run holding the token may clear it, and a mark not refreshed
+for `RUN_STALE` belonged to a dead process. A run that finds its mark taken over stops. While the
+mark is held the maker's file saves are refused (409): the agent writes over the files as it last
+read them, so an edit saved meanwhile would be lost; the page keeps unsaved edits per file and
+shows the agent's changes to the others at once. `stop_requested` asks it to stop, read before each turn and step and every `STOP_POLL_S` while the model streams. A
 regenerate deletes the agent's turns and steps after the maker's last message, puts the files back
 as they were when it was sent, keeps the maker's events, and runs the loop again.
 
 **What one message may cost.** A message stops at `MESSAGE_CAP_MICRO` of model spend and says
 so; the maker tells it to go on. The history the model rereads every turn is kept lean: a past
 `write_files` call carries only the size of what it wrote (the current files come with every turn),
-and a tool result from an earlier message is cut to `OLD_RESULT_MAX`.
+and a tool result or an attachment from an earlier message is cut to `OLD_RESULT_MAX`.
 
 No database connection is held while the model or a tool call is in flight: the session commits
 before each. The loop is its own task with its own session, so a closed tab does not stop it; the
@@ -94,9 +98,11 @@ page follows a running conversation by reading it.
 
 ## Money
 
-The model is treg's spend, not the team's: each assistant turn's gateway cost (or, when the gateway
-reports none, its tokens at a deliberately high estimate) is added to `VibeBudget.spent_micro`, one
-row per person, never per team and never restored, and so is a fixed `FIND_COST_MICRO` per find
+The model is treg's spend, not the team's: each assistant turn's gateway cost (`turn_cost`: or, when
+the gateway reports none, its tokens at a deliberately high estimate, the input counted from the
+history when no usage came back; a stopped turn and a fallback's failed first attempt are charged;
+a request that never reached a model is not) is added to `VibeBudget.spent_micro` in one atomic
+update, one row per person, never per team and never restored, and so is a fixed `FIND_COST_MICRO` per find
 (the judge reports no cost). Before every model turn the loop checks `vibe_budget_usd` minus
 spent; at zero it stops and says the draft is still there. A test run and the publish check are
 ordinary hub runs on the team's balance, as from the CLI. None of this is a ledger entry.
@@ -104,17 +110,20 @@ ordinary hub runs on the team's balance, as from the CLI. None of this is a ledg
 ## The data (migration 0066; `application/vibe/__init__.py` is the only writer)
 
 `VibeSession` (person, team, title, `draft` = the files, `tool_id` once published or loaded,
-`summary`, `pinned`, `auto_test`, `pending`, `running_since`, `stop_requested`), `VibeMessage`
+`summary`, `pinned`, `auto_test`, `pending`, `running_since`, `run_token`, `stop_requested`), `VibeMessage`
 (role user | assistant | tool | event; content; the turn's cost), `VibeDraft` (every version of
 the files, numbered per conversation: who made it, the last message then, and the hub version it
-became when published), `VibeBudget`. A team's deletion takes its conversations, their messages
+became when published; data.csv is kept once, a version with the same data as the one before
+keeping its digest and the number of the version that holds it, `files_of`), `VibeBudget`. A team's deletion takes its conversations, their messages
 and versions (`cascade_delete_org`); an admin's deletion of a person takes theirs and the budget
 row (`forget_user`).
 
 **History (option C).** `treg-worker vibe trim` (cron it daily) finds conversations idle for
 `vibe_trim_after_days` (default 30): each keeps its files and their versions, its published tool and
-a short summary (the maker's first ask and the agent's last answer, no model call); its messages go.
-The agent reads the summary when the conversation resumes.
+a short summary (the maker's first ask and the agent's last answer, after any earlier summary, no
+model call); its messages go. A conversation resumed after a trim is trimmed again when it goes
+idle again. A hundred conversations per transaction. The agent reads the summary when the
+conversation resumes.
 
 ## Routes (`routers/vibe.py`)
 
@@ -143,8 +152,8 @@ within limits (`layout.ts`), remembered per browser; below a narrow width they b
 chat follows the newest message while the reader is at the bottom and lets go when they scroll up,
 with a "Jump to latest" button (`stickToBottom.ts`). Left: the
 conversations, searchable, pinned first, grouped by the tool they built. Middle: a status header
-for the tool, then the chat: the agent's replies as Markdown (`markdown.ts`: raw HTML off, http(s)
-links in a new tab, a Copy button on code), streamed as they come, with each answer's model cost,
+for the tool, then the chat: the agent's replies as Markdown (`markdown.ts`: raw HTML off, links only
+to http(s), mail and paths on this site, in a new tab, a Copy button on code), streamed as they come, with each answer's model cost,
 Copy and Regenerate; runs of routine steps folded into one line, each tool step a card that opens to its arguments and result, a file change to
 its diff with Revert, a test result to the table (`ResultView`); each ask a card with its buttons
 and, for a test run, its estimated cost and what to fix first; each event a card with what to do

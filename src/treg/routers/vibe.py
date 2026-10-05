@@ -176,6 +176,7 @@ async def vibe_meta(session_id: int, body: MetaIn, request: Request, caller: Cal
                     db: AsyncSession = Depends(get_session)) -> dict:
     """Rename, pin, or let the agent test-run without asking."""
     _require_vibe(request, caller)
+    _require_can_register(caller)
     _require_same_origin(request)
     row = await _owned(db, caller, session_id)
     await vibe_app.update_meta(db, row, title=body.title, pinned=body.pinned, auto_test=body.auto_test)
@@ -187,6 +188,7 @@ async def vibe_meta(session_id: int, body: MetaIn, request: Request, caller: Cal
 async def vibe_delete(session_id: int, request: Request, caller: Caller = Depends(require_member),
                       db: AsyncSession = Depends(get_session)) -> dict:
     _require_vibe(request, caller)
+    _require_can_register(caller)
     _require_same_origin(request)
     row = await _owned(db, caller, session_id)
     if vibe_app.running(row):
@@ -209,7 +211,8 @@ async def vibe_tool_status(session_id: int, request: Request, caller: Caller = D
     return {"tool": tool, "warnings": warn}
 
 
-def _stream(run: Callable[[Callable[[dict], Awaitable[None]]], Awaitable[None]], session_id: int) -> StreamingResponse:
+def _stream(run: Callable[[Callable[[dict], Awaitable[None]]], Awaitable[None]], session_id: int,
+            token: str) -> StreamingResponse:
     """Run the agent as its own task and stream what it does as newline-delimited JSON. The task
     outlives the request: a closed tab does not stop the agent, and the page picks the conversation
     up again from the database."""
@@ -229,7 +232,7 @@ def _stream(run: Callable[[Callable[[dict], Awaitable[None]]], Awaitable[None]],
             await emit({"type": "error", "message": "The agent stopped on an error. Your files are saved."})
         finally:
             async with database.session_maker() as db:
-                await vibe_app.release_run(db, session_id)
+                await vibe_app.release_run(db, session_id, token)
                 await db.commit()
             await emit({"type": "done"})
 
@@ -248,24 +251,27 @@ def _stream(run: Callable[[Callable[[dict], Awaitable[None]]], Awaitable[None]],
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
-async def _start(db: AsyncSession, request: Request, caller: Caller, row: VibeSession) -> None:
+async def _start(db: AsyncSession, request: Request, caller: Caller, row: VibeSession) -> str:
     if not get_settings().ai_gateway_api_key:
         raise HTTPException(status_code=503, detail={"error": "vibe_no_model", "message": "no model is configured on this registry"})
     if not await kv.store().take(f"vibe:msg:{caller.user.id}", MESSAGES_PER_MINUTE, 60):
         raise HTTPException(status_code=429, detail={"error": "vibe_busy", "message": "too many messages; wait a minute"})
-    if not await vibe_app.claim_run(db, row.id):
+    token = await vibe_app.claim_run(db, row.id)
+    if token is None:
         raise _working()
     await db.commit()
+    return token
 
 
-def _runner(request: Request, caller: Caller, session_id: int, **kw: Any):
+def _runner(request: Request, caller: Caller, session_id: int, token: str, **kw: Any):
     org_id, user_id, app_, headers = caller.org_id, caller.user.id, request.app, dict(request.headers)
 
     async def run(emit) -> None:
         async with database.session_maker() as db:
             row = await db.get(VibeSession, session_id)
             org = await db.get(Org, org_id)
-            await vibe_agent.send(db, row, org, user_id=user_id, app=app_, headers=headers, emit=emit, **kw)
+            await vibe_agent.send(db, row, org, user_id=user_id, app=app_, headers=headers, emit=emit,
+                                  run_token=token, **kw)
     return run
 
 
@@ -283,9 +289,9 @@ async def vibe_message(session_id: int, body: MessageIn, request: Request, calle
     if sum(len(a.text) for a in body.attachments) > vibe_app.ATTACH_MAX:
         raise HTTPException(status_code=413, detail={"error": "vibe_attachments_too_big",
                                                      "message": f"attachments: at most {vibe_app.ATTACH_MAX:,} characters"})
-    await _start(db, request, caller, row)
-    return _stream(_runner(request, caller, row.id, text=body.text,
-                           attachments=[a.model_dump() for a in body.attachments]), row.id)
+    token = await _start(db, request, caller, row)
+    return _stream(_runner(request, caller, row.id, token, text=body.text,
+                           attachments=[a.model_dump() for a in body.attachments]), row.id, token)
 
 
 @app.post("/vibe/sessions/{session_id}/regenerate")
@@ -301,13 +307,19 @@ async def vibe_regenerate(session_id: int, request: Request, caller: Caller = De
     last = await vibe_app.last_user_message(db, row.id)
     if last is None:
         raise HTTPException(status_code=409, detail={"error": "vibe_nothing_to_redo", "message": "there is no message to answer again"})
-    await _start(db, request, caller, row)
-    await vibe_app.drop_answer(db, row.id, last.id)
-    await vibe_app.set_draft(db, row, await vibe_app.files_before(db, row, last.id), author="restore",
-                             note="back to before the regenerated answer", replace=True)
-    await vibe_app.set_pending(db, row, None)
-    await db.commit()
-    return _stream(_runner(request, caller, row.id, text=None), row.id)
+    token = await _start(db, request, caller, row)
+    try:
+        await vibe_app.drop_answer(db, row.id, last.id)
+        await vibe_app.set_draft(db, row, await vibe_app.files_before(db, row, last.id), author="restore",
+                                 note="back to before the regenerated answer", replace=True)
+        await vibe_app.set_pending(db, row, None)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await vibe_app.release_run(db, row.id, token)       # never leave the conversation marked busy
+        await db.commit()
+        raise
+    return _stream(_runner(request, caller, row.id, token, text=None), row.id, token)
 
 
 @app.post("/vibe/sessions/{session_id}/stop")
@@ -315,6 +327,7 @@ async def vibe_stop(session_id: int, request: Request, caller: Caller = Depends(
                     db: AsyncSession = Depends(get_session)) -> dict:
     """Ask the agent to stop; it does within a second or two, keeping what it already did."""
     _require_vibe(request, caller)
+    _require_can_register(caller)
     _require_same_origin(request)
     row = await _owned(db, caller, session_id)
     await vibe_app.request_stop(db, row.id)
@@ -337,14 +350,15 @@ async def vibe_action(session_id: int, body: ActionIn, request: Request, caller:
                                                      "message": "type a password, or ask to remove it"})
     if body.kind == "test" and body.always:
         await vibe_app.update_meta(db, row, auto_test=True)
-    if not await vibe_app.claim_run(db, row.id):
+    token = await vibe_app.claim_run(db, row.id)
+    if token is None:
         raise _working()
     await db.commit()
     try:
         event = await vibe_agent.act(db, row, caller.org, kind=body.kind, app=request.app, headers=dict(request.headers),
                                      inputs=body.inputs, name=body.name, password=body.password)
     finally:
-        await vibe_app.release_run(db, row.id)
+        await vibe_app.release_run(db, row.id, token)
         await db.commit()
     await db.refresh(row)
     return {"event": event, "tool_id": row.tool_id, "auto_test": bool(row.auto_test)}
@@ -354,10 +368,14 @@ async def vibe_action(session_id: int, body: ActionIn, request: Request, caller:
 async def vibe_draft(session_id: int, body: DraftIn, request: Request, caller: Caller = Depends(require_member),
                      db: AsyncSession = Depends(get_session)) -> dict:
     """The maker's own edits to the files; the agent reads them on its next turn. An empty `data`
-    removes data.csv."""
+    removes data.csv. Refused while the agent works: its next write would be made over the files
+    as it last read them, and the edit would be lost."""
     _require_vibe(request, caller)
+    _require_can_register(caller)
     _require_same_origin(request)
     row = await _owned(db, caller, session_id)
+    if vibe_app.running(row):
+        raise _working()
     files = body.model_dump(exclude_none=True)
     if files.get("data") == "":
         files.pop("data")
@@ -397,7 +415,8 @@ async def vibe_version(session_id: int, n: int, request: Request, caller: Caller
     if v is None:
         raise HTTPException(status_code=404, detail="no such version")
     prev = await vibe_app.version(db, row.id, n - 1) if n > 1 else None
-    return {**vibe_app.view_version(v, files=True), "prev": prev.files if prev else {}}
+    return {**vibe_app.view_version(v, await vibe_app.files_of(db, v)),
+            "prev": await vibe_app.files_of(db, prev) if prev else {}}
 
 
 @app.post("/vibe/sessions/{session_id}/versions/{n}/restore")
@@ -405,6 +424,7 @@ async def vibe_restore(session_id: int, n: int, request: Request, caller: Caller
                        db: AsyncSession = Depends(get_session)) -> dict:
     """Bring back version `n` as the newest version (history only grows)."""
     _require_vibe(request, caller)
+    _require_can_register(caller)
     _require_same_origin(request)
     row = await _owned(db, caller, session_id)
     if vibe_app.running(row):

@@ -379,11 +379,14 @@ async def test_one_agent_at_a_time(clients: AsyncClient, vibe_on):
     h = await _browser(clients)
     s = await _with_files(clients, h)
     async with session_maker() as db:
-        assert await vibe_app.claim_run(db, s["id"]) is True
+        token = await vibe_app.claim_run(db, s["id"])
+        assert token
         await db.commit()
     r = await clients.post(f"/vibe/sessions/{s['id']}/messages", json={"text": "hi"}, headers=h)
     assert r.status_code == 409 and r.json()["detail"]["error"] == "vibe_working"
     assert (await clients.post(f"/vibe/sessions/{s['id']}/actions", json={"kind": "skip"}, headers=h)).status_code == 409
+    # the maker's edit would be lost under the agent's next write: refused until it is done
+    assert (await clients.put(f"/vibe/sessions/{s['id']}/draft", json={"readme": "mine"}, headers=h)).status_code == 409
 
 
 async def test_rename_pin_and_attachments(clients: AsyncClient, vibe_on, monkeypatch):
@@ -500,3 +503,111 @@ async def test_continue_a_draft_in_another_conversation(clients: AsyncClient, vi
     listed = json.loads(next(m for m in body["messages"] if m.get("name") == "my_tools")["result"])
     assert s["id"] in [d["conversation_id"] for d in listed["drafts"]]
     assert body["draft"]["manifest"]["name"] == "greeter"
+
+
+
+async def test_a_secret_test_input_never_reaches_the_conversation(clients: AsyncClient, vibe_on, monkeypatch):
+    h = await _browser(clients)
+    s = (await clients.post("/vibe/sessions", json={}, headers=h)).json()
+    m = {**MANIFEST, "inputs": {"name": {"type": "string", "example": "Ada"},
+                                "token": {"type": "string", "secret": True}}}
+    check = {"inputs": {"name": "Ada", "token": "x"}, "fields": ["greeting"]}
+    await clients.put(f"/vibe/sessions/{s['id']}/draft", json={"manifest": m, "script": SCRIPT, "check": check,
+                                                              "readme": "Says hi."}, headers=h)
+    ev = (await clients.post(f"/vibe/sessions/{s['id']}/actions",
+                             json={"kind": "test", "inputs": {"name": "Bo", "token": "not-a-real-token"}}, headers=h)).json()["event"]
+    assert ev["ok"] is True and ev["inputs"] == {"name": "Bo", "token": "••••••"}
+    seen = _fake_model(monkeypatch, [llm.Turn(text="ok", tool_calls=[], ms=1)])
+    await _say(clients, s["id"], "how did it go?", h)
+    assert "not-a-real-token" not in json.dumps(seen)
+    async with session_maker() as db:
+        for msg in (await db.execute(select(VibeMessage))).scalars().all():
+            assert "not-a-real-token" not in json.dumps(msg.content)
+
+
+
+async def test_spend_from_two_conversations_at_once_adds_up(clients: AsyncClient, vibe_on):
+    import asyncio as aio
+    from treg.application import vibe as vibe_app
+    h = await _browser(clients)
+    s = (await clients.post("/vibe/sessions", json={}, headers=h)).json()
+    async with session_maker() as db:
+        user_id = (await db.get(VibeSession, s["id"])).user_id
+
+    async def one(n: int) -> None:
+        async with session_maker() as db:
+            await vibe_app.spend(db, user_id, n)
+            await db.commit()
+    await aio.gather(*(one(1000) for _ in range(8)))
+    async with session_maker() as db:
+        assert await vibe_app.spent_micro(db, user_id) == 8000
+
+
+
+def test_a_turn_without_a_reported_cost_is_still_charged():
+    from treg.application.vibe.agent import turn_cost
+    history = [{"role": "user", "content": "x" * 3000}]
+    assert turn_cost(llm.Turn(text="hi", tool_calls=[], ms=1, cost_usd=0.002), history, False) == 2000
+    stopped = turn_cost(llm.Turn(text="", tool_calls=[], ms=1), history, True)
+    assert stopped >= 1000 * 5                                   # the input is counted from the history
+    assert turn_cost(llm.Turn(text="", tool_calls=[], ms=1, error="ConnectError"), history, False) == 0
+
+
+async def test_a_stale_run_never_clears_a_newer_ones_mark(clients: AsyncClient, vibe_on):
+    from treg.application import vibe as vibe_app
+    h = await _browser(clients)
+    s = (await clients.post("/vibe/sessions", json={}, headers=h)).json()
+    async with session_maker() as db:
+        old = await vibe_app.claim_run(db, s["id"])
+        from treg.timeutil import utcnow_naive
+        await db.execute(update(VibeSession).where(VibeSession.id == s["id"])
+                         .values(running_since=utcnow_naive() - timedelta(hours=1)))   # it died
+        new = await vibe_app.claim_run(db, s["id"])
+        assert old and new and old != new
+        assert await vibe_app.touch_run(db, s["id"], old) is False      # the old run learns it lost
+        await vibe_app.release_run(db, s["id"], old)                    # and cannot clear the new mark
+        await db.commit()
+        assert vibe_app.running(await db.get(VibeSession, s["id"]))
+
+
+
+async def test_data_csv_is_kept_once_across_versions(clients: AsyncClient, vibe_on):
+    from treg.application import vibe as vibe_app
+    h = await _browser(clients)
+    s = await _with_files(clients, h)
+    csv = "name\nAda\nBo\n" * 1000
+    await clients.put(f"/vibe/sessions/{s['id']}/draft", json={"data": csv}, headers=h)          # version 2 holds it
+    await clients.put(f"/vibe/sessions/{s['id']}/draft", json={"readme": "Now with data."}, headers=h)   # version 3 refers
+    async with session_maker() as db:
+        v3 = await vibe_app.version(db, s["id"], 3)
+        assert "data" not in v3.files and v3.files["__data_of"] == 2
+        assert (await vibe_app.files_of(db, v3))["data"] == csv
+    v = (await clients.get(f"/vibe/sessions/{s['id']}/versions/3", headers=h)).json()
+    assert v["files"]["data"] == csv and "__data_of" not in v["files"]
+    r = (await clients.post(f"/vibe/sessions/{s['id']}/versions/1/restore", headers=h)).json()
+    assert "data" not in r["draft"]
+    r = (await clients.post(f"/vibe/sessions/{s['id']}/versions/3/restore", headers=h)).json()
+    assert r["draft"]["data"] == csv
+
+
+async def test_a_resumed_conversation_is_trimmed_again(clients: AsyncClient, vibe_on, monkeypatch):
+    from treg.application import vibe as vibe_app
+    h = await _browser(clients)
+    s = await _with_files(clients, h)
+
+    async def idle_and_trim():
+        async with session_maker() as db:
+            from treg.timeutil import utcnow_naive
+            await db.execute(update(VibeSession).where(VibeSession.id == s["id"])
+                             .values(updated_at=utcnow_naive() - timedelta(days=40)))
+            n = await vibe_app.trim_idle(db)
+            await db.commit()
+            return n
+    _fake_model(monkeypatch, [llm.Turn(text="first answer", tool_calls=[], ms=1)])
+    await _say(clients, s["id"], "first ask", h)
+    assert await idle_and_trim() == 1
+    _fake_model(monkeypatch, [llm.Turn(text="second answer", tool_calls=[], ms=1)])
+    await _say(clients, s["id"], "second ask", h)
+    assert await idle_and_trim() == 1
+    body = (await clients.get(f"/vibe/sessions/{s['id']}", headers=h)).json()
+    assert body["messages"] == [] and "first ask" in body["summary"] and "second ask" in body["summary"]

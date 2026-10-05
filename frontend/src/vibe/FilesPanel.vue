@@ -27,7 +27,10 @@ const FILES: { key: Key, label: string, lang: 'json' | 'javascript' | 'markdown'
 const pane = ref<'files' | 'history' | 'test'>('files')
 const tab = ref<Key>('manifest')
 const edits = ref<Record<string, string>>({})
-const dirty = ref(false)
+// The files the maker changed and has not saved. Only these are sent on Save, and only these keep
+// their text when the agent writes: its changes to the other files show at once.
+const changed = ref<Set<string>>(new Set())
+const dirty = computed(() => changed.value.size > 0)
 const problem = ref<{ field: string, rule: string } | null>(null)
 const checked = ref(false)
 const saving = ref(false)
@@ -45,9 +48,9 @@ const problemLine = computed(() => problem.value && fileOf(problem.value.field) 
   ? lineOf(edits.value[tab.value] || '', problem.value.field) ?? 1 : null)
 
 function load(force = false) {
-  if (dirty.value && !force) return
-  edits.value = Object.fromEntries(FILES.map(f => [f.key, fileText(draft.value as any, f.key)]))
-  dirty.value = false
+  if (force) changed.value = new Set()
+  edits.value = Object.fromEntries(FILES.map(f => [f.key,
+    changed.value.has(f.key) ? edits.value[f.key] : fileText(draft.value as any, f.key)]))
 }
 function loadTestValues() {
   testValues.value = initial(inputs.value)
@@ -63,12 +66,16 @@ watch(visible, v => { if (!v.some(f => f.key === tab.value)) tab.value = 'manife
 
 function onEdit(key: string, v: string) {
   if (edits.value[key] === v) return
-  edits.value[key] = v; dirty.value = true; checked.value = false
+  edits.value[key] = v; checked.value = false
+  const next = new Set(changed.value)
+  if (v === fileText(draft.value as any, key)) next.delete(key); else next.add(key)
+  changed.value = next
 }
 
 function parsed(): { files: Draft, bad: string } {
   const files: any = {}
   for (const f of FILES) {
+    if (!changed.value.has(f.key)) continue
     const raw = (edits.value[f.key] || '').trim()
     if (!raw) continue
     if (f.lang === 'json') {
@@ -85,7 +92,7 @@ async function save(): Promise<boolean> {
   saving.value = true
   try {
     const r = await api(`/vibe/sessions/${props.conv.id}/draft`, { method: 'PUT', json: files })
-    dirty.value = false
+    changed.value = new Set()
     emit('draft', r.draft)
     problem.value = r.problem; checked.value = true
     return true
@@ -114,7 +121,7 @@ async function view(n: number) {
 async function restore(n: number) {
   if (!props.conv || !confirm(`Restore draft ${n}? Your current files stay in the history.`)) return
   const r = await api(`/vibe/sessions/${props.conv.id}/versions/${n}/restore`, { method: 'POST' })
-  dirty.value = false
+  changed.value = new Set()
   emit('draft', r.draft)
   problem.value = r.problem; checked.value = true
   emit('restored')
@@ -164,7 +171,7 @@ defineExpose({ saveIfDirty: async () => (dirty.value ? save() : true), showFile:
                   :problem-line="problemLine" :problem-text="problem ? `${problem.field}: ${problem.rule}` : ''"
                   @update:model-value="v => onEdit(tab, v)"/>
       <div class="vb-actions">
-        <button class="sa-btn sm" type="button" :disabled="!dirty || saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="sa-btn sm" type="button" :disabled="!dirty || saving || busy" :title="busy ? 'The agent is working; save when it is done' : ''" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
         <button class="sa-btn sm" type="button" @click="validate">Validate</button>
         <button v-if="tab === 'data'" class="sa-btn sm" type="button" @click="removeData">Remove data.csv</button>
         <span v-if="dirty" class="sa-muted vb-small">Unsaved changes</span>

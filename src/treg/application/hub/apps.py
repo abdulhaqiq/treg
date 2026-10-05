@@ -209,28 +209,54 @@ def read_unlock(app: HubApp, token: str | None) -> bool:
         return False
 
 
+# Passwords this process has verified, as (tool, password version, a digest of the password) and
+# when the memory ends. A caller sending the right password on every call is checked by the slow
+# hash once, not each time, and never spends a try: only an unremembered password counts.
+_VERIFIED: dict[tuple[str, int, str], float] = {}
+VERIFIED_TTL_S = 600
+VERIFIED_MAX = 10_000
+
+
+def _verified_key(app: HubApp, password: str) -> tuple[str, int, str]:
+    digest = hmac.new(_key(), f"{app.tool_id}\0{password}".encode(), hashlib.sha256).hexdigest()
+    return (app.tool_id, int(app.password_version), digest)
+
+
 async def try_password(app: HubApp, password: str | None, client: str) -> str:
-    """`ok`, `wrong` or `busy` (too many tries). Every try counts, right or wrong, before the hash
-    is checked; the hash runs off the event loop."""
+    """`ok`, `wrong` or `busy` (too many tries). A password this process verified lately passes
+    without counting; any other try counts, against this client and against the app, before the
+    hash is checked (so guessing is bounded and the hash cannot be made to run at will). The hash
+    runs off the event loop."""
+    if not isinstance(password, str) or not password or len(password) > PASSWORD_MAX:
+        return "wrong"
+    key = _verified_key(app, password)
+    now = time.monotonic()
+    if _VERIFIED.get(key, 0) > now:
+        return "ok"
     if not await kv.store().take(f"hubapp:pw:{app.tool_id}:{client}", TRIES_PER_CLIENT, TRIES_WINDOW_S):
         return "busy"
     if not await kv.store().take(f"hubapp:pw:{app.tool_id}", TRIES_PER_APP, TRIES_WINDOW_S):
         return "busy"
-    if not isinstance(password, str) or not password or len(password) > PASSWORD_MAX:
+    if not await asyncio.to_thread(verify_password, password, app.password_hash):
         return "wrong"
-    ok = await asyncio.to_thread(verify_password, password, app.password_hash)
-    return "ok" if ok else "wrong"
+    if len(_VERIFIED) >= VERIFIED_MAX:
+        for k in [k for k, exp in _VERIFIED.items() if exp <= now] or list(_VERIFIED)[: VERIFIED_MAX // 10]:
+            _VERIFIED.pop(k, None)
+    _VERIFIED[key] = now + VERIFIED_TTL_S
+    return "ok"
 
 
-async def call_lock(db: AsyncSession, tool: HubTool, *, caller_org_id: int, password: str | None,
+async def app_of(db: AsyncSession, tool: HubTool) -> HubApp | None:
+    return await db.get(HubApp, tool.tool_id)
+
+
+async def call_lock(app: HubApp | None, tool: HubTool, *, caller_org_id: int, password: str | None,
                     client: str, unlocked: bool = False) -> str | None:
     """The lock on `/call/` of a hub tool: None to go on, else the refusal kind
     (`hub_tool_locked`, `hub_tool_password_busy`). The maker's own team never needs the password;
-    an app run that already checked its unlock passes `unlocked`."""
-    if unlocked or tool.org_id == caller_org_id:
-        return None
-    app = await db.get(HubApp, tool.tool_id)
-    if not locked(app):
+    an app run that already checked its unlock passes `unlocked`. Takes the app row already read
+    (`app_of`), so the caller can release its database connection before the tries and the hash."""
+    if unlocked or tool.org_id == caller_org_id or not locked(app):
         return None
     if not password:
         return "hub_tool_locked"

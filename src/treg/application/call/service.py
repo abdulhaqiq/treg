@@ -651,8 +651,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     if hub_row is not None:
         # A tool whose app is on with a password: another team needs it (X-Treg-Tool-Password, or
         # the app page's checked unlock). The maker's own team never does.
+        # Read the app row, then let the connection go: the tries live in the shared key-value
+        # store and the hash is deliberately slow (AGENTS.md non-negotiable 3).
+        hub_app_row = await hub_apps.app_of(db, hub_row)
+        await db.commit()
         lock = await hub_apps.call_lock(
-            db, hub_row, caller_org_id=caller.org_id, client=request.context.input.client_ip,
+            hub_app_row, hub_row, caller_org_id=caller.org_id, client=request.context.input.client_ip,
             password=_raw_header(request.context.input.raw_headers, b"x-treg-tool-password"),
             unlocked=request.context.input.hub_unlocked)
         if lock is not None:

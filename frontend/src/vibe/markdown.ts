@@ -4,7 +4,8 @@ import MarkdownIt from 'markdown-it'
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false, typographer: false })
 
-md.validateLink = (url: string) => /^(https?:|mailto:|\/(?!\/)|#)/i.test(url.trim())
+// Web links, mail, and paths on this site; never `//host` or `/\\host`, which browsers read as another site.
+md.validateLink = (url: string) => /^(https?:|mailto:|\/(?![/\\])|#)/i.test(url.trim())
 
 const defaultLink = md.renderer.rules.link_open || ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {

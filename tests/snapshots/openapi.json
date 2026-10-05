@@ -16072,7 +16072,7 @@
     },
     "/vibe/sessions/{session_id}/draft": {
       "put": {
-        "description": "The maker's own edits to the files; the agent reads them on its next turn. An empty `data`\nremoves data.csv.",
+        "description": "The maker's own edits to the files; the agent reads them on its next turn. An empty `data`\nremoves data.csv. Refused while the agent works: its next write would be made over the files\nas it last read them, and the edit would be lost.",
         "operationId": "vibe_draft_vibe_sessions__session_id__draft_put",
         "parameters": [
           {

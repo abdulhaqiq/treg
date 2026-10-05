@@ -63,9 +63,14 @@ fresh salt each time, constant-time compare, run off the event loop). Never retu
 - the tool leaves catalog search and the capability siblings (`hub_app.locked_ids`); `catalog_get`
   says `password_protected`; the share page says so.
 
-The maker's own team never needs the password. Every try, right or wrong, counts against
-`TRIES_PER_CLIENT` per app and client and `TRIES_PER_APP` per app (`infra/kv`), then 429. Turning
-the app off lifts the lock: the tool is callable by id again, as every live hub tool is.
+The maker's own team never needs the password. A password this process verified in the last
+`VERIFIED_TTL_S` passes at once (remembered as a keyed digest, never the password), so a caller who
+knows it is neither slowed by the hash nor counted. Any other try counts against
+`TRIES_PER_CLIENT` per app and client and `TRIES_PER_APP` per app (`infra/kv`) before the hash
+runs, then 429: guessing is bounded, and so is the hash work a stranger can cause. The call road
+reads the app row and releases its database connection before the tries and the hash
+(`apps.app_of`, then `apps.call_lock`). Turning the app off lifts the lock: the tool is callable by
+id again, as every live hub tool is.
 
 ## Routes (`routers/hub_apps.py`)
 
@@ -109,5 +114,7 @@ The visitor picks the paying team; a person with no team is told to make one.
 The Dashboard's Hub view has an **App** tab (on/off, name, URL, password set/change/remove). The
 CLI: `treg hub app on|off|password|status <id>` (the password at a hidden prompt or from
 `TREG_TOOL_PASSWORD`) and `treg call <id> --tool-password`. MCP (`/mcp/` only): `hub_app` turns the
-page on or off and renames it, listed only while apps are on, and never sets a password. The agent
+page on or off and renames it, listed only while apps are on, and never sets a password. MCP has no
+way to send `X-Treg-Tool-Password`, so a locked tool is not callable over MCP by another team: they
+call it from the CLI with `--tool-password`, over HTTP with the header, or on its app page. The agent
 files carry the apps text in `<!--hubapps-->` blocks inside the hub blocks, stripped unless apps are on.

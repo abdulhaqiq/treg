@@ -11,6 +11,12 @@ describe('the agent\'s Markdown', () => {
     expect(html).not.toContain('href="javascript')
     expect(html).toContain('<strong>bold</strong>')
   })
+  it('keeps links on this site and never lets one point off it', () => {
+    expect(render('[ok](/apps/t/x)')).toContain('href="/apps/t/x"')
+    const html = render('[a](//evil.com) [b](/\\evil.com)')
+    expect(html).not.toMatch(/href="\/\/|href="\/\\/)          // never a link a browser reads as another host
+    expect(html).not.toContain('href="//evil.com"')
+  })
   it('opens links in a new tab and gives code blocks a copy button', () => {
     const html = render('[treg](https://treg.to)\n\n```js\nlet a = "<b>"\n```')
     expect(html).toContain('target="_blank"')

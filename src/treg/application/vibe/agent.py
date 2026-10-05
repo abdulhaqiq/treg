@@ -38,7 +38,7 @@ from ...models import HubTool, Org, VibeSession
 from .. import catalog_find as find
 from .. import hub as hub_app
 from . import (add_message, clean_draft, copy_draft, drafts_of, left_micro, mark_published, messages, of_user,
-               set_draft, set_pending, spend, stop_wanted, view_message)
+               set_draft, set_pending, set_tool, spend, stop_wanted, touch_run, view_message)
 
 MAX_TURNS = 12
 MAX_TOOL_CALLS = 24
@@ -397,6 +397,17 @@ async def access_of(app: Any, headers: dict[str, str], endpoint_id: str) -> dict
             **({"why_not": a.get("detail"), "fix": a.get("connect_command")} if tier == "none" else {})}
 
 
+SECRET_SHOWN = "••••••"
+
+
+def masked_inputs(draft: dict, inputs: dict) -> dict:
+    """Inputs as stored in the conversation and read by the model: a `secret` input (a key, a
+    token) is never kept or sent on, only that it was given."""
+    specs = ((draft.get("manifest") or {}).get("inputs") or {}) if isinstance(draft, dict) else {}
+    return {k: (SECRET_SHOWN if isinstance(specs.get(k), dict) and specs[k].get("secret") and v not in (None, "")
+                else v) for k, v in inputs.items()}
+
+
 def _brief(d: Any) -> dict:
     """The files as the model reads them: data.csv as its header and size only."""
     out = clean_draft(d)
@@ -407,9 +418,8 @@ def _brief(d: Any) -> dict:
 
 
 async def _latest_n(db: AsyncSession, session_id: int) -> int | None:
-    from . import versions
-    vs = await versions(db, session_id)
-    return vs[0].n if vs else None
+    from . import latest_n
+    return await latest_n(db, session_id)
 
 
 async def load_tool(db: AsyncSession, session: VibeSession, org: Org, tool_id: str) -> HubTool | None:
@@ -427,8 +437,7 @@ async def load_tool(db: AsyncSession, session: VibeSession, org: Org, tool_id: s
     if row.data:
         files["data"] = row.data
     await set_draft(db, session, files, author="load", note=f"loaded {row.tool_id} v{row.version}", replace=True)
-    session.tool_id = row.tool_id
-    await db.flush()
+    await set_tool(db, session, row.tool_id)
     return row
 
 
@@ -489,19 +498,6 @@ async def publish(app: Any, headers: dict, draft: dict, team_slug: str) -> tuple
         return r.status_code, r.text[:600]
 
 
-def _detail(r: httpx.Response) -> Any:
-    try:
-        body = r.json()
-    except ValueError:
-        return r.text[:600]
-    return body.get("detail", body) if isinstance(body, dict) else body
-
-
-def _trim(value: Any, limit: int = RESULT_MAX) -> str:
-    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
-    return text if len(text) <= limit else text[:limit] + f"… [{len(text) - limit} more characters]"
-
-
 # ---- the maker's actions: what a button press does, each recorded as an event ----
 
 async def act(db: AsyncSession, session: VibeSession, org: Org, *, kind: str, app: Any, headers: dict[str, str],
@@ -521,7 +517,7 @@ async def act(db: AsyncSession, session: VibeSession, org: Org, *, kind: str, ap
         ev = {"kind": "skip", "ok": True, "summary": f"Not now: {thing}" if thing else "Not now"}
     elif kind == "test":
         r = await run_test(app, h, draft, inputs or {})
-        ev = {"kind": "test", "ok": r["ok"], "inputs": inputs or {}, "status": r["status"]}
+        ev = {"kind": "test", "ok": r["ok"], "inputs": masked_inputs(draft, inputs or {}), "status": r["status"]}
         if r["ok"]:
             ev.update(summary=f"Test run: ok, ${r['cost_micro'] / 1e6:.4f}", cost_micro=r["cost_micro"],
                       detail={"output": r["output"], "log": r.get("log")})
@@ -537,7 +533,7 @@ async def act(db: AsyncSession, session: VibeSession, org: Org, *, kind: str, ap
             ev.update(ok=verdict in ("live", "review"), tool_id=tool_id, version=body.get("version"),
                       url=body.get("page"), summary=f"Published {tool_id} v{body.get('version')}: {verdict}",
                       detail={"check": body.get("check")} if body.get("check") else None)
-            session.tool_id = tool_id
+            await set_tool(db, session, tool_id)
             if body.get("version"):
                 await mark_published(db, session, int(body["version"]))
         else:
@@ -583,7 +579,10 @@ def _history(session: VibeSession, rows: list) -> list[dict]:
         if m.role == "user":
             text = c.get("text", "")
             for a in c.get("attachments") or []:
-                text += f"\n\nAttached `{a.get('name')}`:\n```\n{a.get('text', '')}\n```"
+                body = a.get("text", "")
+                if i < last_user and len(body) > OLD_RESULT_MAX:   # read in full when sent, then a glimpse
+                    body = body[:OLD_RESULT_MAX] + f"… [cut: {len(body):,} characters, attached to an earlier message]"
+                text += f"\n\nAttached `{a.get('name')}`:\n```\n{body}\n```"
             out.append({"role": "user", "content": text})
         elif m.role == "assistant":
             msg: dict = {"role": "assistant", "content": c.get("text") or None}
@@ -652,6 +651,21 @@ def _draft_note(session: VibeSession) -> str:
     return note
 
 
+def turn_cost(turn: llm.Turn, history: list[dict], stopped: bool) -> int:
+    """What one model turn cost treg, in micro-USD: the gateway's own figure when it gives one;
+    otherwise, for a turn the model worked on (it answered, or was stopped mid-answer), its tokens
+    at the deliberately high estimate, the input counted from the history when the gateway sent no
+    usage (the input, files included, is most of a turn's cost). A request that never reached a
+    model (no answer, no usage) cost nothing."""
+    if turn.cost_usd:
+        return int(round(turn.cost_usd * 1_000_000))
+    if not (turn.text or turn.tool_calls or stopped or turn.input_tokens or turn.output_tokens):
+        return 0
+    tokens_in = turn.input_tokens or len(json.dumps(history, ensure_ascii=False, default=str)) // 3
+    tokens_out = turn.output_tokens or len(turn.text) // 3
+    return tokens_in * EST_IN_PER_TOKEN_MICRO + tokens_out * EST_OUT_PER_TOKEN_MICRO
+
+
 async def _stop_check(session_id: int) -> bool:
     async with database.session_maker() as s:
         wanted = await stop_wanted(s, session_id)
@@ -682,7 +696,8 @@ async def _turn(history: list[dict], *, model: str, session_id: int, emit: Emit)
 
 
 async def send(db: AsyncSession, session: VibeSession, org: Org, *, user_id: int, text: str | None, app: Any,
-               headers: dict[str, str], attachments: list[dict] | None = None, emit: Emit = _quiet) -> None:
+               headers: dict[str, str], attachments: list[dict] | None = None, emit: Emit = _quiet,
+               run_token: str | None = None) -> None:
     """Add the maker's message (none on a regenerate), then let the agent work until it answers in
     text, asks the maker for something, is stopped, or hits a limit. Every turn and tool step is
     stored and emitted as it happens. Commits as it goes."""
@@ -706,7 +721,17 @@ async def send(db: AsyncSession, session: VibeSession, org: Org, *, user_id: int
     system = SYSTEM.format(team=org.slug, rules=_hub_rules())
     calls = 0
     spent_here = 0
+    async def still_ours() -> bool:
+        """Refresh this run's busy mark; False when another run took the conversation over."""
+        if run_token is None:
+            return True
+        ok = await touch_run(db, session.id, run_token)
+        await db.commit()
+        return ok
+
     for _ in range(MAX_TURNS):
+        if not await still_ours():
+            return
         if spent_here >= MESSAGE_CAP_MICRO:
             await store("assistant", {"text": f"This message has used ${spent_here / 1e6:.2f} of model time, the most one "
                                       "message may. Your files are saved. Tell me to continue and I'll pick up from here."})
@@ -724,11 +749,11 @@ async def send(db: AsyncSession, session: VibeSession, org: Org, *, user_id: int
                    *_history(session, await messages(db, session.id))]
         await db.commit()       # no connection held while the model thinks
         turn, stopped = await _turn(history, model=s.vibe_model, session_id=session.id, emit=emit)
+        cost = turn_cost(turn, history, stopped)
         if turn.error and not turn.text and not turn.tool_calls and s.vibe_fallback_model:
             await emit({"type": "reset"})
             turn, stopped = await _turn(history, model=s.vibe_fallback_model, session_id=session.id, emit=emit)
-        cost = int(round(turn.cost_usd * 1_000_000)) or (turn.input_tokens * EST_IN_PER_TOKEN_MICRO
-                                                         + turn.output_tokens * EST_OUT_PER_TOKEN_MICRO)
+            cost += turn_cost(turn, history, stopped)       # the first attempt is paid for too
         await spend(db, user_id, cost)
         spent_here += cost
         await emit({"type": "budget", "left_micro": max(0, left - cost)})
@@ -746,6 +771,8 @@ async def send(db: AsyncSession, session: VibeSession, org: Org, *, user_id: int
         if not calls_now:
             return
         for call in calls_now:
+            if not await still_ours():
+                return
             if await stop_wanted(db, session.id):
                 await store("assistant", {"text": "Stopped.", "stopped": True})
                 return

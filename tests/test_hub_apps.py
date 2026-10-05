@@ -323,6 +323,14 @@ async def test_unlock_sets_a_cookie_for_this_app_only(clients, apps_on, platform
     assert (await clients.get(f"/{path}/contract", headers=h)).json()["locked"] is True
 
 
+@pytest.fixture(autouse=True)
+def _forget_verified_passwords():
+    from treg.application.hub import apps as hub_apps
+    hub_apps._VERIFIED.clear()
+    yield
+    hub_apps._VERIFIED.clear()
+
+
 async def test_password_tries_are_limited(clients, apps_on, platform_on, monkeypatch):  # noqa: F811
     from treg.application.hub import apps as hub_apps
     monkeypatch.setattr(hub_apps, "TRIES_PER_CLIENT", 3)
@@ -330,6 +338,20 @@ async def test_password_tries_are_limited(clients, apps_on, platform_on, monkeyp
     codes = [(await clients.post(f"/{path}/unlock", json={"password": "wrong one!"})).status_code for _ in range(4)]
     assert codes == [401, 401, 401, 429]
     assert (await clients.post(f"/{path}/unlock", json={"password": "open sesame!"})).status_code == 429
+
+
+async def test_the_right_password_never_runs_out(clients, apps_on, platform_on, monkeypatch):  # noqa: F811
+    """A caller who knows the password is not limited like a guesser: a password verified lately
+    passes without spending a try, so the 11th call in five minutes still runs."""
+    from treg.application.hub import apps as hub_apps
+    monkeypatch.setattr(hub_apps, "TRIES_PER_CLIENT", 3)
+    path = (await _app(clients, monkeypatch, password="open sesame!"))[1]
+    codes = [(await clients.post(f"/{path}/unlock", json={"password": "open sesame!"})).status_code for _ in range(6)]
+    assert codes == [200] * 6
+    # a guesser still runs out, and the right password keeps working from memory
+    codes = [(await clients.post(f"/{path}/unlock", json={"password": "wrong one!"})).status_code for _ in range(3)]
+    assert codes[-1] == 429
+    assert (await clients.post(f"/{path}/unlock", json={"password": "open sesame!"})).status_code == 200
 
 
 async def test_a_locked_tool_leaves_search_and_says_so(clients, apps_on, platform_on, monkeypatch):  # noqa: F811

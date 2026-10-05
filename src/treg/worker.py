@@ -379,9 +379,14 @@ async def _vibe_trim(args) -> int:
     from .application import vibe as vibe_app
     from .infra.db import session_maker, verify_db
     await verify_db()
-    async with session_maker() as db:
-        n = await vibe_app.trim_idle(db)
-        await db.commit()
+    n = 0
+    while True:                          # a batch per transaction, so no run holds one long
+        async with session_maker() as db:
+            done = await vibe_app.trim_idle(db)
+            await db.commit()
+        n += done
+        if not done:
+            break
     print(f"{n} conversation(s) trimmed")
     return 0
 
