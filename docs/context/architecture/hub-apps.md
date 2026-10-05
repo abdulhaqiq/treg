@@ -49,7 +49,7 @@ deleted team's slug is not reserved ([hub](hub.md#the-makers-road-routershubpy-a
 
 Optional, 8 to 128 characters, stored only as `scrypt$n$r$p$salt$hash` (stdlib `hashlib.scrypt`, a
 fresh salt each time, constant-time compare, run off the event loop). Never returned by any route.
-`password_version` moves on every set or clear, which signs everyone out of the app.
+`lock_version` moves on every set or clear, which signs everyone out of the app.
 
 **The lock applies only while the app is on** (`apps.locked`). With the app on and a password set:
 - the page shows only the name and a password prompt until unlocked; `POST .../unlock` sets a

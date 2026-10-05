@@ -197,12 +197,12 @@ async def test_password_is_stored_only_as_a_hash(clients: AsyncClient, apps_on):
     assert "a long secret" not in r.text and "scrypt" not in r.text
     async with session_maker() as s:
         row = await s.get(HubApp, tool_id)
-        assert verify_password("a long secret", row.password_hash) and row.password_version == 1
+        assert verify_password("a long secret", row.password_hash) and row.lock_version == 1
     cleared = (await clients.put(f"/hub/tools/{tool_id}/app/password", json={"password": None})).json()
     assert cleared["password"] is False and cleared["locked"] is False
     async with session_maker() as s:
         row = await s.get(HubApp, tool_id)
-        assert row.password_hash is None and row.password_version == 2
+        assert row.password_hash is None and row.lock_version == 2
 
 
 async def test_team_deletion_takes_the_app(clients: AsyncClient, apps_on):

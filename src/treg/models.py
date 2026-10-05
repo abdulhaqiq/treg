@@ -1444,7 +1444,7 @@ class HubApp(SQLModel, table=True):
     tool. The maker turns it on and off; `enabled` false keeps the row and takes the page down.
 
     `password_hash` is optional. While the app is on and a password is set, it guards the app page
-    and the tool itself for every other team. `password_version` moves on each change, so an unlock
+    and the tool itself for every other team. `lock_version` moves on each change, so an unlock
     remembered under the old password stops working. `old_names` keeps the names it had before a
     rename (newest first), so a link to an old name redirects instead of breaking."""
 
@@ -1456,7 +1456,7 @@ class HubApp(SQLModel, table=True):
     old_names: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
     enabled: bool = Field(default=True)
     password_hash: str | None = Field(default=None)  # `scrypt$n$r$p$salt$hash`; None = no password
-    password_version: int = Field(default=0)
+    lock_version: int = Field(default=0)
     created_by: str = Field(default="")              # the maker's email
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

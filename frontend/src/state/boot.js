@@ -86,8 +86,14 @@ export default async function boot(){
       } }
     // A standalone page (a hub app, vibe-it) sent the visitor here to sign in: `next` names it, and
     // only those paths are followed, so the parameter cannot become an open redirect.
-    const standalone=p=>typeof p==='string' && /^\/(apps\/[a-z0-9-]+\/[a-z0-9-]+|vibe-it)\/?$/.test(p);
-    const nextPath=standalone(qs.get('next')) ? qs.get('next') : (standalone(stashed) ? stashed : null);
+    // The path is rebuilt from the matched parts, never passed through as given.
+    const standalone=p=>{
+      if(typeof p!=='string') return null;
+      if(/^\/vibe-it\/?$/.test(p)) return '/vibe-it';
+      const m=/^\/apps\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/.exec(p);
+      return m ? '/apps/'+encodeURIComponent(m[1])+'/'+encodeURIComponent(m[2]) : null;
+    };
+    const nextPath=standalone(qs.get('next')) || standalone(stashed);
     this._restoreAgent();
     const me = await meReq.catch(()=>null);
     if(nextPath && me){ location.replace(nextPath); return; }

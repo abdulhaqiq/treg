@@ -122,7 +122,7 @@ async def set_password(db: AsyncSession, *, org_id: int, tool_id: str, password:
     if app is None:
         return None
     app.password_hash = hash_password(validate_password(password)) if password is not None else None
-    app.password_version += 1
+    app.lock_version += 1
     app.updated_at = utcnow_naive()
     await db.flush()
     return app
@@ -189,7 +189,7 @@ def cookie_name(app: HubApp) -> str:
 
 def make_unlock(app: HubApp) -> str:
     """A signed, expiring proof that this browser typed the app's CURRENT password."""
-    raw = json.dumps({"t": app.tool_id, "v": app.password_version, "exp": int(time.time()) + UNLOCK_TTL_S},
+    raw = json.dumps({"t": app.tool_id, "v": app.lock_version, "exp": int(time.time()) + UNLOCK_TTL_S},
                      separators=(",", ":")).encode()
     return f"{_b64(raw)}.{_b64(hmac.new(_key(), raw, hashlib.sha256).digest())}"
 
@@ -203,7 +203,7 @@ def read_unlock(app: HubApp, token: str | None) -> bool:
         if not hmac.compare_digest(_unb64(sig), hmac.new(_key(), raw, hashlib.sha256).digest()):
             return False
         data = json.loads(raw)
-        return (data.get("t") == app.tool_id and data.get("v") == app.password_version
+        return (data.get("t") == app.tool_id and data.get("v") == app.lock_version
                 and int(data.get("exp", 0)) > time.time())
     except (ValueError, TypeError):
         return False
@@ -218,8 +218,11 @@ VERIFIED_MAX = 10_000
 
 
 def _verified_key(app: HubApp, password: str) -> tuple[str, int, str]:
-    digest = hmac.new(_key(), f"{app.tool_id}\0{password}".encode(), hashlib.sha256).hexdigest()
-    return (app.tool_id, int(app.password_version), digest)
+    """A memory key for a password, never the password: a light scrypt (about a millisecond) salted
+    with the server's secret and the tool, so even this process's memory holds nothing a fast hash
+    could reverse."""
+    digest = hashlib.scrypt(password.encode(), salt=_key() + app.tool_id.encode(), n=2**10, r=8, p=1, dklen=32).hex()
+    return (app.tool_id, int(app.lock_version), digest)
 
 
 async def try_password(app: HubApp, password: str | None, client: str) -> str:

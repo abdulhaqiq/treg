@@ -5,7 +5,7 @@ Revises: 0064
 Create Date: 2026-10-05
 
 One row per hub tool that has an app (`/apps/<team slug>/<name>`). The name is unique within the
-team. `password_hash` is optional; `password_version` moves on every change so an unlock remembered
+team. `password_hash` is optional; `lock_version` moves on every change so an unlock remembered
 under the old password stops working.
 """
 from collections.abc import Sequence
@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("old_names", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("password_hash", sa.String(), nullable=True),
-        sa.Column("password_version", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("lock_version", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_by", sa.String(), nullable=False, server_default=""),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
