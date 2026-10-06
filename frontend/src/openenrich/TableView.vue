@@ -222,9 +222,26 @@ const domainColumn = () => (t.value.columns.find((c) => ['domain', 'company_doma
 // --- columns --------------------------------------------------------------------------------------
 async function addColumns({ columns, rows }) {
   adding.value = false
-  t.value.columns.push(...columns)
+  const old = editGroup.value
+  editGroup.value = null
+  if (old) {
+    // new settings, new answers: the group's old columns, values and runs go; the new ones take
+    // the first old column's place
+    const at = t.value.columns.findIndex((c) => c.job?.group === old)
+    const ids = new Set(t.value.columns.filter((c) => c.job?.group === old).map((c) => c.id))
+    for (const r of t.value.rows) { for (const id of ids) delete r.cells[id]; setRun(r, old, null) }
+    t.value.columns = t.value.columns.filter((c) => !ids.has(c.id))
+    t.value.columns.splice(at, 0, ...columns)
+  } else t.value.columns.push(...columns)
   await flush()
-  await runGroup(columns[0].job.group, rows)
+  if (rows) await runGroup(columns[0].job.group, rows)
+}
+
+const editGroup = ref(null)
+function editColumn(col) {
+  editGroup.value = col.job.group
+  adding.value = true
+  detail.value = null
 }
 
 async function removeColumn(col) {
@@ -314,7 +331,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
       <span class="spacer" />
       <button v-if="retry && !run" @click="runGroup(retry.group, 'all')">Retry {{ retry.n }} unfinished rows</button>
       <button @click="exportCsv">Export CSV</button>
-      <button class="primary" :disabled="!!run" @click="adding = true; detail = null">+ Add column</button>
+      <button class="primary" :disabled="!!run" @click="editGroup = null; adding = true; detail = null">+ Add column</button>
     </div>
     <p v-if="banner" class="oe-banner">{{ banner }}</p>
 
@@ -333,6 +350,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                     <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
                     <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
                     <button :disabled="!!run" @click="menu = null; runGroup(c.job.group, 'all', true)">Re-run all rows</button>
+                    <button :disabled="!!run" @click="menu = null; editColumn(c)">Edit settings</button>
                     <hr />
                   </template>
                   <label class="menu-type">Type
@@ -345,7 +363,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                   <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
                 </div>
               </th>
-              <th class="add-col" title="Add a column" @click.stop="!run && (adding = true, detail = null)">+ Add column</th>
+              <th class="add-col" title="Add a column" @click.stop="!run && (editGroup = null, adding = true, detail = null)">+ Add column</th>
             </tr>
           </thead>
           <tbody>
@@ -366,7 +384,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
         </table>
       </div>
 
-      <ColumnPanel v-if="adding" :table="t" @close="adding = false" @add="addColumns" />
+      <ColumnPanel v-if="adding" :key="editGroup || 'new'" :table="t" :edit="editGroup" @close="adding = false; editGroup = null" @add="addColumns" />
 
       <aside v-else-if="detail" class="oe-side">
         <header class="side-head">

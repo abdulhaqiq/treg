@@ -3,7 +3,8 @@ import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { iconFor } from './icons.js'
 import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd, typeOfField, JEV_TOOL, COLUMN_TYPES } from './jobs.js'
 
-const props = defineProps({ table: Object })
+// `edit`: a job column's group to change; the panel opens on its saved settings
+const props = defineProps({ table: Object, edit: String })
 const emit = defineEmits(['close', 'add'])
 const api = inject('oeApi')
 
@@ -35,6 +36,37 @@ onMounted(async () => {
     const own = ENRICH_SHELVES.map(([, group], i) => [group, shelves[i]])
     routed.value = enrichmentJobs([...own, ['Signals', signalShelf(shelves.slice(ENRICH_SHELVES.length))]], byId)
   } catch {}
+})
+
+// the columns of the group being edited, and the others (which a new column id must not clash with)
+const editing = computed(() => (props.edit ? props.table.columns.filter((c) => c.job?.group === props.edit) : []))
+const others = computed(() => props.table.columns.filter((c) => !props.edit || c.job?.group !== props.edit))
+
+onMounted(async () => {
+  if (!editing.value.length) return
+  const saved = editing.value[0].job
+  const known = COLUMN_JOBS.find((j) => j.tool === saved.tool && !!j.linked === !!saved.linked && !!j.judge === !!saved.judge)
+  await pick(known || { id: 'edit', tool: saved.tool, label: editing.value[0].label, linked: saved.linked })
+  if (saved.judge) {
+    judgeType.value = saved.judge.type
+    judgeInstr.value = saved.judge.instructions
+    judgeLabels.value = (saved.judge.labels || []).join(', ')
+    judgeLevels.value = saved.judge.levels || 5
+    judgeEvidence.value = [...saved.judge.evidence]
+    judgeName.value = editing.value[0].label
+    return
+  }
+  for (const k of Object.keys(mapping)) { delete mapping[k]; delete custom[k] }
+  for (const k of identity.value.flat()) mapping[k] = ''
+  for (const [k, v] of Object.entries(saved.inputs || {})) {
+    if (saved.linked && k === 'title') { peopleTitle.value = v; continue }
+    mapping[k] = v
+    if (!/^\{[^}]+\}$/.test(String(v))) custom[k] = true
+  }
+  if (saved.linked) { peopleLimit.value = saved.limit || 3; return }
+  const fields = editing.value.map((c) => c.job.field).filter(Boolean)
+  outputs.value = [...new Set([...outputs.value, ...fields])]
+  keep.value = fields
 })
 
 const tool = computed(() => (job.value ? tools[job.value.tool] : null))
@@ -139,7 +171,7 @@ const ready = computed(() => props.table.rows.filter((r) => {
   return Object.keys(fillInputs(fromRow.value, r)).length && satisfies(needs.value, filled)
 }).length)
 const price = computed(() => priceOf(tool.value, Object.keys(inputs.value)))
-const needsTest = computed(() => !isJudge.value && !job.value?.linked && !contract.value && !test.value)
+const needsTest = computed(() => !isJudge.value && !job.value?.linked && !contract.value && !test.value && !props.edit)
 const canRun = computed(() => {
   if (isJudge.value) {
     return ready.value && judgeInstr.value.trim() && judgeEvidence.value.length
@@ -180,7 +212,7 @@ function add(rows) {
     const judge = { type: judgeType.value, instructions: judgeInstr.value.trim(), evidence: [...judgeEvidence.value],
       ...(judgeType.value === 'choice' ? { labels: labelList.value } : {}),
       ...(judgeType.value === 'score' ? { levels: Number(judgeLevels.value) || 5 } : {}) }
-    const id = uniqueColumnId(props.table.columns, judgeName.value || 'ai_judgment')
+    const id = uniqueColumnId(others.value, judgeName.value || 'ai_judgment')
     return emit('add', { rows, columns: [{ id, label: judgeName.value || 'ai_judgment',
       job: { group, tool: job.value.tool, method: 'POST', field: 'value', judge } }] })
   }
@@ -189,13 +221,13 @@ function add(rows) {
   if (job.value.linked) {
     // people searches can bill per person returned: the cap scales with the count asked for
     const limit = Number(peopleLimit.value) || 3
-    const id = uniqueColumnId(props.table.columns, 'people')
+    const id = editing.value[0]?.id || uniqueColumnId(others.value, 'people')
     return emit('add', { rows, columns: [{ id, label: 'People', job: { ...base, maxCost: ROUTE_CAP_USD * limit, linked: true, limit } }] })
   }
   const columns = []
   for (const field of keep.value) {
     const type = typeOfField(field, props.table.kind)
-    columns.push({ id: uniqueColumnId([...props.table.columns, ...columns], field), label: field, ...(type ? { type } : {}), job: { ...base, field } })
+    columns.push({ id: uniqueColumnId([...others.value, ...columns], field), label: field, ...(type ? { type } : {}), job: { ...base, field } })
   }
   emit('add', { rows, columns })
 }
@@ -205,7 +237,7 @@ function add(rows) {
   <aside class="oe-side">
     <template v-if="!job">
       <header class="side-head">
-        <strong>Add enrichment</strong>
+        <strong>{{ edit ? 'Edit column' : 'Add enrichment' }}</strong>
         <button class="icon" title="Close" @click="emit('close')">✕</button>
       </header>
       <form class="side-search" @submit.prevent>
@@ -302,7 +334,7 @@ function add(rows) {
         <p v-if="needs.length && !job.linked" class="muted small">Needs {{ needs.map((a) => a.join(' + ').replace(/_/g, ' ')).join(', or ') }}.</p>
 
         <template v-if="!job.linked">
-          <h4>Columns to add</h4>
+          <h4>{{ edit ? 'Columns' : 'Columns to add' }}</h4>
           <p v-if="needsTest" class="muted small">This tool's answer varies, so test it on one row to see the real columns.</p>
           <p v-else-if="test" class="muted small">From row {{ test.row }} ({{ usd(test.cost || 0) }}); running it again later is free.</p>
           <div v-if="!needsTest" class="chips">
@@ -327,6 +359,7 @@ function add(rows) {
           {{ testing ? 'Testing…' : 'Test on 1 row' }}</button>
         <button v-else class="primary wide" :disabled="!canRun" @click="add(10)">Save and run {{ Math.min(10, ready) }} rows</button>
         <button class="ghost wide" :disabled="!canRun" @click="add('all')">Save and run all {{ ready }} rows</button>
+        <button v-if="edit" class="ghost wide" :disabled="!canRun" @click="add(0)">Save without running</button>
       </footer>
     </template>
   </aside>
