@@ -5,7 +5,8 @@
 // field of the routed search: `text` (one value), `tags` (several, sent as a list), `choice` (from
 // `options`, several when `multi`), `range` (`min`/`max` fields). `suggested` ones show as chips;
 // `strict` ones are contract filters a provider may not express, so a search using one asks treg to
-// skip providers that would ignore it (X-Treg-Route-Strict-Filters).
+// skip providers that would ignore it (X-Treg-Route-Strict-Filters). `split`: the search takes one
+// value, so each value is its own search (lookalikes of several companies).
 export const SOURCES = [
   {
     id: 'companies', label: 'Find companies', kind: 'companies', tool: 'treg.companies.search',
@@ -14,6 +15,7 @@ export const SOURCES = [
       { name: 'industry', label: 'Industry', icon: 'building', group: 'Company', type: 'text', placeholder: 'Software', suggested: true },
       { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'text', placeholder: 'US', note: 'ISO code', suggested: true, strict: true },
       { name: 'technology', label: 'Uses technology', icon: 'code', group: 'Company', type: 'text', placeholder: 'Stripe', suggested: true },
+      { name: 'employees', label: 'Company size', icon: 'users', group: 'Company', type: 'range', note: 'employees', suggested: true, strict: true },
       { name: 'name', label: 'Company name', icon: 'tag', group: 'Company identifiers', type: 'text', placeholder: 'Acme' },
       { name: 'domain', label: 'Domain', icon: 'link', group: 'Company identifiers', type: 'text', placeholder: 'acme.com' },
       // a description alone reaches one provider, with thin rows: it is offered, not suggested
@@ -26,7 +28,11 @@ export const SOURCES = [
     filters: [
       { name: 'title', label: 'Job title', icon: 'briefcase', group: 'Person', type: 'text', placeholder: 'Head of Growth', suggested: true },
       { name: 'company_domain', label: 'Company domain', icon: 'link', group: 'Company', type: 'text', placeholder: 'ramp.com', suggested: true },
+      { name: 'seniority', label: 'Seniority', icon: 'trend', group: 'Person', type: 'choice', multi: true, suggested: true, strict: true,
+        options: [['owner', 'Owner'], ['founder', 'Founder'], ['c_suite', 'C-suite'], ['partner', 'Partner'], ['vp', 'VP'], ['head', 'Head'],
+          ['director', 'Director'], ['manager', 'Manager'], ['senior', 'Senior'], ['entry', 'Entry'], ['intern', 'Intern']].map(([value, label]) => ({ value, label })) },
       { name: 'location', label: 'Location', icon: 'pin', group: 'Location', type: 'text', placeholder: 'London, United Kingdom', suggested: true, strict: true },
+      { name: 'employees', label: 'Company size', icon: 'building', group: 'Company', type: 'range', note: 'employees at their current company', strict: true },
       { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'text', placeholder: 'GB', note: 'ISO code', strict: true },
       { name: 'keywords', label: 'Skills and topics', icon: 'tag', group: 'Person', type: 'tags', placeholder: 'payments', strict: true },
       { name: 'full_name', label: 'Full name', icon: 'user', group: 'Person', type: 'text', placeholder: 'Ada Lovelace' },
@@ -36,13 +42,12 @@ export const SOURCES = [
   {
     id: 'similar', label: 'Lookalikes of…', kind: 'companies', tool: 'treg.companies.similar',
     hint: 'Companies like ones you already know', noLimit: true,
-    filters: [{ name: 'domain', label: 'Company domains', icon: 'link', group: 'Company', type: 'tags', placeholder: 'ramp.com', multi: true, open: true }],
+    filters: [{ name: 'domain', label: 'Company domains', icon: 'link', group: 'Company', type: 'tags', placeholder: 'ramp.com', split: true, open: true }],
   },
 ]
 
 // The search request a set of filter values makes: empty ones left out, `tags` and multi `choice`
-// as lists, `range` as `<name>_min` / `<name>_max`. A `multi` filter on a field the search takes one
-// of (lookalikes) is split into one search per value by the caller.
+// as lists, `range` as `<name>_min` / `<name>_max`.
 export function filterBody(filters, values) {
   const body = {}
   for (const f of filters) {

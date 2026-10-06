@@ -20,7 +20,7 @@ const picker = ref(false)
 const pickQuery = ref('')
 const limit = ref(25)
 const tool = ref(null)
-const result = ref(null)           // {rows, ids, body, cost, servedBy} of the last search
+const result = ref(null)           // {rows, ids, body, cost, servedBy, page, pageCost, done} of the last search
 const stale = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -73,9 +73,8 @@ async function search() {
   error.value = ''
   try {
     const b = { ...body.value, ...(props.source.noLimit ? {} : { limit: Number(limit.value) || 25 }) }
-    // a multi filter on a field the search takes one of (lookalikes): one search per value, merged,
-    // the seeds themselves left out
-    const multi = filters.find((f) => f.multi && b[f.name])
+    // a `split` filter (lookalikes): one search per value, merged, the seeds themselves left out
+    const multi = filters.find((f) => f.split && b[f.name])
     const seeds = multi ? b[multi.name].slice(0, MAX_SEEDS) : []
     const bodies = multi ? seeds.map((v) => ({ ...b, [multi.name]: v })) : [b]
     const strict = usesStrict(filters, b)
@@ -87,8 +86,9 @@ async function search() {
       const own = new Set(seeds.map((v) => v.toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split('/')[0]))
       const rows = hits.flatMap((a) => a.rows).filter((r) => !own.has(String(r.domain || '').toLowerCase()))
       const { records, ids } = listRecords(props.source.kind, rows, [...new Set(hits.flatMap((a) => a.columns))], b.limit)
-      result.value = { rows: records, ids, body: b, cost: runs.reduce((n, r) => n + (r.cost_micro || 0), 0),
-        servedBy: [...new Set(runs.map((r) => r.served_by).filter(Boolean))].join(', ') }
+      const cost = runs.reduce((n, r) => n + (r.cost_micro || 0), 0)
+      result.value = { rows: records, ids, body: b, cost, servedBy: [...new Set(runs.map((r) => r.served_by).filter(Boolean))].join(', '),
+        page: 1, pageCost: cost, done: multi || props.source.noLimit || records.length < (b.limit || 0) }
       stale.value = false
     } else {
       result.value = null
@@ -99,6 +99,42 @@ async function search() {
     error.value = e.message
   } finally {
     busy.value = false
+  }
+}
+
+// The next page comes from the provider that served the first, so the list continues instead of
+// starting over somewhere else: every other provider is excluded, and strict skips that one too
+// when it cannot page, which answers no_route_candidate for nothing and ends the list.
+const keyOf = (r) => String(r.domain || r.linkedin_url || r.full_name || r.name || '').toLowerCase()
+const loadingMore = ref(false)
+async function loadMore() {
+  const res = result.value
+  loadingMore.value = true
+  error.value = ''
+  try {
+    const page = res.page + 1
+    const mine = res.servedBy.split('.')[0]
+    const others = [...new Set((tool.value?.endpoint?.routed_children || []).map((id) => id.split('.')[0]))].filter((p) => p !== mine)
+    const r = await api.run(props.source.tool, { method: 'POST', body: { ...res.body, page }, maxCost: ROUTE_CAP_USD,
+      exclude: [...(props.source.exclude || []), ...others], fresh: true, strict: true })
+    const a = readAnswer(r)
+    res.cost += r.cost_micro || 0
+    if (a.state !== 'hit') {
+      res.done = true
+      if (r.status === 422) error.value = `${mine} cannot fetch a next page. Search again with a larger number of results instead.`
+      else if (a.state === 'error') error.value = a.error
+      return
+    }
+    const { records, ids } = listRecords(props.source.kind, a.rows, a.columns)
+    const seen = new Set(res.rows.map(keyOf))
+    const fresh = records.filter((x) => !seen.has(keyOf(x)))
+    res.rows.push(...fresh)
+    res.ids = [...new Set([...res.ids, ...ids])]
+    res.page = page
+    res.pageCost = r.cost_micro || 0
+    if (!fresh.length || records.length < (res.body.limit || 0)) res.done = true
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -190,7 +226,7 @@ function create() {
             {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
           </button>
           <p v-if="price" class="muted small center">
-            One search<template v-if="filters.some((f) => f.multi)"> per domain (up to {{ MAX_SEEDS }})</template> costs {{ price }}. No results, no charge.
+            One search<template v-if="filters.some((f) => f.split)"> per domain (up to {{ MAX_SEEDS }})</template> costs {{ price }}. No results, no charge.
           </p>
         </div>
       </form>
@@ -221,6 +257,12 @@ function create() {
             <tr v-for="i in 8" :key="i" class="ghost-row"><td class="num">{{ i }}</td><td v-for="c in columns" :key="c"><span /></td></tr>
           </tbody>
         </table>
+      </div>
+      <div v-if="result && !result.done && !stale && tool?.endpoint?.routed_children" class="more">
+        <button :disabled="loadingMore" @click="loadMore">
+          {{ loadingMore ? 'Loading…' : `Load ${result.body.limit} more` }}
+          <span v-if="!loadingMore" class="muted"> · about {{ usd(result.pageCost) }}, from {{ result.servedBy.split('.')[0] }}</span>
+        </button>
       </div>
     </section>
   </div>
