@@ -189,8 +189,9 @@ export const COLUMN_JOBS = [
   { id: 'email', group: 'Contact info', label: 'Find work email', tool: 'treg.people.email.find', keep: ['email', 'verified'] },
   { id: 'verify', group: 'Contact info', label: 'Verify email', tool: 'treg.people.email.verify', keep: ['valid', 'status'] },
   { id: 'phone', group: 'Contact info', label: 'Find mobile phone', tool: 'treg.people.phone.find', keep: ['phone', 'line_type'] },
+  // description is offered, not ticked: the cheapest provider has none, so it would open empty
   { id: 'company', group: 'Enrich', label: 'Enrich company', tool: 'treg.companies.enrich',
-    keep: ['description', 'industry', 'employees', 'founded', 'location'] },
+    keep: ['industry', 'employees', 'founded', 'location', 'linkedin_url'] },
   { id: 'person', group: 'Enrich', label: 'Enrich person', tool: 'treg.people.enrich', keep: ['title', 'company', 'location', 'linkedin_url'] },
 ]
 

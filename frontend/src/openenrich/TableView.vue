@@ -15,6 +15,14 @@ const detail = ref(null)       // {row, column} shown in the side panel
 const runs = reactive({})      // column group -> {label, queue, fresh, done, total, spent, stopping}: one per running column
 const banner = ref('')
 const menu = ref(null)         // the column whose header menu is open
+// The menu sits on the window, below its header: inside the grid's scroll box a short table would cut it off
+const menuAt = ref({})
+function openMenu(col, e) {
+  if (menu.value === col.id) { menu.value = null; return }
+  const r = e.currentTarget.getBoundingClientRect()
+  menuAt.value = { top: `${Math.round(r.bottom + 4)}px`, left: `${Math.round(Math.min(r.left, window.innerWidth - 240))}px` }
+  menu.value = col.id
+}
 
 const CONCURRENCY = 10   // calls in flight across the whole table: a waterfall row takes 5-15 s, so rows run side by side
 const DONE = new Set(['hit', 'miss'])
@@ -363,16 +371,16 @@ onUnmounted(() => window.removeEventListener('focus', reload))
     <p v-if="banner" class="oe-banner">{{ banner }}</p>
 
     <div class="oe-layout">
-      <div class="oe-grid-wrap" @click="menu = null">
+      <div class="oe-grid-wrap" @click="menu = null" @scroll="menu = null">
         <table class="oe-grid ui-table">
           <thead>
             <tr>
               <th class="num">#</th>
-              <th v-for="c in t.columns" :key="c.id" :class="{ jobcol: c.job, open: menu === c.id }" @click.stop="menu = menu === c.id ? null : c.id">
+              <th v-for="c in t.columns" :key="c.id" :class="{ jobcol: c.job, open: menu === c.id }" @click.stop="openMenu(c, $event)">
                 <span class="th-label">{{ c.label }}</span>
                 <span v-if="c.type && !c.job" class="th-type">{{ c.type.replace(/_/g, ' ') }}</span>
                 <span class="caret">▾</span>
-                <div v-if="menu === c.id" class="menu" @click.stop>
+                <div v-if="menu === c.id" class="menu" :style="menuAt" @click.stop>
                   <template v-if="c.job">
                     <button :disabled="!remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
                     <button :disabled="!remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
