@@ -71,13 +71,15 @@ const setRun = (row, group, value) => {
   else delete row.runs[group]
 }
 
-async function runGroup(group, howMany, again = false) {
+// `only`: re-run just these rows (a cell's ↻), asking the provider again instead of replaying
+async function runGroup(group, howMany, again = false, only = null) {
   if (run.value) return
   const cols = t.value.columns.filter((c) => c.job?.group === group)
   // re-running replays each answered row from treg for nothing (same Idempotency-Key)
   if (again) for (const r of t.value.rows) { setRun(r, group, null); for (const c of cols) r.cells[c.id] = null }
   const job = cols[0].job
-  const todo = t.value.rows.filter((r) => !DONE.has(r.runs?.[group]?.state))
+  if (only) for (const r of only) { setRun(r, group, null); for (const c of cols) r.cells[c.id] = null }
+  const todo = only || t.value.rows.filter((r) => !DONE.has(r.runs?.[group]?.state))
   const queue = howMany === 'all' ? todo : todo.slice(0, howMany)
   if (!queue.length) return
   banner.value = ''
@@ -93,7 +95,7 @@ async function runGroup(group, howMany, again = false) {
     while (queue.length && !run.value.stopping) {
       const row = queue.shift()
       inFlight++
-      const out = await runRow(row, cols, job, child, () => inFlight > 1, shared)
+      const out = await runRow(row, cols, job, child, () => inFlight > 1, shared, !!only)
       inFlight--
       if (out === 'wait') {
         queue.unshift(row)
@@ -111,7 +113,7 @@ async function runGroup(group, howMany, again = false) {
   emit('balance')
 }
 
-async function runRow(row, cols, job, child, othersRunning, shared) {
+async function runRow(row, cols, job, child, othersRunning, shared, fresh = false) {
   const group = job.group
   let inputs, req
   if (job.judge) {
@@ -132,6 +134,7 @@ async function runRow(row, cols, job, child, othersRunning, shared) {
       : { method: job.method || 'POST', body: job.linked ? { ...inputs, limit: job.limit } : inputs, maxCost: job.maxCost }
   }
   setRun(row, group, { state: 'running' })
+  if (fresh) req.fresh = true
   const key = JSON.stringify(req)
   if (!shared.has(key)) shared.set(key, callWithRetry(job.tool, req))
   const r = await shared.get(key)
@@ -355,6 +358,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                 </a>
                 <span v-else-if="pill(r, c)" :class="['pill', runOf(r, c).state]">{{ pill(r, c) }}</span>
                 <template v-else>{{ show(r.cells[c.id]) }}<span v-if="runOf(r, c)?.confidence != null" class="muted small"> · {{ Math.round(runOf(r, c).confidence * 100) }}%</span></template>
+                <button v-if="c.job && !run" class="rerun" title="Run this row again" @click.stop="runGroup(c.job.group, 1, false, [r])">↻</button>
               </td>
               <td class="add-col" />
             </tr>

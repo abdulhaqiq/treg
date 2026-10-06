@@ -121,6 +121,10 @@
 .oe .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 6px; }
 .oe .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 .oe .menu .danger { color: var(--warn); }
+.oe .oe-grid td.cell { position: relative; }
+.oe .oe-grid td .rerun { display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: 0 6px; line-height: 20px; font-size: 13px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg, #fff); color: var(--muted); cursor: pointer; }
+.oe .oe-grid td:hover .rerun { display: inline-block; }
+.oe .oe-grid td .rerun:hover { color: var(--accent); border-color: var(--accent); }
 .oe .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--gray-soft); color: var(--muted); }
 .oe .pill.running, .oe .pill.queued { background: var(--accent-soft); color: var(--accent); }
 .oe .pill.error { background: var(--warn-soft); color: var(--warn); }
