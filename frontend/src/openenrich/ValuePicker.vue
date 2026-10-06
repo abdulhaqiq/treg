@@ -3,7 +3,7 @@
 // or a treg lookup); `tags`: free words, with the options as suggestions.
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { COUNTRIES } from './countries.js'
-import { LOOKUPS } from './jobs.js'
+import { LOOKUPS, lookupRetries, typoScore } from './jobs.js'
 
 const props = defineProps({ filter: Object, modelValue: Array, inputId: String })
 const emit = defineEmits(['update:modelValue'])
@@ -16,11 +16,14 @@ const lookup = props.filter.lookup ? LOOKUPS[props.filter.lookup] : null
 // keyword, not an industry), as items that write their own field
 const fallback = props.filter.fallback ? { ...props.filter.fallback, ...LOOKUPS[props.filter.fallback.lookup] } : null
 const extra = ref([])
+let asked = 0                  // the latest text asked about: an older answer arriving late is dropped
 
 const text = ref('')
 const open = ref(false)
 const remote = ref([])
-const loading = ref(false)
+const listLoading = ref(false)    // a `once` list on its way
+const searching = ref(false)      // the latest text's lookups on their way
+const loading = computed(() => listLoading.value || searching.value)
 const all = ref(null)          // a `once` lookup's whole list
 const items = computed(() => props.modelValue || [])
 // an item is known by its label and field: several industries share the same NAICS codes
@@ -31,34 +34,56 @@ let timer = null
 async function fetchRemote() {
   if (!lookup) return
   if (lookup.once) {
-    if (!all.value) {
-      loading.value = true
-      try { all.value = lookup.read(await api.lookup(lookup.tool)) } catch { all.value = [] } finally { loading.value = false }
+    if (!all.value && !listLoading.value) {
+      listLoading.value = true
+      try { all.value = lookup.read(await api.lookup(lookup.tool)) } catch { all.value = [] } finally { listLoading.value = false }
     }
     return
   }
   const q = text.value.trim()
   if (q.length < 2) { remote.value = []; return }
-  loading.value = true
-  try { remote.value = lookup.read(await api.lookup(lookup.tool, lookup.query(q))) } catch { remote.value = [] } finally { loading.value = false }
+  const mine = asked
+  const got = await forgiving(lookup, q)
+  if (mine === asked) remote.value = got
+}
+// ask the lookup for what was typed; nothing back (a typo), ask again word by word and keep what
+// is close to the typed text
+async function forgiving(l, q) {
+  const ask = async (t) => { try { return l.read(await api.lookup(l.tool, l.query(t))) } catch { return [] } }
+  const first = await ask(q)
+  if (first.length) return first
+  const found = new Map()
+  for (const list of await Promise.all(lookupRetries(q).map(ask))) for (const o of list) found.set(o.label, o)
+  return [...found.values()].map((o) => [typoScore(q, o.label), o]).filter(([d]) => d != null).sort((a, b) => a[0] - b[0]).map(([, o]) => o)
 }
 async function fetchFallback() {
-  extra.value = []
   const q = text.value.trim()
-  if (!fallback || q.length < 3 || matches.value.length) return
-  try {
-    extra.value = fallback.read(await api.lookup(fallback.tool, fallback.query(q)))
-      .map((o) => ({ ...o, field: fallback.field, label: o.label, note: fallback.note }))
-  } catch { extra.value = [] }
+  if (!fallback || q.length < 3 || matches.value.length) return []
+  return (await forgiving(fallback, q)).map((o) => ({ ...o, field: fallback.field, note: fallback.note }))
 }
-watch(text, () => { clearTimeout(timer); timer = setTimeout(async () => { await fetchRemote(); await fetchFallback() }, 220) })
+watch(text, () => {
+  clearTimeout(timer)
+  extra.value = []
+  const mine = ++asked
+  searching.value = text.value.trim().length >= 2 && !!(lookup || fallback)
+  timer = setTimeout(async () => {
+    try {
+      await fetchRemote()
+      const more = await fetchFallback()
+      if (mine === asked) extra.value = more
+    } finally { if (mine === asked) searching.value = false }
+  }, 220)
+})
 onMounted(() => { if (lookup?.once) fetchRemote() })
 
 // every typed word, in any order
 const matches = computed(() => {
   const words = text.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
   const pool = local || all.value || remote.value
-  const hits = (local || all.value) ? pool.filter((o) => words.every((w) => o.label.toLowerCase().includes(w))) : pool
+  // a local list: every word, in any order, a typo forgiven, closest first
+  const hits = (local || all.value)
+    ? pool.map((o) => [words.length ? typoScore(text.value, o.label) : 0, o]).filter(([d]) => d != null).sort((a, b) => a[0] - b[0]).map(([, o]) => o)
+    : pool
   const seen = new Set()
   return hits.filter((o) => !chosen.value.has(key(o)) && !seen.has(key(o)) && seen.add(key(o)))
 })

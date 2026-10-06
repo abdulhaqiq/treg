@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { fromStored, idempotencyKey } from '../src/openenrich/client.js'
-import { SOURCES, filterBody, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
+import { SOURCES, filterBody, lookupRetries, typoScore, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -251,4 +251,14 @@ test('filters make the search request: conditions pick the field, one value goes
 test('a stored queued or running run reads as not run yet', () => {
   const t = fromStored({ name: 't', items: [{ id: 'r1', cells: {}, runs: { a: { state: 'running' }, b: { state: 'hit' }, c: { state: 'queued' } } }] })
   assert.deepEqual(t.rows[0].runs, { b: { state: 'hit' } })
+})
+
+test('typing to find a value forgives a typo, never a different word', () => {
+  assert.equal(typoScore('artificial intelligence', 'Generative artificial intelligence'), 0)
+  assert.ok(typoScore('artifacial intelligence', 'artificial intelligence') > 0)
+  assert.equal(typoScore('softwre', 'Business Services › Custom Software & IT Services') > 0, true)
+  assert.equal(typoScore('fin', 'Financial services'), 0)
+  assert.equal(typoScore('hubspto', 'hubspot'), 1)
+  assert.equal(typoScore('banking', 'Research & Development'), null)
+  assert.deepEqual(lookupRetries('artifacial intelligence'), ['artifacial', 'intelligence', 'arti', 'inte'])
 })

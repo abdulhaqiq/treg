@@ -46,6 +46,43 @@ export const LOOKUPS = {
     read: (a) => (Array.isArray(a) ? a : []).map((x) => ({ value: x, label: x })) },
 }
 
+// ---- typing to find a value: forgiving of typos ------------------------------------------------
+// edits between two words, a swap of two neighbouring letters counting as one (hubspto → hubspot)
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+    }
+  }
+  return d[a.length][b.length]
+}
+const words = (t) => String(t).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+// How far a label is from what was typed: every typed word must be in the label, start one of its
+// words, or be a word away by a typo (one edit per four letters); lower is closer, null is no match.
+export function typoScore(typed, label) {
+  const want = words(typed)
+  if (!want.length) return 0
+  const have = words(label)
+  const text = String(label).toLowerCase()
+  let score = 0
+  for (const w of want) {
+    if (text.includes(w)) continue
+    const best = Math.min(...have.map((h) => editDistance(w, h.slice(0, Math.max(w.length, h.length)))), ...have.map((h) => editDistance(w, h.slice(0, w.length)) + 0.5))
+    if (best > Math.max(1, Math.floor(w.length / 4))) return null
+    score += best
+  }
+  return score
+}
+// What to ask a lookup when the text as typed finds nothing: each longer word alone, then their
+// first four letters (a typo is rarely in the first letters).
+export const lookupRetries = (typed) => {
+  const ws = words(typed).filter((w) => w.length >= 4)
+  return [...new Set([...ws, ...ws.map((w) => w.slice(0, 4))])]
+}
+
 const ANY = (key, single) => ({ id: 'any', label: 'is any of', key, single })
 const NONE = (key) => ({ id: 'none', label: 'is none of', key })
 
