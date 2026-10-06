@@ -82,8 +82,10 @@ the provider lineup and logos appear before sign-in. The lineup is a catalog pre
 cannot call. A changed input, mode, Jev choice, or provider selection refreshes the quote after
 a short pause. The lineup is one line in the query card: up to eight selected provider logos,
 then "+N of M" for the rest (or "of M" when some are off; nothing more when all fit). Edit opens a roster of provider chips ordered by quoted, then catalog, price; toggling a
-chip never reorders it. Hovering a chip shows its price. While some providers are off, an "All providers" switch
-closes the chip row; turning it on selects every provider, then the switch fades away. Starting a run closes the roster. Battle still calls providers in parallel.
+chip never reorders it. Selected chips carry a teal border and check; chips that are off keep
+their logo in color. While the roster is open the logo summary gives way to a live "N of M
+selected" count, and, while some providers are off, an "All providers" switch sits beside Done;
+turning it on selects every provider, then the switch fades away. Starting a run closes the roster. Battle still calls providers in parallel.
 The signup dialog uses Enrich Arena's layout, OAuth availability from `/meta`, email-code
 step, local development code notice, and legal links. After sign-in, Web Arena opens the same
 shared setup dialog as Enrich Arena: a new user names a team, then chooses an agent and gets
@@ -93,7 +95,7 @@ user still belongs to that team. Creating a team saves that selection too.
 Opening a saved run restores its selected fighters from the saved attempts and scrolls to its
 results. Failed, empty, and downvoted attempts use the fallen fighter pose; other available
 providers stay excluded. The current quote appears on the Run button, inside the query field,
-without a separate price step.
+without a separate price step; its tooltip notes that the final charge may vary.
 The public leaderboard stays visible before and after a run and joins content-free live totals
 by provider: hit rate appears after 20 decided direct
 calls and median provider time after 20 successful uncached direct calls. The task-specific
@@ -109,9 +111,16 @@ back. The stage shows one lane per attempt in quote order, and lanes never reord
 first the loading state and then the result. A Battle lays its cards out in two columns (one
 when the results area is narrower than about 720px); a Waterfall shows full-width lanes as a
 relay: only providers that tried, or the one about to start, get a card, and the rest wait in one
-"Next up" line that disappears once a provider returns results. Each card shows the plain
-provider logo: grey while waiting or skipped, a soft teal pulse while running or while Jev
-checks a hit. Status text shimmers ("Starting…", "Waiting for a slot" while four Battle legs run,
+"Next up" line that disappears once a provider returns results. Each card shows a provider
+bot: a canvas-drawn robot head in treg ink with smooth light, the provider logo laid over it as
+a vector image so it stays sharp. The bot hops while running (every third hop spins, and the logo
+hides while the back faces the viewer), hops more gently while Jev checks a hit, stands while
+waiting for a slot, dozes when it was never called, gives one happy hop on a result with a teal
+glow beneath it, hops now and then as a badge winner, and slumps with a grey logo on a failure or
+thumbs down. One shared animation loop draws every bot, pauses bots off screen, and draws a still
+pose under reduced motion. A running card has a faint teal border and one soft light that glides
+along its bottom edge; the strip's progress bar uses the same light. A queued card visible during a
+run (the next Waterfall provider) stands awake rather than dozing. Status text shimmers ("Starting…", "Waiting for a slot" while four Battle legs run,
 a task verb such as "Searching the news…", or "Checking quality…"), and a timer counts from the
 first poll that saw the provider running; the final time is the saved provider time. Every hit
 always shows its result count with intent match and help, badges, time and cost, its first
@@ -119,12 +128,15 @@ links (three in a Battle card, four in a Waterfall lane, two on narrow screens) 
 dots with the rank kept for screen readers, a bounded Fetch text preview, View all, View
 provider response, and thumbs at the bottom right. Sitemap states its count once: "N valid site
 URLs", or "N site URLs · M valid" when they differ. Failed cards stay one line with a plain reason
-and their thumbs. Badge winners of a completed Battle show the pixel fighter's victory pose
-instead of the logo. After a run, providers that were never called fold into one short line that
+and their thumbs. After a run, providers that were never called fold into one short line that
 says why in plain words: an earlier provider returned results, the $10 run limit, an unknown
-fee, or a stopped run. Above the cards, one strip shows progress, elapsed time, and Stop and
-stays pinned while the run is live; afterwards it shows the totals and the view switch, and names
-the run's query only when the search box no longer holds it.
+fee, or a stopped run. Above the cards, one strip shows a small working orb, progress as a thin bar, the amount charged
+so far, elapsed time, and Stop and
+stays pinned while the run is live; during a Fetch fact check it alone says so, and the cards
+show no per-card check state; afterwards it shows the results count, the total charged, and
+the view switch, and names the run's query only when the search box no longer holds it. Battle
+cards in a row share a height with their actions pinned to the bottom; cards without results stay
+compact. Starting a run with the roster open waits for it to close before scrolling.
 The quality check's internal link list is not displayed separately.
 Diffbot search rows use `pageUrl` for the link and `content` for the excerpt; both the result card
 and Jev's bounded search input read those fields. Earlier runs keep their saved quality state.
@@ -132,7 +144,7 @@ The strip has an icon toggle for card and compact table views with tooltips. The
 keeps Fastest, Cheapest, Most Relevant, and Token Efficient badges below the provider name. Its
 plus action expands the full links
 or provider output; thumbs, cost, time, and quality stay in the row.
-When a Battle completes, the winners' fighters take a victory pose. Stop sits in the strip. A transient status-poll failure
+Stop sits in the strip. A transient status-poll failure
 keeps the run active in the browser and retries the poll; the saved run state controls Stop's visibility.
 Completed Battle runs mark the fastest and cheapest successful results when all compared values
 are known. Search Battles mark the highest estimated intent match among at least two scored,
@@ -231,9 +243,15 @@ The composer shows Web, News, Papers, YouTube, Maps, Fetch, and Sitemap as one r
 with a sliding active pill; a saved run opens its own task. When the row overflows, left and
 right arrows appear only on the side that can scroll, and the selected tab scrolls into view.
 Sitemap's optional topic sits behind a "+ Filter links by topic" control beside the mode switch.
+Fetch and Sitemap show a fixed, muted https:// before the address field. A bare address such as
+apple.com means its https site, and the server applies the same rule; a pasted full URL moves its
+http or https scheme into the prefix on paste, with no doubled scheme. Spaces, other schemes, and
+addresses without a domain are reported after a short pause in typing, on leaving the field, or
+on Run, and block quoting and running.
 A request that cannot reach the server shows a plain connection message. Motion follows the transitions.dev token scale and turns off under
 `prefers-reduced-motion`. Signed-in query history stays beside the main content near the viewport edge on wide
-screens and becomes a horizontal list above it on narrow screens.
+screens; a toggle folds it into a thin rail with tooltips for History and New query, and the
+choice is remembered. On narrow screens only the New query button shows.
 The live leaderboard follows the task selected in the query composer and uses Enrich Arena's
 comparison rail, provider logos, and hover or selection details. It opens on catalog price, the
 first view for every task, and a zero price reads Free. Search offers price, hit rate, Jev

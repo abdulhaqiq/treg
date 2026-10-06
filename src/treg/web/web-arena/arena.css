@@ -601,3 +601,116 @@
 .wa-all-switch.is-leaving{animation:wa-fade-out var(--duration-quick) var(--ease-out) 560ms both}
 @keyframes wa-fade-out{to{opacity:0;transform:translateY(-2px)}}
 @media(prefers-reduced-motion:reduce){.wa-all-switch.is-leaving{animation:none}}
+/* Mech bots: the canvas is larger than the avatar box so hops and spins never clip. */
+.wa-bot{position:relative;display:block;flex:none}
+.wa-bot canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
+.wa-lane-head,.wa-lanes.is-grid .wa-lane-head{grid-template-columns:56px minmax(0,1fr) auto auto}
+.wa-lane-avatar{width:56px;height:56px;overflow:visible}
+.wa-lane-body{padding-left:84px}
+.wa-lane-head{min-height:80px}
+@media(max-width:700px){.wa-lane-head,.wa-lanes.is-grid .wa-lane-head{grid-template-columns:56px minmax(0,1fr) auto}.wa-lane-avatar{width:56px;height:56px}}
+/* Roster chips carry a small bot: ink when selected, light grey when off; the logo never changes. */
+.wa-chip{height:42px;padding-left:2px}
+.wa-chip.off{color:var(--muted)}
+@media(max-width:540px){.wa-chip{height:44px}}
+/* Roster chips carry a small bot: ink when selected, light grey when off; the logo never changes. */
+.wa-chip{height:42px;padding-left:2px}
+.wa-chip.off{color:var(--muted)}
+@media(max-width:540px){.wa-chip{height:44px}}
+/* The open roster swaps its logo summary for a live count; the chips already show who is in. */
+.wa-roster-summary{display:flex;align-items:center;gap:10px;min-width:0}
+.wa-swap-enter-active,.wa-swap-leave-active{transition:opacity var(--duration-quick) var(--ease-out)}
+.wa-swap-enter-from,.wa-swap-leave-to{opacity:0}
+@media(prefers-reduced-motion:reduce){.wa-swap-enter-active,.wa-swap-leave-active{transition:none}}
+/* Battle grid: cards in a row share a height and pin their actions to the bottom.
+   Cards without results (waiting, running, failed) stay compact. */
+.wa-lanes.is-grid{align-items:stretch}
+.wa-lanes.is-grid .wa-lane{display:flex;flex-direction:column}
+.wa-lanes.is-grid .wa-lane:not(.has-body){align-self:start}
+.wa-lanes.is-grid .wa-lane-body{display:flex;flex-direction:column;flex:1}
+.wa-lanes.is-grid .wa-lane-more{margin-top:auto;padding-top:10px}
+/* The bot's canvas and its logo plate share one stage; the plate is HTML so logos stay vector-sharp. */
+.wa-bot-stage{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
+.wa-bot-stage canvas{position:absolute;inset:0;transform:none;left:0;top:0}
+.wa-bot-face{position:absolute;left:0;top:0;display:grid;place-items:center;background:#fff;transform-origin:50% 50%;will-change:transform,opacity;color:var(--muted);font:500 10px var(--mono)}
+.wa-bot-face img{width:78%;height:78%;object-fit:contain}
+.wa-bot-face.is-grey img{filter:grayscale(1)}
+/* No plate: the logo sits straight on the ink head and fills it. */
+.wa-bot-face{background:transparent}
+.wa-bot-face img{width:100%;height:100%}
+/* Tighter roster: 38px chips, less space between and inside them. */
+.wa-roster{gap:4px}
+.wa-chip{height:38px;gap:5px;padding:0 7px 0 1px}
+@media(max-width:540px){.wa-chip{height:40px}}
+.wa-chip{padding:0 7px 0 6px}
+/* Selected chips read clearly: a stronger teal border and a solid check. Off chips keep their logo in color. */
+.wa-chip:not(.off){border-color:#7CC4B2}
+.wa-chip:not(.off):hover:not(:disabled){border-color:var(--teal-ink)}
+.wa-chip:not(.off) .wa-chip-check{background:var(--teal-soft);color:#3A8777;font:500 11px/1 var(--text)}
+.wa-chip.off .wa-chip-face img{filter:none;opacity:1}
+/* Same check as Enrich Arena: a 16px light-teal circle. */
+.wa-chip-check{width:16px;height:16px;line-height:16px}
+/* "All providers" sits beside Done in the roster's top line while the roster is open. */
+.wa-roster-line .wa-all-switch{margin-left:auto;padding:0}
+.wa-roster-line .wa-all-switch+.wa-roster-edit{margin-left:10px}
+/* History can fold into a thin rail; the choice is remembered. */
+.web-layout .session-sidebar{transition:flex-basis var(--duration-fast) var(--ease-smooth-out),width var(--duration-fast) var(--ease-smooth-out)}
+.wa-history-top{display:flex;align-items:center;gap:6px}
+.wa-history-top .new-session{flex:1;min-width:0}
+.wa-history-toggle{display:grid;place-items:center;flex:none;width:36px;height:36px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted)}
+.wa-history-toggle:hover:not(:disabled){color:var(--ink);background:var(--card)}
+.wa-history-toggle svg{width:18px;height:18px}
+.web-layout .session-sidebar.is-collapsed{flex-basis:44px;width:44px}
+.session-sidebar.is-collapsed .wa-history-top{flex-direction:column}
+.session-sidebar.is-collapsed .new-session{flex:none;width:36px;height:36px;padding:0}
+.session-sidebar.is-collapsed .wa-history-label{display:none}
+@media(max-width:700px){
+  .web-layout .session-sidebar.is-collapsed{width:calc(100% - 32px);flex-basis:auto}
+  .session-sidebar.is-collapsed .wa-history-top{flex-direction:row}
+}
+@media(prefers-reduced-motion:reduce){.web-layout .session-sidebar{transition:none}}
+.new-session>.wa-history-label{font-size:12px;line-height:1.4}
+/* Rail tooltips: only while history is folded, to the right of each button, vertically centred. */
+.wa-history-toggle,.session-sidebar .new-session{position:relative}
+.wa-rail-tip{display:none}
+.session-sidebar.is-collapsed .wa-rail-tip{display:block;position:absolute;z-index:30;left:calc(100% + 10px);top:50%;padding:8px 12px;border:1px solid #e4e8e4;border-radius:12px;background:#fff;box-shadow:0 6px 24px #182f241f;color:var(--ink);font:500 12px/1.3 var(--text);white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(-50%) scale(var(--scale-small));transition:none}
+.session-sidebar.is-collapsed .new-session>.wa-rail-tip{font-size:12px;line-height:1.3}
+.session-sidebar.is-collapsed :is(.wa-history-toggle,.new-session):is(:hover,:focus-visible) .wa-rail-tip{opacity:1;transform:translateY(-50%) scale(1);transition:opacity var(--duration-quick) var(--ease-out) var(--duration-micro),transform var(--duration-quick) var(--ease-out) var(--duration-micro)}
+@media(prefers-reduced-motion:reduce){.session-sidebar.is-collapsed .wa-rail-tip{transition:none!important}}
+.web-layout .session-sidebar{z-index:20}
+/* Phones: history is just the New query button; no toggle, no list. */
+@media(max-width:700px){
+  .wa-history-toggle,.web-layout .session-sidebar .session-list{display:none!important}
+  .web-layout .session-sidebar,.web-layout .session-sidebar.is-collapsed{width:calc(100% - 32px);flex-basis:auto}
+  .session-sidebar.is-collapsed .wa-history-top{flex-direction:row}
+  .session-sidebar .new-session,.session-sidebar.is-collapsed .new-session{flex:1;width:auto;height:auto;padding:9px 12px}
+  .session-sidebar.is-collapsed .wa-history-label{display:inline}
+  .session-sidebar .wa-rail-tip{display:none!important}
+}
+/* A lighter search box: still the lead element, closer in scale to the rest of the card. */
+.wa-query{padding:5px 5px 5px 16px;border-radius:14px}
+.wa-query-input{padding:9px 0;font-size:16px}
+.wa-run{height:40px;border-radius:11px}
+@media(max-width:700px){.wa-run{height:44px}}
+/* URL tasks: a fixed, muted scheme that reads as part of the address. */
+.wa-url-scheme{flex:none;margin-right:-10px;color:var(--subtle);font-size:16px;line-height:1;user-select:none;pointer-events:none}
+.wa-query:has(.wa-url-input[aria-invalid="true"]){border-color:#E2B4BC;background:#FFF9FA}
+.wa-url-error{margin:6px 4px 0;color:#9b3c50;font-size:12px}
+.wa-query:has(.wa-url-input[aria-invalid="true"]):focus-within{border-color:#D68B94;box-shadow:0 0 0 3px #FBE8EB;background:#FFF9FA}
+/* Running cards: a faint teal border and one soft light gliding along the bottom edge. */
+.wa-lane.lane-running,.wa-lane.lane-checking{border-color:#CFE5DC;box-shadow:none}
+.wa-lane-track{left:16px;right:16px;bottom:-1px;height:2px;overflow:hidden;background:none;animation:none;border-radius:2px}
+.wa-lane-track::after{content:"";position:absolute;top:0;bottom:0;left:0;width:30%;border-radius:2px;background:linear-gradient(90deg,transparent,var(--teal) 45%,var(--teal) 55%,transparent);animation:wa-sweep 1.6s var(--ease-in-out,ease-in-out) infinite}
+@keyframes wa-sweep{0%{transform:translateX(-100%);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(340%);opacity:0}}
+@media(prefers-reduced-motion:reduce){.wa-lane-track::after{animation:none;left:35%;opacity:.6}}
+/* Run strip: a working orb and a calm progress bar with the same soft sweep as running cards. */
+.wa-think{position:relative;display:inline-block;flex:none}
+.wa-think canvas{position:absolute;inset:0}
+.wa-strip-orb{margin-right:-2px}
+.wa-strip .wa-progress{position:relative;height:3px;border-radius:3px;background:#EEF1EE;overflow:hidden}
+.wa-strip .wa-progress span{position:relative;display:block;height:100%;min-width:6px;border-radius:3px;background:var(--teal);animation:none;overflow:hidden;transition:width var(--duration-slow) var(--ease-smooth-out)}
+.wa-strip .wa-progress span::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,#ffffffb3,transparent);animation:wa-sweep 1.6s var(--ease-in-out,ease-in-out) infinite}
+@media(prefers-reduced-motion:reduce){.wa-strip .wa-progress span::after{animation:none;opacity:0}}
+/* Tabs never take the generic grey button hover: the pill marks the active tab, text marks hover. */
+.t-tab:hover:not(:disabled){background:transparent;border-color:transparent}
+.web-view-option button[aria-pressed="true"]:hover:not(:disabled){background:#fff}

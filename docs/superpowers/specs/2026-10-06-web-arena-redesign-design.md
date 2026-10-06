@@ -94,6 +94,26 @@ winners hold a victory pose. The card and table switch remains.
 13. Roster line reads "[logos] +N of M" with no separate count.
 Also removed: the per-task hint lines, the mode note, and the roster instruction text.
 
+## Revision 4 (after review)
+
+- **Provider bots** on result cards: a canvas robot head in treg ink with smooth light; the logo is
+  a vector image laid over the head so it stays sharp. Running hops (every third hop spins), quality
+  checks hop gently, waiting stands, never-called dozes, a result hops once with a teal glow, badge
+  winners hop now and then, failures slump with a grey logo. Our own code, inspired by a reference.
+- **Roster:** logo chips (no bots), 38px, tighter spacing, teal border and check when selected,
+  color logos when off, no hover price. The closed line shows logos and "+N of M"; open, it shows a
+  live "N of M selected" and an "All providers" switch beside Done while some are off. No label.
+- **Strip:** a small working orb and a thin progress bar with a soft sweep; the total charged so
+  far and when finished; a Fetch fact check is reported only here.
+- **Cards:** running cards have a faint teal border and one soft sweep along the bottom edge; Battle
+  rows share a height with actions pinned to the bottom; no "Thumbs down" text; Fetch cards drop
+  "Page text returned".
+- **Command card:** no tagline, no price line (the Run button tooltip notes the charge may vary), a
+  smaller search box, and Fetch/Sitemap show a fixed https:// prefix with paste normalisation and
+  delayed validation; a bare address is read as https on the server too.
+- **History** folds into a rail with tooltips; phones show only New query.
+- Active tabs keep their pill on hover; Run scrolls only after an open roster has closed.
+
 ## Motion
 
 Use transitions.dev patterns: sliding tabs for task chips and mode switch, staggered lane entry,
