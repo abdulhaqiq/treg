@@ -199,7 +199,7 @@
 .oe .oe-grid .add-col { min-width: 140px; border-right: 0; }
 .oe .oe-grid th.add-col { cursor: default; }
 .oe .oe-grid th.add-col button { border: 0; background: none; color: var(--accent); font-weight: 500; padding: 4px 0; }
-.oe .cell.hit, .oe .cell.miss, .oe .cell.error, .oe .cell.skipped { cursor: pointer; }
+.oe .oe-grid td.cell { cursor: pointer; }
 .oe .menu { max-height: calc(100vh - 120px); overflow: auto;
   position: fixed; z-index: 40; min-width: 200px; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, .12); font-weight: 400;
@@ -244,6 +244,14 @@
 .oe .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .oe .oe-chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; cursor: pointer; user-select: none; }
 .oe .oe-chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.oe .cell-head { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+.oe .cell-head h4 { margin: 0; }
+.oe .small-btn { padding: 3px 9px; font-size: 12px; }
+.oe .cell-full { display: block; margin: 8px 0 0; padding: 10px 12px; border-radius: var(--rb); background: var(--panel2); white-space: pre-wrap; word-break: break-word;
+  font: 12.5px/1.5 var(--mono); max-height: 50vh; overflow: auto; color: var(--text); }
+.oe a.cell-full { color: var(--teal); text-decoration: underline; }
+.oe .cell-edit { margin-top: 8px; font: 12.5px/1.5 var(--mono); }
+.oe .cell-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .oe .detail { display: grid; grid-template-columns: 90px 1fr; gap: 8px 12px; font-size: 12px; margin: 12px 0 0; }
 .oe .detail dt { color: var(--muted); text-transform: capitalize; }
 .oe .detail dd { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, monospace; }

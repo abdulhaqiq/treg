@@ -801,3 +801,27 @@ export function tableFromRows(name, kind, records, ids, extra = {}) {
     rows: records.map((r) => ({ id: rowId(), cells: Object.fromEntries(ids.map((id) => [id, id === 'domain' && r[id] ? host(r[id]) : r[id] ?? null])) })),
   }
 }
+
+// ---- a cell, read in full and edited ------------------------------------------------------------
+// The whole value as text: an object or list as indented JSON, nothing as ''.
+export function cellText(value) {
+  if (value == null) return ''
+  return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
+}
+// What an edit means, by what the cell held: a number stays a number when the text is one, a list or
+// object stays structured when the text parses, true/false stay booleans; empty text clears the cell.
+export function parseEdited(text, before) {
+  const t = String(text ?? '')
+  if (!t.trim()) return null
+  if (typeof before === 'number' && /^-?\d+(\.\d+)?$/.test(t.trim())) return Number(t.trim())
+  if (typeof before === 'boolean' && /^(true|false)$/i.test(t.trim())) return t.trim().toLowerCase() === 'true'
+  if (before && typeof before === 'object') { try { return JSON.parse(t) } catch { return t } }
+  return t
+}
+// A value worth opening: a web address or an email
+export const linkOf = (value) => {
+  const v = String(value ?? '').trim()
+  if (/^https?:\/\/\S+$/i.test(v)) return v
+  if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v)) return `mailto:${v}`
+  return null
+}

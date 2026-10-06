@@ -298,7 +298,8 @@ async def upsert_rows(db: AsyncSession, *, org_id: int, name: str, rows: list,
         row = existing.get(r["id"])
         if row is None:
             continue
-        merged = {**row.cells, **r["cells"]}
+        # a cell sent as null is removed (a deleted or re-set column), as a run of null is
+        merged = {k: v for k, v in {**row.cells, **r["cells"]}.items() if v is not None}
         runs = {**(row.runs or {}), **r["runs"]}
         runs = {g: v for g, v in runs.items() if v is not None}
         if _size(merged) + _size(runs) > MAX_ROW_BYTES:

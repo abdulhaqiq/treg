@@ -76,7 +76,7 @@ writes it; another team's request answers 404.
   `?format=csv` answers every row, a job cell as its value.
 - `PATCH /tables/{name}`: rename, or replace the column list (the page owns columns and their order).
 - `POST /tables/{name}/rows`: merge rows by id. A known id replaces only the cells and runs it sends
-  (a run of `null` removes that group's run), so a teammate's or another run's cells stay; an
+  (a run of `null` removes that group's run, a cell of `null` removes that cell), so a teammate's or another run's cells stay; an
   unknown id is added at the end. `replace_parent_rows`
   first removes those parents' rows (re-running Find people at company for a company replaces its
   people).

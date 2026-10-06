@@ -51,6 +51,10 @@ async def test_create_read_merge_and_export(clients: AsyncClient, table_on):
     # a run of None clears its group
     await clients.post("/tables/fintech-q4/rows", json={"rows": [{"id": "r1", "cells": {}, "runs": {"g1": None}}]})
     assert (await clients.get("/tables/fintech-q4")).json()["items"][0]["runs"] == {}
+    # a cell of None removes it, the rest stay
+    await clients.post("/tables/fintech-q4/rows", json={"rows": [{"id": "r1", "cells": {"email": None}}]})
+    assert (await clients.get("/tables/fintech-q4")).json()["items"][0]["cells"] == {"name": "Ramp", "domain": "ramp.com"}
+    await clients.post("/tables/fintech-q4/rows", json={"rows": [{"id": "r1", "cells": {"email": "eric@ramp.com"}}]})
     assert [i["id"] for i in t["items"]][-1] == "r9"
 
     csv = (await clients.get("/tables/fintech-q4?format=csv")).text.splitlines()

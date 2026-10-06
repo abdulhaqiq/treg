@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { COLUMN_TYPES, cellFrom, cellValue, fillInputs, host, judgeBody, judgeValue, listRecords, readAnswer, rowId, satisfies, toCsv, typeOfField, usd } from './jobs.js'
+import { COLUMN_TYPES, cellText, linkOf as hrefOf, parseEdited, cellFrom, cellValue, fillInputs, host, judgeBody, judgeValue, listRecords, readAnswer, rowId, satisfies, toCsv, typeOfField, usd } from './jobs.js'
 import ColumnPanel from './ColumnPanel.vue'
 import { loadTable, toStoredRows } from './client.js'
 
@@ -39,7 +39,7 @@ const synced = new Map()       // table name -> {columns: json, rows: Map(row id
 const children = new Map()     // linked tables written by "Find people at company": name -> {table, replaced}
 const rowJson = (r) => JSON.stringify(r.cells) + '|' + JSON.stringify(r.runs || {}) + '|' + (r._parent || '')
 const snapshot = (table) => ({ columns: JSON.stringify(table.columns),
-  rows: new Map(table.rows.map((r) => [r.id, { json: rowJson(r), groups: Object.keys(r.runs || {}) }])) })
+  rows: new Map(table.rows.map((r) => [r.id, { json: rowJson(r), groups: Object.keys(r.runs || {}), cells: Object.keys(r.cells || {}) }])) })
 function remember(table) { synced.set(table.name, snapshot(table)) }
 remember(t.value)
 
@@ -63,9 +63,13 @@ async function flushTable(table, replaced) {
   const sent = snapshot(table)
   const stored = JSON.parse(JSON.stringify(toStoredRows(table.rows.filter((r) => (replaced?.size && replaced.has(r._parent)) || last.rows.get(r.id)?.json !== sent.rows.get(r.id).json))
     .map((r) => {
-      // a group whose run was removed locally is sent as null so the server drops it too
+      // a run or a cell removed here (a deleted or re-set column) is sent as null: the server merges
+      // what it is sent, so a key left out would keep its old value
       const gone = (last.rows.get(r.id)?.groups || []).filter((g) => !(g in (r.runs || {})))
-      return gone.length ? { ...r, runs: { ...r.runs, ...Object.fromEntries(gone.map((g) => [g, null])) } } : r
+      const cleared = (last.rows.get(r.id)?.cells || []).filter((c) => !(c in (r.cells || {})))
+      return { ...r,
+        ...(gone.length ? { runs: { ...r.runs, ...Object.fromEntries(gone.map((g) => [g, null])) } } : {}),
+        ...(cleared.length ? { cells: { ...r.cells, ...Object.fromEntries(cleared.map((c) => [c, null])) } } : {}) }
     })))
   const parents = replaced && replaced.size ? [...replaced] : null
   if (sent.columns !== last.columns) await api.update(table.name, { columns: table.columns })
@@ -328,12 +332,39 @@ function pill(row, col) {
   return { queued: 'Queued', running: 'Running', miss: 'No result', skipped: 'Missing input', error: 'Error' }[state] ?? ''
 }
 
-// What the detail panel shows: the value, then the call that produced it.
-function details(row, col) {
-  const out = { value: row.cells[col.id] }
+// ---- a cell opened in the side panel: its whole value, editable, and the call that filled it ----
+const editing = ref(null)        // the text being edited, or null when reading
+function openCell(row, col) {
+  detail.value = { row, column: col }
+  editing.value = null
+  adding.value = false
+}
+function startEdit() { editing.value = cellText(detail.value.row.cells[detail.value.column.id]) }
+function saveEdit() {
+  const { row, column } = detail.value
+  row.cells[column.id] = parseEdited(editing.value, row.cells[column.id])
+  editing.value = null
+  save()
+}
+// the call behind an enrichment cell, as label/value lines
+function runLines(row, col) {
   const r = runOf(row, col)
-  if (r) Object.assign(out, r)
-  return out
+  if (!r) return []
+  const state = { hit: 'Found', miss: 'No result', error: 'Error', skipped: 'Missing input', queued: 'Queued', running: 'Running' }[r.state] || r.state
+  return [
+    ['Status', state],
+    r.served_by && ['Provider', r.served_by],
+    ['Cost', r.replay ? `${usd(r.cost_micro || 0)} (replayed)` : usd(r.cost_micro || 0)],
+    r.confidence != null && ['Confidence', `${Math.round(r.confidence * 100)}%`],
+    r.error && ['Error', r.error],
+    r.inputs && Object.keys(r.inputs).length && ['Inputs', Object.entries(r.inputs).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')],
+    r.at && ['When', new Date(r.at).toLocaleString()],
+    r.call_id && ['Call', r.call_id],
+  ].filter(Boolean)
+}
+const copied = ref(false)
+async function copyValue() {
+  try { await navigator.clipboard.writeText(cellText(detail.value.row.cells[detail.value.column.id])); copied.value = true; setTimeout(() => (copied.value = false), 1200) } catch {}
 }
 
 function exportCsv() {
@@ -405,7 +436,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
             <tr v-for="(r, i) in t.rows" :key="r.id">
               <td class="num">{{ i + 1 }}</td>
               <td v-for="c in t.columns" :key="c.id" :class="['cell', runOf(r, c)?.state, { picked: detail?.row === r && detail?.column === c }]"
-                  @click="runOf(r, c) && (detail = { row: r, column: c }, adding = false)">
+                  @click="openCell(r, c)">
                 <a v-if="linkOf(r, c)" class="pill link" href="#" @click.prevent.stop="emit('open', linkOf(r, c))">
                   {{ r.cells[c.id] }} {{ r.cells[c.id] === 1 ? 'person' : 'people' }} →
                 </a>
@@ -427,12 +458,36 @@ onUnmounted(() => window.removeEventListener('focus', reload))
           <button class="icon" title="Close" @click="detail = null">✕</button>
         </header>
         <div class="side-body">
-          <dl class="detail">
-            <template v-for="(v, k) in details(detail.row, detail.column)" :key="k">
-              <dt>{{ k.replace(/_/g, ' ') }}</dt>
-              <dd>{{ k === 'cost_micro' ? usd(v) : typeof v === 'object' ? JSON.stringify(v, null, 1) : v }}</dd>
+          <div class="cell-head">
+            <h4>Value</h4>
+            <span class="spacer" />
+            <template v-if="editing == null">
+              <button class="ghost small-btn" :disabled="detail.row.cells[detail.column.id] == null" @click="copyValue">{{ copied ? 'Copied' : 'Copy' }}</button>
+              <button class="ghost small-btn" @click="startEdit">Edit</button>
             </template>
-          </dl>
+          </div>
+          <template v-if="editing == null">
+            <a v-if="hrefOf(detail.row.cells[detail.column.id])" class="cell-full" :href="hrefOf(detail.row.cells[detail.column.id])" target="_blank" rel="noopener noreferrer">{{ cellText(detail.row.cells[detail.column.id]) }}</a>
+            <pre v-else-if="cellText(detail.row.cells[detail.column.id])" class="cell-full">{{ cellText(detail.row.cells[detail.column.id]) }}</pre>
+            <p v-else class="muted small">Empty<template v-if="runOf(detail.row, detail.column)">: {{ pill(detail.row, detail.column) || 'no value' }}</template>.</p>
+          </template>
+          <template v-else>
+            <textarea v-model="editing" class="oe-textarea cell-edit" rows="8" autofocus @keydown.meta.enter="saveEdit" @keydown.ctrl.enter="saveEdit" @keydown.esc="editing = null" />
+            <div class="cell-actions">
+              <button class="primary" @click="saveEdit">Save</button>
+              <button class="ghost" @click="editing = null">Cancel</button>
+              <span class="muted small">⌘↵ to save · empty clears it</span>
+            </div>
+            <p v-if="runOf(detail.row, detail.column)" class="muted small">Your edit stays until this row's column is run again.</p>
+          </template>
+          <template v-if="runLines(detail.row, detail.column).length">
+            <h4>Filled by</h4>
+            <dl class="detail">
+              <template v-for="[k, v] in runLines(detail.row, detail.column)" :key="k">
+                <dt>{{ k }}</dt><dd>{{ v }}</dd>
+              </template>
+            </dl>
+          </template>
         </div>
       </aside>
     </div>
