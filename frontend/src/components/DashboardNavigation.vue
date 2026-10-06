@@ -12,7 +12,7 @@ export default {
   methods: {
     toggleMore(e) {
       const r = e.currentTarget.getBoundingClientRect()
-      this.moreAt = { top: `${Math.round(r.bottom + 8)}px`, left: `${Math.round(Math.min(r.left, window.innerWidth - 248))}px` }
+      this.moreAt = { top: `${Math.round(r.bottom + 8)}px`, left: `${Math.round(Math.min(r.left, window.innerWidth - 188))}px` }
       this.moreOpen = !this.moreOpen
     },
     closeMore() { this.moreOpen = false },
@@ -59,10 +59,12 @@ export default {
 <button v-if="authed" class="rd-nav" :class="{active:view==='orgs'}" :aria-current="(view==='orgs')?'page':null" @click="go('orgs')">Team</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='openenrich'||view==='hub'||view==='run'||moreOpen}" aria-haspopup="true" :aria-expanded="moreOpen" @click.stop="toggleMore">More ▾</button></nav>
       <div v-if="moreOpen" class="rd-more-panel" :style="moreAt" @click.stop>
-        <button v-if="oeOn" :class="{current:view==='openenrich'}" @click="go('openenrich'); moreOpen=false"><b>openenrich</b><span>Build a list and enrich every row</span></button>
-        <button v-if="hubOn" :class="{current:view==='hub'||view==='run'}" @click="go('hub'); moreOpen=false"><b>Hub</b><span>Tools made of tools, by makers</span></button>
-        <a href="/enrich-arena"><b>Enrich Arena</b><span>Compare enrichment answers, providers, cost and speed</span></a>
-        <a v-if="meta?.web_arena" href="/web-arena"><b>Web Arena</b><span>Compare search, fetch and other web tools on the same task</span></a>
+        <button v-if="oeOn" :class="{current:view==='openenrich'}" @click="go('openenrich'); moreOpen=false">
+          <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 9h18 M3 15h18 M9 3v18"/></svg>Open Enrich</button>
+        <a href="/enrich-arena"><svg viewBox="0 0 24 24"><path d="M8 21h8 M12 17v4 M7 4h10v5a5 5 0 0 1-10 0z M17 5h3v2a3 3 0 0 1-3 3 M7 5H4v2a3 3 0 0 0 3 3"/></svg>Enrich Arena</a>
+        <a v-if="meta?.web_arena" href="/web-arena"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20"/></svg>Web Arena</a>
+        <button v-if="hubOn" :class="{current:view==='hub'||view==='run'}" @click="go('hub'); moreOpen=false">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.3 7 12 12l8.7-5 M12 22V12"/></svg>Hub</button>
       </div>
       <div class="rd-account">
         <a v-if="authed" class="rd-referral" href="#referrals" @click.prevent="go('referrals')" :aria-current="view==='referrals'?'page':null" :title="refEntryTitle()" :aria-label="'Referral: '+refEntryTitle()"><img src="/media/redesign/referral-gift.svg" alt=""><span>Referral</span></a>
