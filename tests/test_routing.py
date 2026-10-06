@@ -1926,3 +1926,11 @@ def test_rich_search_filters_and_their_exclusions_reach_the_providers_that_take_
     assert b["naicsCode"] == [5112] and b["countries"] == ["US", "GB"] and b["employees"] == ["51-200"]
     assert b["revenue"] == ["1m-10m"] and b["category"] == ["saas"] and b["fundingRounds"] == ["series_a"] and b["foundedYear"] == {"min": 2018}
     assert sent("companyenrich.companies.search", "companies.search", {"technology": "stripe"})["technologies"] == ["stripe"]
+
+
+async def test_a_routed_quote_names_the_filters_each_provider_applies(clients):
+    r = await clients.get("/catalog/endpoints/treg.people.search")
+    rows = {row["endpoint_id"]: row for row in r.json()["routing"]["plan"]}
+    assert {"seniority", "department_exclude", "funding_rounds"} <= set(rows["leadsforge.people.search"]["filters"])
+    assert "seniority" in rows["companyenrich.people.search"]["filters"]
+    assert "limit" not in rows["leadsforge.people.search"]["filters"]
