@@ -217,8 +217,6 @@ async def meta() -> dict:
             # Whether the hub routes exist here at all (TREG_HUB_ENABLED), so the dashboard asks
             # them nothing when they would only answer 404. Per-team access is still probed.
             "hub": bool(s.hub_enabled),
-            # Whether /web-arena is served here (TREG_WEB_ARENA_ENABLED), so the nav links it only then.
-            "web_arena": bool(s.web_arena_enabled),
             # Config only, no database: lets the top-bar referral entry name the reward on every page
             # without calling GET /referrals, which mints a code and runs the payout sweep.
             "referral": {"referrer_micro": int(s.referral_referrer_micro),

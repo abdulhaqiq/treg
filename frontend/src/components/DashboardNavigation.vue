@@ -1,7 +1,7 @@
 <script>
 import { useDashboard } from '../state/context'
 import BrandMark from './BrandMark.vue'
-// "More": the pages that are not daily work (openenrich and the hub in the app, the public arenas). Its menu sits on
+// "More": the pages that are not daily work (Open Enrich and the hub in the app, the public Enrich Arena). Its menu sits on
 // the window, since the nav row scrolls sideways and would cut a dropdown off.
 export default {
   components: { BrandMark },
@@ -62,7 +62,6 @@ export default {
         <button v-if="oeOn" :class="{current:view==='openenrich'}" @click="go('openenrich'); moreOpen=false">
           <svg viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 9h18 M3 15h18 M9 3v18"/></svg>Open Enrich</button>
         <a href="/enrich-arena"><svg viewBox="0 0 24 24"><path d="M8 21h8 M12 17v4 M7 4h10v5a5 5 0 0 1-10 0z M17 5h3v2a3 3 0 0 1-3 3 M7 5H4v2a3 3 0 0 0 3 3"/></svg>Enrich Arena</a>
-        <a v-if="meta?.web_arena" href="/web-arena"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20"/></svg>Web Arena</a>
         <button v-if="hubOn" :class="{current:view==='hub'||view==='run'}" @click="go('hub'); moreOpen=false">
           <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.3 7 12 12l8.7-5 M12 22V12"/></svg>Hub</button>
       </div>
