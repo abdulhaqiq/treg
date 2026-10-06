@@ -665,6 +665,7 @@ adapters:
     in: {domain: queryParams.domain}
     out: {companies: data, count: "len(data)"}
     miss: "data == []"
+    route: false   # answers with unrelated companies (a seed AI startup got a college, a shoe shop, a cartoon), name and domain only
   companyenrich.companies.similar:
     accepts: [[domain]]
     in: {domain: body.domains}
@@ -672,6 +673,19 @@ adapters:
     const: {body.page: 1, body.pageSize: 10}
     out: {companies: items, count: totalItems}
     miss: "items == []"
+  findymail.lookalike.search:
+    accepts: [[domain]]
+    in: {domain: body.seed}
+    const: {body.limit: 10}
+    out: {companies: companies, count: total}
+    miss: "companies == []"
+  leadsforge.companies.lookalike.search:
+    accepts: [[domain]]
+    in: {domain: body.domains}
+    in_expr: {body.domains: "list(domain)"}
+    const: {body.page: 1, body.pageSize: 10}
+    out: {companies: companies, count: totalCount}
+    miss: "companies == []"
 
   # ---- people.search ------------------------------------------------------------------------
   dropleads.people.search:
