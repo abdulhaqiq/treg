@@ -228,3 +228,118 @@ async def test_every_workflow_csv_route_serves(clients: AsyncClient):
         r = await clients.get(f"/workflows/{slug}.csv")
         assert r.status_code == 200, (slug, r.status_code)
         assert r.headers["content-type"].startswith("text/csv"), slug
+
+
+# ------------------------------------------------------------------ agent pages that are their own page
+
+def _visible_words(page: str) -> list[str]:
+    """The words a reader sees: text nodes outside <script> and <style>, via the stdlib parser."""
+    from html.parser import HTMLParser
+
+    class _Text(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.skip, self.parts = 0, []
+
+        def handle_starttag(self, tag, attrs):
+            self.skip += tag in ("script", "style")
+
+        def handle_endtag(self, tag):
+            self.skip -= tag in ("script", "style") and self.skip > 0
+
+        def handle_data(self, data):
+            if not self.skip:
+                self.parts.append(data)
+
+    p = _Text()
+    p.feed(page)
+    return " ".join(p.parts).split()
+
+
+async def test_focused_agent_pages_are_not_the_template_with_a_name_swapped(clients: AsyncClient):
+    """The first agent pages were one template with the name swapped, 95-98% identical, and Google
+    left all but one "Discovered - currently not indexed". An agent with `focus` and a `guide` must
+    read as its own page: well under that overlap with the template page."""
+    import difflib
+    base = _visible_words((await clients.get("/agents/chatgpt")).text)
+    focused = [a for a, s in agent_pages.AGENTS.items() if s.get("focus") and s.get("guide")]
+    assert {"claude-code", "hermes"} <= set(focused)
+    for agent in focused:
+        words = _visible_words((await clients.get(f"/agents/{agent}")).text)
+        ratio = difflib.SequenceMatcher(None, base, words, autojunk=False).ratio()
+        assert ratio < 0.75, (agent, round(ratio, 3))
+
+
+async def test_agent_guides_name_real_endpoints_and_live_links(clients: AsyncClient):
+    """A guide is hand-written, so nothing derives it from the catalog. Every `treg call <id>` it
+    prints must exist, and every internal link it carries must answer, or the page teaches a call
+    that 404s."""
+    import re
+    ids = {e["id"] for e in catalog_store.load().endpoints}
+    for agent, spec in agent_pages.AGENTS.items():
+        for g in spec.get("guide") or ():
+            for eid in re.findall(r"treg call ([\w.\-]+)", g["html"]):
+                assert eid in ids, (agent, eid)
+            for href in re.findall(r'href="(/[^"#]*)', g["html"]):
+                r = await clients.get(href)
+                assert r.status_code == 200, (agent, href, r.status_code)
+        for category in spec.get("focus") or ():
+            assert category in agent_pages.CATEGORY_BLURBS, (agent, category)
+
+
+async def test_a_focused_agent_page_still_reaches_every_category(clients: AsyncClient):
+    """`focus` prints two categories in full; the rest must still be one click away, in the HTML and
+    in the .md twin, so the page stays the map of what the agent can do."""
+    for agent, spec in agent_pages.AGENTS.items():
+        if not spec.get("focus"):
+            continue
+        page = (await clients.get(f"/agents/{agent}")).text
+        md = (await clients.get(f"/agents/{agent}.md")).text
+        for category, _jobs in agent_pages.USE_CASES:
+            slug = agent_pages.category_slug(category)
+            if category in spec["focus"]:
+                assert f'id="{slug}"' in page, (agent, category)
+            else:
+                assert f'href="/use-cases#{slug}"' in page, (agent, category)
+                assert f"/use-cases#{slug})" in md, (agent, category)
+
+
+def test_the_hermes_page_and_treg_mcp_install_agree_on_the_server(monkeypatch):
+    """`treg mcp install` detects Hermes but only prints a manual hint (the light CLI writes no YAML);
+    the page shows the full block. Both must name the same MCP URL and the same config shape, and
+    the page must use Hermes's registered tool names (mcp__<server>__<tool>, double underscores)."""
+    import re
+    from treg import mcp_install
+    monkeypatch.setitem(mcp_install.MANUAL_AGENTS["hermes"], "marker", lambda: True)
+    # only=["hermes"] skips every auto-written agent, so nothing on this machine is touched
+    out = mcp_install.install_mcp(base_url="https://treg.to", token="t", only=["hermes"])
+    assert out["results"] == []
+    (display, how), = out["manual"]
+    assert display == "Hermes" and "~/.hermes/config.yaml" in how and "mcp_servers" in how and "Bearer" in how
+    spec = agent_pages.AGENTS["hermes"]
+    block = spec["guide"][0]["html"]
+    assert "mcp_servers:" in block and f'url: "{out["mcp_url"]}"' in block and "Bearer" in block
+    steps = " ".join(spec["install_steps"])
+    assert re.findall(r"mcp__treg__\w+", steps) and not re.findall(r"mcp_treg_\w+", steps)
+
+
+def test_agent_titles_fit_a_search_result():
+    """A title past ~65 characters is cut in the result page; the census count is formatted in,
+    so check with today's numbers."""
+    from treg.routers.web import _catalog_census
+    n_eps, n_plats = _catalog_census()
+    for agent, spec in agent_pages.AGENTS.items():
+        title = spec["title"].format(n=f"{n_eps:,}", p=str(n_plats))
+        assert len(title) <= 65, (agent, len(title), title)
+
+
+async def test_a_focused_page_keeps_every_category_anchor(clients: AsyncClient):
+    """Collapsing a category into the "Everything else" table must not break links to
+    /agents/<agent>#<category> that worked when the full table was there."""
+    from treg.routers.web import _anchor
+    for agent, spec in agent_pages.AGENTS.items():
+        if not spec.get("focus"):
+            continue
+        page = (await clients.get(f"/agents/{agent}")).text
+        for category, _jobs in agent_pages.USE_CASES:
+            assert f'id="{_anchor(category)}"' in page, (agent, category)

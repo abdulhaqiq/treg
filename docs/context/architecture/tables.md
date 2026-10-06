@@ -3,7 +3,7 @@ title: openenrich — the team's tables (`/tables`, `/openenrich`)
 status: phase 1 built (storage + the page; the browser runs the calls), behind the `/table/` flag (TREG_TABLE_ENABLED, TREG_TABLE_TEAMS, TREG_TABLE_USERS)
 sources:
   - src/treg/models.py
-  - src/treg/alembic/versions/0063_openenrich_tables.py
+  - src/treg/alembic/versions/0065_openenrich_tables.py
   - src/treg/application/tables.py
   - src/treg/routers/tables.py
   - src/treg/routers/web.py

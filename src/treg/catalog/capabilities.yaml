@@ -189,6 +189,7 @@ capabilities:
   web.search: "Search the open web by meaning or keyword"
   web.extract: "Extract clean content from web pages"
   web.extract.structured: "Extract typed JSON from one web page"
+  web.extract.batch: "Scrape a bounded list of web pages"
   web.screenshot: "Capture a rendered web page image"
   web.map: "Discover the URLs on a website"
   web.crawl: "Crawl a website and extract its pages"

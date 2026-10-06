@@ -443,6 +443,27 @@ sign-in opens in place), so every server-rendered page now gets that behaviour a
 produced the signup is recorded. Schema on the page: `SoftwareApplication`, `BreadcrumbList`, and
 a `FAQPage` whose questions are asserted to appear verbatim in the body.
 
+**An agent page has to be its own page, not the template with a name swapped** (2026-10-06). The
+first four were 95-98% identical word for word, and Google indexed `/agents/chatgpt` and left
+`/agents/claude-code`, `/agents/cursor` and `/agents/claude` "Discovered - currently not indexed" or
+unknown. Three optional keys on an `AGENTS` entry fix that without forking the route:
+
+- `h1` replaces the generic "The <name> <noun>: call {n} APIs without keys".
+- `guide` is a list of hand-written sections (`id`, `seclab`, `h2`, `html`) rendered between the
+  install steps and the menu, and as Markdown in the `.md` twin (`_guide_md`, which maps the small
+  fixed vocabulary the fragments use: p, pre/code, ul/li, a, b, code).
+- `focus` names the categories printed in full, in that order. The other categories collapse into
+  one "Everything else" table, a row each linking to `/use-cases#<category>`, so the page still
+  reaches every job. Reprinting all fourteen tables is what made the pages identical.
+
+`/agents/claude-code` uses them to lead with lead enrichment (the four routed calls, the 23 Sep lead-list receipt, MCP vs CLI vs skill, the work-email
+bench). `/agents/hermes` is new: the `~/.hermes/config.yaml` block from Hermes's documented MCP config
+(`treg mcp install` detects Hermes but only prints manual instructions; it does not write YAML), then a weekly buying-signal check on Hermes's own
+scheduler; treg.to answers the calls and neither schedules nor delivers. An agent without these keys
+renders exactly as before. Tests hold the overlap with the template page under 75%, every
+`treg call <id>` in a guide to an existing endpoint, every guide link to a 200, every category
+reachable from a focused page, and the Hermes block to the same shape as `mcp_install`'s hint.
+
 ## The use-case pages — `/use-cases/<job>`, and the hub at `/use-cases`
 
 The spokes. **The reader does one thing, the prompt; everything else is what the agent sees before

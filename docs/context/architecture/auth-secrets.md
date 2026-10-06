@@ -57,6 +57,11 @@ Linkup uses a pasted Bearer key at `https://api.linkup.so`. Its free internal
 exposing the account balance as a catalog tool. `TREG_PLATFORM_KEY_LINKUP` supplies the optional
 shared binding; a team's own key wins and remains unmetered by treg.
 
+Crawl4AI uses a pasted Bearer key (`sk_live_…`) at `https://api.crawl4ai.com`. The free
+`GET /v1/billing/balance` validates a connected key (a bogus key answers 401) and supplies capacity
+evidence; it trails the per-call `x-c4-balance` header by about a minute. `TREG_PLATFORM_KEY_CRAWL4AI`
+supplies the optional shared binding; a team's own key wins and remains unmetered by treg.
+
 Spider uses a pasted Bearer key at `https://api.spider.cloud`. The free internal
 `GET /data/credits` probe validates connected keys and supplies capacity evidence.
 `TREG_PLATFORM_KEY_SPIDERCLOUD` supplies the optional shared binding; the own-key-first ladder

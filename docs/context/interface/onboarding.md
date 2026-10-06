@@ -189,10 +189,13 @@ tests use `@onboarding.test`), a new account skips the team-name modal for three
 
 **The experiment** (`onboarding_v2_experiment`) compares this flow with the team-name modal for
 work addresses only. `onboard/work_email.py` decides: a domain on its `PERSONAL` list (free, ISP and
-disposable mail) is not one; any other is judged once by Jev as a house call (0.6 or more is a
-company's own domain) and the verdict kept per domain for 30 days. Sign-up starts the judgment in the
-background (`first_run.warm`), shared with a concurrent `/auth/me`, which waits for it at most a few
-seconds; a judgment Jev could not make counts as personal for ten minutes.
+disposable mail) is not one; any other is judged once by Jev as a house call, with what its homepage
+says (`page.text`, read for a few seconds at most; a domain's name alone leaves small companies and
+throwaway mail near even odds). 0.5 or more is a company's own domain: a personal domain in the new
+flow costs little, a company left out costs a sample. The verdict is kept per domain for 30 days.
+Sign-up starts the judgment in the background (`first_run.warm`), shared with a concurrent
+`/auth/me`, which waits for it at most a few seconds and asks Jev only for an account with no team it
+named; a judgment Jev could not make counts as personal for ten minutes.
 `GET /auth/me` then says `onboarding_v2_experiment: true`, and only then does the dashboard read the
 PostHog flag `onboarding-v2`: `test` gets this flow, anything else (unanswered included) the modal,
 so only offered users record an exposure. The server lets such an address start and read the flow;

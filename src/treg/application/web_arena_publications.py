@@ -156,7 +156,7 @@ def summarize_live(rows, catalog, traffic=None, *, observed_since: datetime | No
                 if isinstance(a.get("duration_ms"), int):
                     slot["times"].append(a["duration_ms"])
             quality = a.get("quality") or {}
-            metric = (quality.get("estimated_match") if row.task == "search" and quality.get("state") == "checked"
+            metric = (quality.get("estimated_match") if row.task in {"search", "news", "papers", "youtube"} and quality.get("state") == "checked"
                       else quality.get("relative_coverage") if row.task == "fetch" and quality.get("state") == "checked"
                       else quality.get("coverage_percent") if row.task == "sitemap" else None)
             if (key not in seen_quality["metric"] and isinstance(metric, (int, float))

@@ -72,17 +72,19 @@ async def _jev(state: dict, questions: dict, user_id: int) -> tuple[dict | None,
         return None, {"jev_ms": round((time.monotonic() - began) * 1000), "jev_cost_usd": None}
 
 
-def _search_links(output: dict) -> list[dict]:
+def _search_links(output: dict, task: str = "search") -> list[dict]:
     links = []
-    for item in rules.result_items("search", output)[:5]:
+    for item in rules.result_items(task, output)[:5]:
         if not isinstance(item, dict):
             continue
         url = next((item.get(k) for k in ("url", "link", "href", "pageUrl") if isinstance(item.get(k), str)), None)
+        if not url and task == "youtube" and isinstance(item.get("video_id"), str):
+            url = "https://www.youtube.com/watch?v=" + item["video_id"]
         if not url or urlsplit(url).scheme not in {"http", "https"}:
             continue
         dated = next((item.get(k) for k in ("publishedDate", "published_at", "datePublished", "date", "published") if isinstance(item.get(k), str)), None)
         links.append({"url": url[:500], "title": str(item.get("title") or "")[:250],
-                      "snippet": str(item.get("snippet") or item.get("description") or item.get("text") or item.get("content") or "")[:500],
+                      "snippet": str(item.get("snippet") or item.get("description") or item.get("description_snippet") or item.get("text") or item.get("content") or "")[:500],
                       "source_date": dated[:40] if dated else None})
     return links
 
@@ -106,8 +108,8 @@ def _recent_share(links: list[dict]) -> dict:
             "freshness_window_days": 30 if known else None}
 
 
-async def search(input_value: str, output: dict, user_id: int) -> dict:
-    links = _search_links(output)
+async def search(input_value: str, output: dict, user_id: int, *, task: str = "search") -> dict:
+    links = _search_links(output, task)
     if not links:
         return {"state": "unknown", "links_checked": [], "estimated_match": None, "freshness_percent": None}
     questions = {f"link{i}": {"type": "boolean", "instructions":

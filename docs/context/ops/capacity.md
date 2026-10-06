@@ -308,6 +308,14 @@ process-local limiter reduces ordinary bursts but is not a strict quota gate: ca
 wait exceeds `DEFAULT_MAX_WAIT_MS` proceed. Relax the ceiling after real 429 evidence, or when
 smoothing becomes endpoint-aware.
 
+## Ocean.io shared-key pacing
+
+`policy._RATE_LIMITS` smooths Ocean.io platform calls at 30 requests per minute, half the
+documented self-serve minute allowance. Its separate 1,000-request daily allowance is reported by
+`collectors._oceanio` from the free `/v2/credits/balance` route; the smoother does not enforce a
+daily quota. Like other provider-wide smoothing, this bounded process-local wait is not a strict
+quota gate. BYOK calls bypass it.
+
 ## Pieces (`src/treg/domain/capacity/`)
 
 - **`collectors.py`** — the providers' *free* balance/quota calls (`coroutine(client, key) →
@@ -337,7 +345,10 @@ smoothing becomes endpoint-aware.
   for a balance signature, endpoint id for a quota one. Strike, lock on the second strike within
   10 min and at least 15 s later with no 2xx between, admit one probe per process per minute, clear on the probe's 2xx
   (conditional on the lock id). A guessed hold lasts 1 h, a vendor-stated reset at most 6 h.
-  See `architecture/proxy-model.md`.
+  The sweep's `exhausted` reading gets the same probe, from one minute after the reading, so a
+  top-up is noticed before the next sweep: the probe's 2xx lifts that reading
+  (`clear_sweep_state`, conditional on the reading it was admitted under) until the next sweep
+  reads the balance again. See `architecture/proxy-model.md`.
 - **`view.py`** - `LatestStateView`: the in-process copy of both namespaces, reloaded from
   ratestore on a 60 s TTL by an explicit `await load()`; `is_exhausted(provider, endpoint_id)`
   and friends are sync and I/O-free so `resolve` can read them without breaking its rule. A
@@ -522,7 +533,7 @@ The call path reads the view and runs the breaker (`marks.py`); the mechanics an
 `provider_capacity` 503 are documented in `architecture/proxy-model.md` § Platform capacity and
 `interface/api.md`. In one line: locked provider or endpoint → 503 before any hold, with
 alternatives named, one probe a minute excepted; two balance/quota signatures in a row on treg's
-key → lock; the probe's 2xx → open. Burst 429s are smoothed (D′). Tiers 1/2 untouched.
+key → lock; the probe's 2xx → open, whether the lock or the sweep's reading refused it. Burst 429s are smoothed (D′). Tiers 1/2 untouched.
 
 The breaker is deliberately slow to open and quick to close: a false lock costs every caller a
 503 (or, with an overflow route, the aggregator's price) for as long as it lasts, while a missed

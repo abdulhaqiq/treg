@@ -199,6 +199,17 @@
             ],
             "title": "Monthly Cap Usd"
           },
+          "per_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Hour"
+          },
           "setup_url": {
             "default": true,
             "title": "Setup Url",
@@ -2186,6 +2197,7 @@
     },
     "/admin/calls": {
       "get": {
+        "description": "The newest calls, or with `since_id` the calls after that id, oldest first, so a poller\nadvances its cursor to the last id it read. `provider` needs `since_id`: it keeps the read a\nrange over the primary key instead of a walk back through the whole table.",
         "operationId": "admin_calls_admin_calls_get",
         "parameters": [
           {
@@ -2196,6 +2208,38 @@
               "default": 50,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
             }
           },
           {
@@ -3357,6 +3401,7 @@
     },
     "/admin/stats": {
       "get": {
+        "description": "Platform totals for the admin page. Every count runs in the database.\n\nLoading the whole call table to count it in Python ran past the request timeout at production\nsize, so the page got a 502. Call counts now come from `endpointdaystat` (one row per endpoint\nper day, folded by the `treg-worker catalog stats` cron): calls the provider saw, as of that\njob's last run. The all-time total is Postgres's own row estimate, not an exact count.",
         "operationId": "admin_stats_admin_stats_get",
         "parameters": [
           {

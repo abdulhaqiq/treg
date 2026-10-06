@@ -419,9 +419,12 @@ instant is one strike), with no 2xx in between, **locks** - the provider for a b
 endpoint for a quota one (allowances are per operation). While locked, `resolve` admits one real
 call per process per minute as a **probe** (`MarketplaceCall.probe_lock_id`, `probe` on the
 `tool_called` event); its 2xx clears exactly that lock (`settle._note_capacity_recovery`, conditional
-on the lock id), any other answer leaves it. A guessed hold lasts 1 h, a vendor-stated reset at
+on the lock id), any other answer leaves it. A sweep's `exhausted` reading admits the same probe
+from one minute after the reading, and its 2xx lifts that reading until the next sweep
+(`marks.clear_sweep_state`, conditional on the reading's `observed_at`), so a top-up is noticed
+within a minute instead of at the next sweep. A guessed hold lasts 1 h, a vendor-stated reset at
 most 6 h whatever `retry-after` said, and
-the sweep never writes this namespace. Both writes run on their own short session **after** the
+the sweep never writes this namespace. These writes run on their own short session **after** the
 settle closed the hold, never during flight, and are the dataplane writes this feature adds
 (`capacity_exhausted_mark` in `tests/test_call_architecture.py`). A burst 429 (`retry-after ≤ 60 s`)
 or an unknown one only logs; step D′ smooths those. An `edge_block` (the vendor's CDN answered, not

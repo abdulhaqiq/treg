@@ -45,6 +45,33 @@ async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
     assert response.status_code == 200, response.text
 
 
+async def test_crawl4ai_key_uses_free_balance_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/billing/balance"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"credit": "37500.00", "credit_mc": 37500000, "tier": "supporter"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "crawl4ai", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_crawl4ai_rejects_a_key_its_balance_endpoint_refuses(clients, monkeypatch):
+    """The live answer to a bogus key, 2026-10-05: 401 {"error": "sign in"}."""
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={"error": "sign in"}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "crawl4ai", "token": "sk_live_bogus"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text
+
+
 async def test_search1api_key_uses_free_usage_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"

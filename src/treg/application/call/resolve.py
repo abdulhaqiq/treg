@@ -1552,6 +1552,35 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
     has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
     row reserve for an expensive model. Full schema validation remains out of the faithful BYOK path.
     """
+    if ep.get("provider") == "oceanio":
+        endpoint_id = ep["id"]
+        if endpoint_id in {
+            "oceanio.companies.lookalike", "oceanio.companies.search", "oceanio.people.search",
+        }:
+            document = _request_body_document(ep, body, headers)
+            size = document.get("size")
+            if type(size) is not int or not 1 <= size <= 100:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
+                        "parameter": "body.size",
+                        "message": "Ocean.io shared-key search requires an explicit size from 1 to 100; "
+                                   "connect your own key for larger searches",
+                    },
+                )
+        elif endpoint_id == "oceanio.people.enrich":
+            document = _request_body_document(ep, body, headers)
+            for name in ("revealEmails", "revealPhones"):
+                if name in document:
+                    raise ResolutionFailed(
+                        "catalog_parameter_invalid", status_code=400, detail={
+                            "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
+                            "parameter": f"body.{name}",
+                            "message": "Ocean.io contact reveals are not available on the shared key; "
+                                       "connect your own key for reveals",
+                        },
+                    )
+
     if ep.get("provider") == "octen" and ep.get("id") in _OCTEN_ENDPOINTS:
         from . import octen
         invalid = octen.invalid_platform_parameter(ep["id"], body)
@@ -2243,20 +2272,22 @@ async def _resolve_marketplace_call(
     probe_lock_id = None
     if cost is not None and capacity_view.is_exhausted(service, ep["id"]):
         # treg's own account for this call is known to be out (the call-path lock, or the sweep).
-        # A lock admits one probe a minute so a recovered account is noticed. Otherwise never
+        # Either admits one probe a minute so a recovered account is noticed. Otherwise never
         # relay a call we know will 402: with an enabled overflow route the ladder skips straight
         # to the child cycle (plan §4); else refuse BEFORE reserve with a typed 503 naming when
         # and what else (§4.2).
         lock = capacity_view.active_lock(service, ep["id"])
+        state = capacity_view.get(service) if lock is None else None
         if lock is not None and capacity_marks.probe_due(lock.key):
             probe_lock_id = lock.lock_id
+        elif state is not None and capacity_marks.sweep_probe_due(service, state.observed_at):
+            probe_lock_id = capacity_marks.sweep_probe_id(state.observed_at)
         elif (get_settings().overflow_mode == "on" and not caller.org.platform_overflow_disabled
                 and overflow_routes_view.for_endpoint(ep["id"])):
             skip_direct = True
         else:
             raise _provider_capacity_unavailable(
-                ep, service, capacity_view.exhausted_until(service, ep["id"]),
-                probing=lock is not None)
+                ep, service, capacity_view.exhausted_until(service, ep["id"]), probing=True)
     if cost is not None:
         virtual = Tool(
             org_id=caller.org_id, name=ep["id"], owner=caller.email,

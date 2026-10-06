@@ -457,6 +457,12 @@ async def settle_due(*, limit: int = DEFAULT_LIMIT, client: httpx.AsyncClient | 
     candidates = await _due_candidates(limit, now)
     if not candidates:
         return TickResult()
+    # Load the catalog before any poll starts, in a thread: `_poll_target` reads it, and the first
+    # read in a fresh worker process parses every provider file. Inside a poll that parse froze the
+    # event loop past POLL_TIMEOUT_S, so polls already in flight timed out without the provider
+    # being slow. After this the polls read the cached catalog and their timeout measures the
+    # provider alone.
+    await asyncio.to_thread(catalog_store.load)
     global_sem = asyncio.Semaphore(GLOBAL_CONCURRENCY)
     provider_sems: dict[str, asyncio.Semaphore] = {}
     owned = client is None

@@ -7,7 +7,7 @@ def winner_values(task: str, attempts: list[dict]) -> dict[str, float]:
         if a.get("state") != "hit":
             continue
         q = a.get("quality") or {}
-        if task == "search" and q.get("state") == "checked" and q.get("estimated_match") is not None:
+        if task in {"search", "news", "papers", "youtube"} and q.get("state") == "checked" and q.get("estimated_match") is not None:
             if q.get("recent_data_needed"):
                 if q.get("freshness_percent") is None:
                     continue

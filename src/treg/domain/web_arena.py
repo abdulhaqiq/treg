@@ -4,7 +4,9 @@ from __future__ import annotations
 import ipaddress
 from urllib.parse import urlsplit, urlunsplit
 
-TASKS = {"search": "web.search", "fetch": "web.extract", "sitemap": "web.map"}
+TASKS = {"search": "web.search", "news": "web.search.news", "papers": "web.search.publications",
+         "youtube": "youtube.search.videos", "maps": "google.serp.maps",
+         "fetch": "web.extract", "sitemap": "web.map"}
 TERMINAL = {"completed", "cancelled", "interrupted"}
 RETENTION_DAYS = 30
 
@@ -17,12 +19,12 @@ class WebArenaError(Exception):
 
 def input_for(task: str, value: str, query: str = "") -> dict:
     if task not in TASKS:
-        raise WebArenaError("Choose Web Search, Web Fetch, or Sitemap.")
+        raise WebArenaError("Choose a Web Arena task.")
     value = value.strip()
     if not value or len(value) > 500:
         raise WebArenaError("Enter an input of 1 to 500 characters.")
-    if task == "search":
-        return {"q": value, "limit": 10}
+    if task in {"search", "news", "papers", "youtube", "maps"}:
+        return {"q": value, **({"limit": 10} if task in {"search", "news", "papers"} else {})}
     parsed = urlsplit(value)
     if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password:
         raise WebArenaError("Enter a public HTTP or HTTPS URL.")
@@ -67,7 +69,8 @@ def url_rows(rows: list, site: str, limit: int = 100) -> dict:
 
 
 def result_items(task: str, output: dict) -> list:
-    value = output.get("pages" if task == "fetch" else "results")
+    value = output.get("pages" if task == "fetch" else "videos" if task == "youtube"
+                       else "places" if task == "maps" else "results")
     return value if isinstance(value, list) else [value] if isinstance(value, (dict, str)) else []
 
 

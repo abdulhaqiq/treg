@@ -11,6 +11,7 @@ import uuid
 from datetime import timedelta
 from urllib.parse import urlencode
 
+from httpx import QueryParams
 from sqlalchemy import delete, update
 from sqlmodel import select
 
@@ -31,15 +32,43 @@ from .call.types import CallFailure, CallInput, CallerSnapshot
 log = logging.getLogger(__name__)
 _owners: dict[str, asyncio.Task] = {}
 MAX_RESULT_BYTES = 256_000
+APIFY_MAPS_RESULT_BYTES = 800_000
 RUN_SECONDS = 180
-FIXED_PAGE_SEARCH = {"branddev.web.search", "tinyfish.web.search"}
+FIXED_PAGE_SEARCH = {"branddev.web.search", "tinyfish.web.search", "tinyfish.web.search.news"}
+NEWS_ENDPOINTS = {"tinyfish.web.search.news", "search1api.web.news", "exa.web.search.news",
+                  "anyapi.google.serp.news", "serper.google.serp.news", "cloro.google.serp.news",
+                  "serpapi.x.google-news", "dataforseo.x.serp-google-news-live-advanced",
+                  "litescrape.google.serp.news", "tavily.web.search.news"}
+PAPER_ENDPOINTS = {"exa.web.search.publications", "tinyfish.web.search.publications",
+                   "serper.google.serp.scholar"}
+YOUTUBE_ENDPOINTS = {"justoneapi.x.youtube-search-v1", "serpapi.youtube.search.videos",
+                     "tikhub.youtube.search.videos"}
+MAPS_ENDPOINTS = {"apify.google.serp.maps", "dataforseo.x.serp-google-maps-live-advanced",
+                  "serpapi.x.google-maps"}
 UNBOUNDED_SITEMAP = {"search1api.web.sitemap"}
 
 
 def _supports_result_limit(task: str, endpoint_id: str, adapter) -> bool:
-    return task not in {"search", "sitemap"} or "limit" in _used_keys(adapter) or (
-        task == "search" and endpoint_id in FIXED_PAGE_SEARCH) or (
+    return task not in {"search", "news", "papers", "sitemap"} or "limit" in _used_keys(adapter) or (
+        task in {"search", "news"} and endpoint_id in FIXED_PAGE_SEARCH) or (
+        task == "news" and endpoint_id in NEWS_ENDPOINTS) or (
+        task == "papers" and endpoint_id in {"tinyfish.web.search.publications", "serper.google.serp.scholar"}) or (
         task == "sitemap" and endpoint_id in UNBOUNDED_SITEMAP)
+
+
+def _capabilities(task: str) -> tuple[str, ...]:
+    if task == "news":
+        return ("web.search.news", "google.serp.news")
+    if task == "papers":
+        return ("web.search.publications", "google.serp.scholar")
+    return (rules.TASKS[task],)
+
+
+def _in_lineup(task: str, endpoint_id: str) -> bool:
+    return task not in {"news", "papers", "youtube", "maps"} or endpoint_id in {
+        "news": NEWS_ENDPOINTS, "papers": PAPER_ENDPOINTS,
+        "youtube": YOUTUBE_ENDPOINTS, "maps": MAPS_ENDPOINTS,
+    }[task]
 
 
 def enabled() -> bool:
@@ -73,17 +102,25 @@ def tasks(*, _internal: bool = False):
         _check_enabled()
     cat = catalog_store.load()
     result = []
-    for task, label in (("search", "Web Search"), ("fetch", "Web Fetch"),
+    for task, label in (("search", "Web Search"), ("news", "News Search"),
+                        ("papers", "Paper Search"), ("youtube", "YouTube Search"),
+                        ("maps", "Maps Search"), ("fetch", "Web Fetch"),
                         ("sitemap", "Sitemap"), ("brand", "Brand")):
         previews = []
         if task != "brand":
-            capability = rules.TASKS[task]
-            contract = cat.contracts[capability]
-            identity = rules.input_for(task, "example query" if task == "search" else "https://example.com")
-            candidates, _ = candidates_for(contract, cat.for_capability(capability), cat.adapters, identity)
+            identity = rules.input_for(task, "coffee shops in Austin TX" if task == "maps" else
+                                       "example query" if task in {"search", "news", "papers", "youtube"}
+                                       else "https://example.com")
+            candidates = []
+            for capability in _capabilities(task):
+                contract = cat.contracts[capability]
+                found, _ = candidates_for(contract, cat.for_capability(capability), cat.adapters, identity)
+                candidates.extend((contract, ep, adapter, variant) for ep, adapter, variant in found)
             seen = set()
-            for ep, adapter, variant in candidates:
+            for contract, ep, adapter, variant in candidates:
                 provider = ep["provider"]
+                if not _in_lineup(task, ep["id"]):
+                    continue
                 if task == "search" and provider == "valyu":
                     continue
                 if (provider in seen or provider == "treg" or ep.get("async") or ".bulk" in ep["id"]
@@ -97,7 +134,7 @@ def tasks(*, _internal: bool = False):
                 if cost and cost.get("usd") is not None:
                     upstream_query, body = adapter.to_upstream(identity, variant)
                     estimate = money.with_margin(_marketplace_pricing(provider, ep["id"], cost,
-                        upstream_query, json.dumps(body).encode())[0])
+                        QueryParams(upstream_query), json.dumps(body).encode())[0])
                 previews.append({"provider": provider, "endpoint_id": ep["id"],
                                  "catalog_price_usd": cost.get("usd") if cost else None,
                                  "catalog_estimate_micro": estimate,
@@ -115,22 +152,23 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
         raise rules.WebArenaError("Sign in with a regular team to run Web Arena.", 403)
     if mode not in {"battle", "waterfall"}:
         raise rules.WebArenaError("Choose Battle or Waterfall.")
-    if task == "sitemap":
+    if task in {"sitemap", "maps"}:
         jev = False
     identity = rules.input_for(task, value, query)
-    capability = rules.TASKS[task]
     # Check the comparison limit after planning. Search1API Sitemap is the explicit
     # unbounded exception; its returned links are capped before comparison.
-    plan = await route.build_plan({"id": "web-arena." + task, "capability": capability}, identity, caller,
-                                  route.RouteOptions(strict_filters=False))
+    plans = [await route.build_plan({"id": "web-arena." + task, "capability": capability}, identity, caller,
+                                    route.RouteOptions(strict_filters=False)) for capability in _capabilities(task)]
     cat = catalog_store.load()
-    chosen, dropped, seen = [], list(plan.dropped), set()
+    chosen, dropped, seen = [], [item for plan in plans for item in plan.dropped], set()
     requested = set(providers) if providers is not None else None
     if requested is not None and (not requested or len(requested) > 30):
         raise rules.WebArenaError("Select 1 to 30 providers.")
-    for c in plan.candidates:
+    for plan, c in ((plan, c) for plan in plans for c in plan.candidates):
         ep, adapter = c.endpoint, c.adapter
         provider = ep["provider"]
+        if not _in_lineup(task, ep["id"]):
+            continue
         if task == "search" and provider == "valyu":
             continue
         if provider in seen or provider == "treg" or ep.get("async") or ".bulk" in ep["id"]:
@@ -150,7 +188,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
         if c.tier == "platform" and (not cv or cv.get("usd") is None):
             dropped.append({"endpoint_id": ep["id"], "why": "price unavailable"})
             continue
-        estimate = money.with_margin(_marketplace_pricing(provider, ep["id"], cv, upstream_query,
+        estimate = money.with_margin(_marketplace_pricing(provider, ep["id"], cv, QueryParams(upstream_query),
             json.dumps(body).encode())[0]) if c.tier == "platform" else 0
         if estimate > 10_000_000:
             dropped.append({"endpoint_id": ep["id"], "why": "above the per-provider limit"})
@@ -276,8 +314,10 @@ async def _run(run_id, task, mode, payload, snapshot, client, client_ip):
                 response = await service.execute_call(context, client)
                 buf = bytearray()
                 oversized = False
+                result_limit = (APIFY_MAPS_RESULT_BYTES if a["endpoint_id"] == "apify.google.serp.maps"
+                                else MAX_RESULT_BYTES)
                 async for chunk in response.body_stream:
-                    if len(buf) + len(chunk) <= MAX_RESULT_BYTES and not oversized:
+                    if len(buf) + len(chunk) <= result_limit and not oversized:
                         buf.extend(chunk)
                     else:
                         oversized = True
@@ -293,16 +333,45 @@ async def _run(run_id, task, mode, payload, snapshot, client, client_ip):
                     outcome, output = "error", {}
                 else:
                     output = ad.from_upstream(doc)
-                    if (a["endpoint_id"] == "tinyfish.web.search" or
+                    if (a["endpoint_id"] in {"tinyfish.web.search", "tinyfish.web.search.news"} or
+                            task in {"news", "papers", "youtube", "maps"} or
                             a["endpoint_id"] in UNBOUNDED_SITEMAP) and isinstance(output.get("results"), list):
                         # Compare only the requested first page when upstream cannot accept a count.
                         output["results"] = output["results"][:payload["identity"]["limit"]]
                         output["count"] = len(output["results"])
+                    if task in {"youtube", "maps"}:
+                        key = "videos" if task == "youtube" else "places"
+                        if isinstance(output.get(key), list):
+                            if a["endpoint_id"] == "justoneapi.x.youtube-search-v1":
+                                videos = []
+                                for row in output[key]:
+                                    if not isinstance(row, dict) or row.get("type", "video") != "video":
+                                        continue
+                                    video_id = row.get("video_id") or row.get("id")
+                                    if not isinstance(video_id, str) or not video_id:
+                                        continue
+                                    video = dict(row, video_id=video_id)
+                                    video.setdefault("url", "https://www.youtube.com/watch?v=" + video_id)
+                                    videos.append(video)
+                                    if len(videos) == 10:
+                                        break
+                                output[key] = videos
+                            elif a["endpoint_id"] == "apify.google.serp.maps":
+                                fields = ("place_id", "name", "title", "address", "rating", "google_maps_url")
+                                output[key] = [{field: row[field] for field in fields if row.get(field) is not None}
+                                               for row in output[key][:10] if isinstance(row, dict)]
+                                output["count"] = len(output[key])
+                            else:
+                                output[key] = output[key][:10]
                     outcome = "miss" if ad.is_miss(doc) or any(output.get(k) in (None, "", [], {}) for k in contract.required_output) else "hit"
                 a["state"] = outcome
                 a["output"] = output if outcome == "hit" else {}
                 a["status"] = response.status
                 a["detail"] = "Response exceeded the size limit." if oversized else ""
+                if task == "news" and a["endpoint_id"] == "tinyfish.web.search.news" and response.status == 429:
+                    retry = route._header(response, "Retry-After")
+                    a["detail"] = (f"Try again in about {retry} seconds." if retry and retry.isdecimal()
+                                   and 0 < int(retry) <= 3600 else "Try again shortly.")
                 if outcome == "hit" and task == "sitemap":
                     a["quality"] = rules.url_rows(rules.result_items(task, output), payload["input"])
                 if outcome == "hit" and task == "fetch":
@@ -330,9 +399,9 @@ async def _run(run_id, task, mode, payload, snapshot, client, client_ip):
             await persist()
         # The provider card is saved before any optional Jev request. An unavailable
         # check does not turn the provider's answer into an error or a zero score.
-        if task == "search" and payload["jev"] and a["state"] == "hit":
+        if task in {"search", "news", "papers", "youtube"} and payload["jev"] and a["state"] == "hit":
             try:
-                a["quality"] = await web_arena_quality.search(payload["input"], a["output"], snapshot.user.id)
+                a["quality"] = await web_arena_quality.search(payload["input"], a["output"], snapshot.user.id, task=task)
             except Exception:
                 log.exception("Web Arena search check failed")
                 a["quality"] = {"state": "unknown", "estimated_match": None,
@@ -360,12 +429,12 @@ async def _run(run_id, task, mode, payload, snapshot, client, client_ip):
                 quoted_spend += a["estimate_micro"]
                 await leg(a)
                 if a["state"] == "hit":
-                    if task == "search" and payload["jev"]:
+                    if task in {"search", "news", "papers", "youtube"} and payload["jev"]:
                         score = (a.get("quality") or {}).get("estimated_match")
                         if score is None or score < 60:
                             continue
                         payload["stop_reason"] = "Stopped after an estimated match of at least 60%."
-                    elif task == "search":
+                    elif task in {"search", "news", "papers", "youtube"}:
                         payload["stop_reason"] = "Stopped at the first valid list. Relevance was not checked."
                     else:
                         payload["stop_reason"] = "Stopped at the first useful result."

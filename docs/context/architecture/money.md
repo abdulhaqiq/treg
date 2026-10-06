@@ -302,7 +302,10 @@ no task id / an off-allow-list poll URL: `application.call.service._submission_r
 becomes a row: it settles at zero on the request path and the caller sees the body and `$0`. The
 worker never lets one row abort a tick (`_process` catches everything, `settle_due` gathers with
 `return_exceptions`), because an unset platform key for one provider must not stall every other
-provider's settlements. An overflow child (`application.call.overflow._child`) carries its own
+provider's settlements. Each tick loads the catalog once, in a thread, before any poll starts
+(`settle_due`): the first catalog read in a fresh worker process parses every provider file, and
+inside a poll that parse blocked the event loop past `POLL_TIMEOUT_S`, so polls timed out with a
+fast provider. The poll timeout therefore measures the provider alone. An overflow child (`application.call.overflow._child`) carries its own
 observed-kind basis at the aggregator price, so an aggregator that reports no cost settles at the
 aggregator reserve, not at the parent's price. A `settle: usage` row reserves what its rate-card table says THIS request costs
 (the matrix ceiling had made a $0.05 call demand a $6 balance) and settles the provider's reported
@@ -432,9 +435,12 @@ without that split would have rejected the default $5 threshold on every enable.
 **A saved card arms a consented policy from either webhook.** The modal records consent first
 (`set_autotopup` → `no_card`) and relies on the top-up Checkout to save the card, so there is no
 SetupIntent in that flow: `_set_default_pm` - called by both `_on_checkout_completed` and
-`_on_setup_succeeded` - runs `_arm_if_waiting_for_card`, which turns the policy on only from the
-explicit `no_card` state. A decline, 3DS, or a deliberate off (reason `None`, consent still on
-file) stays off; a redelivered payment webhook must not switch a policy back on.
+`_on_setup_succeeded` (and `_on_payment_succeeded`) - runs `_arm_if_waiting_for_card`. It turns
+the policy back on from `no_card` once a card exists, and from repeated declines
+(`max_attempts:*`) only when the card is proven: it just paid (`paid=True`, both payment webhooks)
+or it is a newly saved card. The declined card saved again is not proof. 3DS
+(`authentication_required`) and a deliberate off (reason `None`, consent still on file) stay off;
+a redelivered payment webhook must not switch a deliberately disabled policy back on.
 
 Turning `invoice_creation` on makes Stripe emit `invoice.created` / `invoice.paid` for every top-up.
 `handle_webhook_event` drops them, deliberately: crediting on an invoice event as well as on the
@@ -465,6 +471,15 @@ cooldown stamped in the DB *before* the charge so a second web worker sees it, a
 limit, and an idempotency key derived from the threshold crossing - so a burst of concurrent calls
 that all notice the low balance produces exactly ONE charge.
 
+The wait between charges (`billing.autotopup_wait_s`) is one hour after a FAILED charge
+(`autotopup_cooldown_s`), else one hour divided by the team's `autotopup_max_per_hour` (0 = the
+default `autotopup_default_per_hour`, 5; 1-60 via `POST /billing/autotopup` `per_hour`, `treg topup
+--per-hour`, or the billing page). The number is part of the mandate text. A call refused for
+balance also calls `maybe_schedule_autotopup` (`reserve.py`, one read of the org by primary key):
+before this only a call that got through did, so a team at $0 stayed empty until something else
+ran, refusing every call meanwhile. The scheduler checks the wait in memory first,
+so a team refusing thousands of calls an hour does not start a task per call.
+
 Authorization splits by WHAT, not by who. `_billing_org` (the `/billing/*` routes - cards, top-ups,
 auto-top-up policy, payment history, the portal) requires **admin or owner**: a card, a spend policy
 and an invoice archive are the org's money, not a member's preference.
@@ -477,7 +492,7 @@ admin-only, which meant a machine identity could not read the balance it was spe
 (Reported by Jason, 2026-08-07.)
 
 The 402 also carries `autotopup_enabled` and an `auto top-up:` line in `message`. Off → the one
-command that turns it on. On → the amount, threshold, cooldown and monthly cap, plus the flags that
+command that turns it on. On → the amount, threshold, charges per hour and monthly cap, plus the flags that
 raise them - because a team that is out of money *with* auto top-up on is being held by the cooldown
 or the cap, and "add funds" alone reads as "auto top-up is broken" (cobl.ai, 2026-08-25: ~1,500
 refusals between hourly $20 refills against a $60/day burn). The org fields are read **before**
@@ -532,7 +547,7 @@ Provider-specific calculation stays outside the faithful relay.
 | Tavily Crawl | Platform calls require the same 1-20 limit. Reserve per returned extraction at 0.3 credit (Basic), 0.4 (Basic + instructions), 0.5 (Advanced), or 0.6 (Advanced + instructions), then settle valid extracted entries in `results`. This is a conservative deterministic allocation, not the exact Tavily account charge: the response does not expose every page successfully mapped before extraction. treg absorbs any hidden mapping difference, bounded by the 20-page platform cap. Grouped `usage.credits` is ignored and BYOK remains unmetered |
 | Octen search and extraction | Reserve the documented maximum from `count`, Broad `max_queries`, optional full-content results, News subjects, or Extract URL count at the advanced rate. Settle Web and News from the call base plus `meta.usage.full_content_extra_count`, Broad from `num_search_queries` plus extras, and Extract from `successful_by_mode`. Missing, malformed, or over-ceiling usage keeps the frozen hold; failed HTTP responses release it. Rates are frozen from `cost.octen_rates` before relay. Own-key calls remain unmetered and have no platform request cap. |
 | Legacy reported charge | DataForSEO `cost`, ScrapeCreators and Dropleads finder/verifier `credits_charged`, Akta and Dropleads person enrichment `credits_consumed`, Dropleads company `credits.creditsDeducted`, Lusha `billing.creditsCharged`, Exa `costDollars.total`, and Prospeo bulk `total_cost`; credit amounts use the catalog FX rate |
-| Crustdata, cloro, AI Ark | Read the charge from a response header through `_CREDIT_HEADERS` using the same FX rate. Crustdata `X-Credits-Used` and cloro `X-Credits-Charged` are positive charges; AI Ark `X-Credit` is a negative debit and declares an explicit -1 multiplier. Invalid signs and non-finite values are ignored. cloro omits the header on its free routes and on a failed extraction, neither of which it bills, so an absent header settles at the estimate, not at zero |
+| Crustdata, cloro, AI Ark, Crawl4AI | Read the charge from a response header through `_CREDIT_HEADERS` using the same FX rate. Crawl4AI `x-c4-cost` is a positive charge in credits; its streamed batch and its jobs settle by `settle: usage` instead (`summary.cost` on the stream's last line, read by `settle._usage_document`; a finished job's `usage.cost`), and a usage figure written as a decimal string (`"0.500"`) is read as a number. Crustdata `X-Credits-Used` and cloro `X-Credits-Charged` are positive charges; AI Ark `X-Credit` is a negative debit and declares an explicit -1 multiplier. Invalid signs and non-finite values are ignored. cloro omits the header on its free routes and on a failed extraction, neither of which it bills, so an absent header settles at the estimate, not at zero |
 | cloro reserve | `cost.value` is the full-surface `test_request` price (ChatGPT 9, Google SERP 7); the plain call settles lower from the header (verified live 2026-09-07 at the then-Lite rate: reserve 7,200 µ$, settled 5,600, refunded 1,600; at the Hobby rate 3,600 → 2,800, re-verified 2026-09-14). The top-level `state` body field is a `cost.modifiers` rider (+2 credits) reserved through the same generic path Aviato uses, which is open to any credit-priced provider with a FX rate |
 | Apollo | Known empty organization results are free |
 | Tomba domain search | Non-empty pages cost ceil(`meta.pageSize` / 10) credits, even when partially filled; empty `data.emails` is free. Reservation uses requested `limit`, default 10. Missing/malformed page evidence falls back to the estimate. Upstream duplicate discounts are not detected |

@@ -1,0 +1,20 @@
+{
+  "answer": {
+    "text": "AI Mode replied:The sky is blue because gases in Earth's atmosphere scatter short-wavelength blue light from the sun in all directions more than other colors. NASA Space Place (.gov) +1How Sunlight WorksWhite light from the sun is actually made up of all the colors of the rainbow combined.Different colors travel in waves of different lengths.Red and yellow light travel in long, lazy waves.Blue and violet light travel in short, choppy waves. National Geographic Kids +1The Role of the AtmosphereGas molecules like nitrogen and oxygen fill Earth's clean air.Rayleigh scatteringNASA Space Place (.gov)Why Is the Sky Blue? | NASA Space Place – NASA Science for KidsIt's easy to see that the sky is blue. Have you ever wondered why? Sunlight reaches Earth's atmosphere and is scattered in all dir...National Environmental Satellite, Data, and Information Service (.gov)Why Is the Sky Blue? | NESDIS | National Environmental Satellite, Data, and Information ServiceMechanism: Gases and particles in Earth's atmosphere scatter sunlight in all directions; white sunlight contains all rainbow color...Show all"
+  },
+  "answered": true,
+  "cached": false,
+  "experimental": true,
+  "ms": 1327,
+  "usage": {
+    "boxes": [
+      "search"
+    ],
+    "remaining_before": {
+      "concurrent": 9,
+      "requests": 29,
+      "search": 120
+    },
+    "units": 1
+  }
+}

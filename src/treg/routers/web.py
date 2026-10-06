@@ -725,6 +725,21 @@ document.querySelectorAll('button[data-copy]').forEach(function(b){
 _MD_ALT = '<link rel="alternate" type="text/markdown" href="{href}"/>'
 
 
+def _guide_md(fragment: str) -> str:
+    """An agent page's hand-written `guide` HTML as Markdown for the `.md` twin. The fragments use a
+    small fixed vocabulary (p, pre/code, ul/li, a, b, code), so this maps that and strips the rest."""
+    s = re.sub(r"<pre><code>(.*?)</code></pre>", lambda m: f"\n```\n{m.group(1)}\n```\n", fragment, flags=re.S)
+    s = re.sub(r'<a href="([^"]+)">(.*?)</a>',
+               lambda m: f"[{m.group(2)}]({get_settings().public_url.rstrip('/')}{m.group(1)})"
+               if m.group(1).startswith("/") else f"[{m.group(2)}]({m.group(1)})", s)
+    s = re.sub(r"</?b>", "**", s)
+    s = re.sub(r"</?code>", "`", s)
+    s = re.sub(r"<li>", "- ", s)
+    s = re.sub(r"</li>|</p>", "\n", s)
+    s = re.sub(r"<[^>]+>", "", s)
+    return html_mod.unescape(re.sub(r"\n{3,}", "\n\n", s)).strip()
+
+
 @app.get("/agents", include_in_schema=False)
 async def agents_hub():
     """The hub the agent pages hang from. Until this existed the nav's "Agents" link pointed at one
@@ -808,11 +823,23 @@ async def agent_page(request: Request, agent: str):
     definition = spec["definition"].format(n=n, p=p)
     menu = [(category, agent_pages.CATEGORY_PROMPTS.get(category, ""), _menu_rows(cat, category, jobs))
             for category, jobs in agent_pages.USE_CASES]
+    # An agent with `focus` gets those categories in full, in that order, and the rest as one index
+    # row each that links to the job guides. Reprinting all fourteen tables on every agent page is
+    # what made them 95-98% identical; an agent without `focus` keeps the whole menu.
+    focus = spec.get("focus") or ()
+    rest: list = []
+    if focus:
+        by_cat = {m[0]: m for m in menu}
+        rest = [m for m in menu if m[0] not in focus]
+        menu = [by_cat[c] for c in focus if c in by_cat]
+    guide = spec.get("guide") or []
     steps_text = [re.sub(r"<[^>]+>", "", st).format(n=n) for st in spec["install_steps"]]
 
     if as_md:
         md = [f"# {title}", "", definition, "", f"## Install in {name}", ""]
         md += [f"{i}. {html_mod.unescape(st)}" for i, st in enumerate(steps_text, 1)]
+        for g in guide:
+            md += ["", f"## {g['h2']}", "", _guide_md(g["html"])]
         if agent_pages.WORKFLOWS:
             md += ["", f"## Sequences {name} can run from one prompt", ""]
             md += [f"- [{wspec['sentence']}]({base}/workflows/{ws}), {len(wspec.get('steps', ()))} steps, "
@@ -834,6 +861,12 @@ async def agent_page(request: Request, agent: str):
                 link = f"{base}{r['page']}" if r["page"] else f"{base}/catalog/{r['platforms'][0]['slug']}"
                 md.append(f"- [{r['label']}]({link}): {plats}. {r['providers']} provider{'s' if r['providers'] != 1 else ''}, {price}.")
             md.append("")
+        if rest:
+            md += [f"### Everything else {name} can call", ""]
+            for category, _prompt, rows in rest:
+                md.append(f"- [{category}]({base}/use-cases#{agent_pages.category_slug(category)}): "
+                          f"{len(rows)} jobs. {agent_pages.CATEGORY_BLURBS.get(category, '')}")
+            md.append("")
         md += ["## Questions", ""]
         for q, a in spec["faq"]:
             md += [f"**{q}** {a}", ""]
@@ -843,8 +876,9 @@ async def agent_page(request: Request, agent: str):
 
     # Only the FIRST role is server-rendered, on the roleline under the H1 — the H1 itself carries
     # the term and the promise, never a persona. The rest ride in a JSON block for the script.
-    roles = f'<span class="ri on">{_esc_html(agent_pages.ROLES[0])}</span>'
-    more_roles = json.dumps(list(agent_pages.ROLES[1:])).replace("<", "\\u003c")
+    role_list = spec.get("roles") or agent_pages.ROLES  # a focused page names its own readers
+    roles = f'<span class="ri on">{_esc_html(role_list[0])}</span>'
+    more_roles = json.dumps(list(role_list[1:])).replace("<", "\\u003c")
     steps = "".join(
         f'<div class="steplabel"><span class="n">{i}</span><b>{st.format(n=n)}</b></div>'
         for i, st in enumerate(spec["install_steps"], 1))
@@ -919,7 +953,39 @@ async def agent_page(request: Request, agent: str):
               '<th>From</th></tr></thead><tbody>'
             + "".join(body_rows) + '</tbody></table></div></div></section>')
 
+    if rest:
+        cards.append(f'<a class="card" href="#more"><h4>Everything else</h4>'
+                     f'<p>{len(rest)} more categories, from search and ads to e-commerce.</p>'
+                     f'<p style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">'
+                     f'{sum(len(r) for _c, _p, r in rest)} jobs</p></a>')
+        rest_rows = []
+        for category, _prompt, rows in rest:
+            priced = [r["from_usd"] for r in rows if r["from_usd"]]
+            frm = (_esc_html(_usd_short(min(priced))) if priced
+                   else '<span style="color:var(--green)">free, your account</span>')
+            # The row keeps the category's own id, so a link to /agents/<agent>#<category> that
+            # worked when the full table was here still lands on that category.
+            rest_rows.append(
+                f'<tr id="{_esc_html(_anchor(category))}"><td><a href="/use-cases#{agent_pages.category_slug(category)}">'
+                f'<b>{_esc_html(category)}</b></a></td>'
+                f'<td style="color:var(--muted)">{_esc_html(agent_pages.CATEGORY_BLURBS.get(category, ""))}</td>'
+                f'<td>{len(rows)}</td><td>{frm}</td></tr>')
+        sections.append(
+            '<section id="more"><div class="wrap"><div class="seclab">Everything else</div>'
+            f'<h2>What else {_esc_html(name)} can call</h2>'
+            '<div class="tablewrap"><table><thead><tr><th>Category</th><th>What</th><th>Jobs</th>'
+            '<th>From</th></tr></thead><tbody>' + "".join(rest_rows) + '</tbody></table></div>'
+            '<p style="margin-top:20px"><a href="/use-cases">Every job, with its guide &rarr;</a></p>'
+            '</div></section>')
+
+    # Hand-written sections only this agent's page carries, between the install steps and the menu.
+    guide_html = "".join(
+        f'<section id="{_esc_html(g["id"])}" class="guide"><div class="wrap"><div class="seclab">{_esc_html(g["seclab"])}</div>'
+        f'<h2>{_esc_html(g["h2"])}</h2>{g["html"]}</div></section>' for g in guide)
+
     faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
+    h1 = (spec["h1"].format(n=n, p=p) if spec.get("h1")
+          else f'The {name} {spec.get("h1_noun", "plugin")}: call {n} APIs without keys')
 
     body = (
         '<div class="hero"><div class="wrap">'
@@ -929,8 +995,7 @@ async def agent_page(request: Request, agent: str):
         # The H1 carries the measured term and the promise, never a persona — a crawler was reading
         # "The ChatGPT Connector for SEO experts" as if that were the audience. The rotating role
         # wheel stays, one line down.
-        f'<h1>The {_esc_html(name)} {_esc_html(spec.get("h1_noun", "plugin"))}: '
-        f'call {n} APIs without keys</h1>'
+        f'<h1>{_esc_html(h1)}</h1>'
         f'<div class="roleline">for <span class="roleslot" id="roleslot">'
         f'<span class="rw" id="rolewheel">{roles}</span></span></div>'
         f'<script type="application/json" id="roles-more">{more_roles}</script>'
@@ -948,7 +1013,9 @@ async def agent_page(request: Request, agent: str):
         f'<section id="install"><div class="wrap"><div class="seclab">Get started</div>'
         f'<h2>Install in {_esc_html(name)}</h2>{steps}{shot}</div></section>'
 
-        '<section id="use-cases"><div class="wrap"><div class="seclab">The menu</div>'
+        + guide_html
+
+        + '<section id="use-cases"><div class="wrap"><div class="seclab">The menu</div>'
         f'<h2>What {_esc_html(name)} can do now</h2>'
         '<p>By job, not by endpoint. The price is the lowest provider&rsquo;s own rate with $0.000 added by '
         'treg.to; <b>free</b> means the job runs on an account you already own and is never metered. Where '
@@ -1017,7 +1084,7 @@ async def agent_page(request: Request, agent: str):
          "url": base + "/", "description": desc,
          "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD",
                     "description": "Free to install. Calls are metered per call from a prepaid balance at the "
-                                   "provider's own rate with no markup; every new team starts with $1.00 free."}},
+                                   "provider's own rate with no markup; your first team starts with $1.00 free."}},
         {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
             {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
             {"@type": "ListItem", "position": 2, "name": "Agents", "item": base + "/agents"},
@@ -3641,6 +3708,15 @@ async def lead_signals_skill_md():
     """The lead-signals skill: the /leads-signals workflow (detect, qualify, contact, keep watching)
     as a file an agent can follow. Bundled like make-ugc; `.agents/skills/lead-signals` links to it."""
     return _serve_md("skills/lead-signals/SKILL.md")
+
+
+@app.get("/skills/jev-memory/SKILL.md", include_in_schema=False)
+async def jev_memory_skill_md():
+    """The jev-memory skill: install (or build) the Claude Code mod in
+    `examples/claude-code-mods/jev-memory`, where Jev judges each prompt after the turn and the
+    lasting preferences are remembered. Opt-in: kept out of the well-known index, so
+    `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/jev-memory/SKILL.md")
 
 
 @app.get("/feedback.md", include_in_schema=False)

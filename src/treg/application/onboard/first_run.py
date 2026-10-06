@@ -48,11 +48,16 @@ def enabled(email: str) -> bool:
 
 async def in_experiment(email: str, http: httpx.AsyncClient | None = None) -> bool:
     """Whether this address may enter the `onboarding-v2` experiment: the experiment is on and it is
-    a work address. With `http`, an unjudged domain is put to Jev; without, only a kept verdict counts."""
+    a work address. With `http`, an unjudged domain is put to Jev, but only for an account that can
+    still be onboarded (no team it named); without, only a kept verdict counts."""
     if not get_settings().onboarding_v2_experiment:
         return False
-    if http is None:
-        return await work_email.cached(email) is True
+    known = await work_email.cached(email)
+    if known is not None or http is None:
+        return known is True
+    async with session_maker() as db:
+        if await _named_team(db, email):
+            return False      # an account that already has a team is never asked about again
     try:
         return await asyncio.wait_for(work_email.is_work(email, http), AUTH_WAIT_S)
     except TimeoutError:
@@ -60,6 +65,13 @@ async def in_experiment(email: str, http: httpx.AsyncClient | None = None) -> bo
 
 
 AUTH_WAIT_S = 3
+
+
+async def _named_team(db, email: str) -> bool:
+    """Whether this account is in a team; the legacy door's personal team (named after the email) is
+    not one the user named."""
+    return (await db.execute(select(Membership.id).join(Org, Org.id == Membership.org_id).join(
+        User, User.id == Membership.user_id).where(User.email == email, Org.name != email).limit(1))).first() is not None
 
 
 def use_http(http: httpx.AsyncClient) -> None:
@@ -142,10 +154,7 @@ async def start(user: User, *, ad_cookie: str, utm_cookie: str, referral_cookie:
         row = await _profile(db, user.id)
         if row is not None and row.org_id is not None:
             return await view(user)
-        # The legacy door's personal team (named after the email) is not one the user named.
-        has_team = (await db.execute(select(Membership.id).join(Org, Org.id == Membership.org_id).where(
-            Membership.user_id == user.id, Org.name != user.email).limit(1))).first()
-        if has_team or user.onboarded:
+        if await _named_team(db, user.email) or user.onboarded:
             raise OnboardError("already_onboarded")
     if not await _claim(user.id):
         return await _await_start(user)        # another request (a second tab) is making the team

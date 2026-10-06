@@ -17,7 +17,7 @@ from sqlmodel import select
 
 from conftest import make_upstream
 from treg.api import app
-from treg.application.onboard import first_run, page
+from treg.application.onboard import first_run, page, work_email
 from treg.application.onboard.lookup import Hints, Lookup
 from treg.application.onboard.tasks import DEFAULT_RANK, TASKS, build_calls
 from treg.config import get_settings
@@ -314,9 +314,13 @@ async def test_the_experiment_is_for_work_addresses_judged_once_per_domain(c, mo
     def judge(request: httpx.Request) -> httpx.Response:
         state = json.loads(request.content)["state"]
         asked.append(state)
-        domain = state.split("<domain>", 1)[1].split("</domain>", 1)[0]
-        return httpx.Response(200, json={"answers": {"work": {"noul": 0.9 if domain == "acme.io" else 0.1}}})
+        # the homepage is the evidence: a company's site says so
+        return httpx.Response(200, json={"answers": {"work": {"noul": 0.9 if "Acme builds" in state else 0.1}}})
 
+    async def homepage(_http, d: str) -> str:
+        return "Title: Acme builds rockets" if d == "acme.io" else ""
+
+    monkeypatch.setattr(work_email, "_homepage", homepage)
     await app.state.http.aclose()
     app.state.http = AsyncClient(transport=httpx.MockTransport(judge))
     try:
@@ -327,6 +331,12 @@ async def test_the_experiment_is_for_work_addresses_judged_once_per_domain(c, mo
             assert me.get("onboarding_v2_experiment", False) is work, email
             assert "onboarding_v2" not in me        # the flag's arm decides, not the server
         assert len(asked) == 2                       # a listed mailbox is never asked; a domain once
+        assert "<domain>mail.example</domain>" in asked[1] and "Not read" in asked[1]
+        # an account that already has a team is never put to Jev
+        c.cookies.set("treg_session", sess.make_session(await _new_user("old@older.io")))
+        assert (await c.post("/orgs", json={"name": "Older"})).status_code == 200
+        assert "onboarding_v2_experiment" not in (await c.get("/auth/me")).json()
+        assert len(asked) == 2
         assert (await c.get("/onboarding")).status_code == 404     # cy@mail.example: not a work address
         c.cookies.set("treg_session", sess.make_session(await _new_user("dee@acme.io")))
         assert (await c.get("/onboarding")).status_code == 200
@@ -420,6 +430,10 @@ async def test_a_domain_jev_could_not_judge_is_not_asked_again_at_once(c, monkey
         asked.append(1)
         return httpx.Response(503, json={})
 
+    async def no_homepage(_http, _d: str) -> str:
+        return ""
+
+    monkeypatch.setattr(work_email, "_homepage", no_homepage)
     await app.state.http.aclose()
     app.state.http = AsyncClient(transport=httpx.MockTransport(down))
     try:

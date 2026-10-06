@@ -876,6 +876,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         "observed_micro": outcome.observed_micro if outcome.observed_micro is not None else charged,
                         "response_bytes": len(outcome.body)}
 
+    # The provider's share of `duration_ms`: from sending the request until its answer is read (or,
+    # when treg streams it on, until the headers arrive). Excludes token refresh, archive lookup, a
+    # `retry-after` sleep and treg's own work. None when no request reached the provider. Without it
+    # only the total existed, so a slow call could not be pinned on the provider or on treg.
+    upstream_ms: int | None = None
+
     def _audit(status_code: int, *, observed_micro: int | None = None, charged_micro: int | None = None,
                duration_ms: int | None = None, response_bytes: int | None = None,
                refused_by: str | None = None, hit: bool | None = None,
@@ -907,7 +913,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 "cost_estimated_micro": mk.estimate_micro or None,  # informational on tiers 1/2
                 "cost_observed_micro": observed_micro,
                 "cost_charged_micro": charged_micro,
-                "duration_ms": duration_ms, "response_bytes": response_bytes,
+                "duration_ms": duration_ms, "upstream_ms": upstream_ms, "response_bytes": response_bytes,
                 "params_hash": mk.params_hash,
                 # found / not found, when this endpoint's routing adapter could read the body
                 **({"hit": hit} if hit is not None else {}),
@@ -1232,6 +1238,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
             else:
+                upstream_started = _now_ms()
                 response = await relay(
                     upstream_request,
                     upstream_url, tool, secrets, upstream_client,
@@ -1241,6 +1248,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     force_identity=mk is not None and (
                         mk.metered or mk.free_owned_poll or own_key_archivable),
                 )
+                upstream_ms = _now_ms() - upstream_started
             streaming_free_result = (mk is not None and mk.streamable_free_result
                                      and request.method == "GET" and 200 <= response.status < 300)
             if (served is None and mk is not None and (mk.metered or mk.free_owned_poll)
@@ -1249,7 +1257,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # A failure while draining remains an upstream failure on either path. An endpoint
                 # that inlines media declares `spooled_response`: its 2xx goes to disk and `body`
                 # is only the usage evidence from here on.
+                read_started = _now_ms()
                 response, body, spooled_bytes = await _read_evidence(mk, response)
+                upstream_ms = (upstream_ms or 0) + _now_ms() - read_started
                 if (platform_tier and response.status == 429 and _idempotent_read(request)
                         and (retry_s := _burst_retry_after(mk.provider, response, body)) is not None):
                     # Half two: ONE bounded wait on the provider's own `retry-after`, then the identical
@@ -1257,10 +1267,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     # said when, never on 401/402/5xx (the "no retries" rule stands for those).
                     await response.close()
                     await asyncio.sleep(retry_s)
+                    retry_started = _now_ms()
                     response = await relay(
                         upstream_request, upstream_url, tool, secrets, upstream_client,
                         drop_params=drop_params or None, force_identity=True)
                     response, body, spooled_bytes = await _read_evidence(mk, response)
+                    upstream_ms += _now_ms() - retry_started
                     smoothed.append("retry=1")
                 if mk.async_owner_call_id and 200 <= response.status < 300:
                     try:

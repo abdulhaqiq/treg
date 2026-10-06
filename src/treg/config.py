@@ -280,6 +280,7 @@ class Settings(BaseSettings):
     platform_key_litescrape: str = ""  # Bearer; prepaid calls, free key status endpoint
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
+    platform_key_crawl4ai: str = ""
     platform_key_firecrawl: str = ""  # Bearer; Standard plan credits, priced at the public base-plan rate
     platform_key_scrapegraphai: str = ""  # SGAI-APIKEY; credit balance and bounded v2 web tools
     platform_key_spidercloud: str = ""   # Bearer; PAYG USD balance, only priced routes may use shared key
@@ -470,7 +471,11 @@ class Settings(BaseSettings):
     # agent bills a card all night". Cap is per calendar month, cooldown is between attempts, and
     # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself.
     autotopup_monthly_cap_usd: int = 100
+    # The wait after a FAILED charge. After a successful one the wait is one hour divided by the
+    # team's `autotopup_max_per_hour` (default below): one charge an hour left teams that spend more
+    # than their refill per hour empty for the rest of the hour, with auto top-up ON.
     autotopup_cooldown_s: int = 3600
+    autotopup_default_per_hour: int = 5
     autotopup_max_attempts: int = 3
 
     # Call-time SSRF guard on the proxy: resolve the upstream host and refuse an internal target. On by

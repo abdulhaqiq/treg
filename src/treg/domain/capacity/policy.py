@@ -133,6 +133,9 @@ _RATE_LIMITS: dict[str, dict] = {
     # sequential platform calls by about 2s; the limiter's bounded wait is not a strict quota gate.
     # Relax this after real 429 evidence, or when smoothing can vary by endpoint. BYOK bypasses it.
     "wiza": {"limit": 30, "window_s": 60, "source": "docs"},
+    # Ocean.io documents 60/min and 1,000/day for self-serve API access. Pace the shared key at
+    # half the minute allowance; the free balance collector observes the separate daily counter.
+    "oceanio": {"limit": 30, "window_s": 60, "source": "policy"},
     # The Basic v2 docs set a shared one-request/second default. Several routes are exempt, but
     # provider-wide smoothing cannot express that difference, so shared-key service stays at 1/s.
     "limadata": {"limit": 1, "window_s": 1, "source": "docs"},

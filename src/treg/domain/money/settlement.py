@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from typing import Any
 
 from ..asynctasks import json_path as _path
@@ -162,6 +163,9 @@ def derive_basis(
 
 
 def _usage_number(value: object) -> float | None:
+    # A plain decimal string ("0.500") counts too.
+    if isinstance(value, str) and re.fullmatch(r"\d+(?:\.\d+)?", value.strip()):
+        value = float(value)
     if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) \
             and value >= 0:
         return float(value)

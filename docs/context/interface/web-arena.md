@@ -36,12 +36,14 @@ Its header shares Enrich Arena's GitHub, Discord, and X community links beside a
 The intro uses its Treg credit. The provider leaderboard replaces the no-run provider table
 and stays below private results when a run is open. The page links to the public
 `/web-arena/api/leaderboard` JSON aggregate download;
-it contains the three task summaries, update time, window, filters, and sample counts, not
+it contains available task summaries, update time, window, filters, and sample counts, not
 individual queries or provider responses.
 The `branddev` provider keeps its catalog identifier and logo but appears as Context.dev in the UI.
 `web_arena_enabled` defaults to false. The page and run API need the flag. Brand is visible but disabled.
 
-`web_arena.quote` takes a task and one input. Search asks for 10 results, Fetch asks for one URL,
+`web_arena.quote` takes a task and one input. Search, News Search, and Paper Search ask for
+10 results. YouTube Search and Maps Search compare the first ten returned rows. Maps queries
+should name the area, such as "coffee shops in Austin TX". Fetch asks for one URL,
 and Sitemap asks for a site URL with an optional search phrase and up to 10 URLs. The phrase goes
 to adapters that accept it; URL-only adapters continue with the URL, and Olostep joins only when
 the phrase is present. Sitemap hides the Jev quality switch and records Jev as off; URL validity
@@ -57,6 +59,21 @@ TinyFish is the one exception without a count request field. A Search quote can 
 first page; Web Arena compares at most the first ten returned links. Every other Search provider
 must send the ten-result limit upstream. Spider Search uses listing-only mode so its search
 does not fetch the result pages.
+News Search combines verified news endpoints from TinyFish, Search1API, Exa, AnyAPI, Serper,
+Cloro, SerpAPI, DataForSEO, LiteScrape, and Tavily. TinyFish, Search1API, Exa, and Tavily use
+the `web.search.news` catalog contract; the others use `google.serp.news`. LiteScrape fixes
+Google's `nws` vertical, and Tavily fixes its `news` topic with basic depth and usage evidence.
+Paper Search joins Exa and TinyFish publications with Serper Scholar. YouTube Search compares
+JustOneAPI, SerpAPI, and TikHub video results. Maps Search compares Apify, DataForSEO, and
+SerpAPI Google Maps place results. These lineups use platform-provided, verified catalog
+adapters; the quote still chooses one endpoint per provider and calls it directly. Maps hides
+the quality switch and records Jev as off, while Paper and YouTube use the optional intent check.
+The Maps first-page comparison does not claim that providers searched an identical viewport;
+the query itself should include a city or area. TinyFish, Cloro, and
+SerpAPI use their first news page; the other providers receive the ten-result limit upstream.
+Every news response is compared using at most its
+first ten articles. News uses the same optional intent check and result cards as Search, while
+retaining its own task and leaderboard totals.
 The public task response shows verified adapter previews and a catalog-based price estimate, so
 the provider lineup and logos appear before sign-in. The lineup is a catalog preview; a signed-in team quote removes providers it
 cannot call. A changed input, mode, Jev choice, or provider selection refreshes the quote after
@@ -76,14 +93,15 @@ The current quote appears on the Run button without a separate price step.
 The public leaderboard stays visible before and after a run and joins content-free live totals
 by provider: hit rate appears after 20 decided direct
 calls and median provider time after 20 successful uncached direct calls. The task-specific
-quality estimate appears after 20 checked Web Arena inputs. Search uses Jev intent match,
+quality estimate appears after 20 checked Web Arena inputs. Search, News Search, Paper Search,
+and YouTube Search use Jev intent match,
 Fetch uses relative fact coverage, and Sitemap coverage stays unknown without a known URL
 list. A provider call made during a Battle or Waterfall enters the direct-call aggregate
 once through `CallRecord`; it is not counted again from `WebArenaRun`. Repeat checked Arena
 inputs count once per provider for quality, using the latest checked result.
 The run form uses one quality switch with Jev and treg details in an info tooltip. A focused query has one outer
 border. Results show provider logos, time and cost, thumbs ratings, and plain failure states.
-Search and sitemap cards show the first two returned links with titles and domains,
+Search, News Search, and sitemap cards show the first two returned links with titles and domains,
 and a control to reveal the remaining links and descriptions. Fetch cards show a bounded text
 preview. The raw provider response stays in a footer disclosure
 opposite the thumbs ratings. The quality check's internal link list is not displayed separately.
@@ -113,7 +131,10 @@ Valyu is excluded from the Web Search lineup and quote until its web search pric
 
 Every leg in `_run` creates a direct `CallInput` for `service.execute_call`. Each child uses the
 ordinary credential, hold, settle, and cancellation path. The run reads and closes the full
-provider stream before it saves a bounded display result. No database session stays open
+provider stream before it saves a bounded display result. Most provider results have a 256 KB
+read limit; Apify Maps has an 800 KB limit and retains only the first ten places' display fields.
+TinyFish News 429s show the provider's retry time when it sends a numeric `Retry-After` header.
+No database session stays open
 during the provider request. Own credentials still take priority in the call runtime. Web
 Arena requests disable overflow for a direct provider comparison. A Battle runs at most four
 legs at once. Waterfall runs one leg at a time. With Jev off, Search stops at the first valid
@@ -187,9 +208,14 @@ days, capped at the 10,000 newest runs, for checked quality. The direct-call buc
 eligible dashboard, CLI, agent, Battle, and attempted Waterfall calls to the Web Arena's
 listed endpoints. A skipped Waterfall provider has no call to count. The source, window,
 filters, and sample floors travel with each saved publication.
+The composer groups Web, News, Papers, YouTube, and Maps under Search; Fetch and Sitemap stay
+beside it. Selecting Search from another task opens Web, while a saved run opens its own search
+type. Both tab rows scroll when needed, with overflow arrows and automatic reveal of the selected
+tab. Signed-in query history stays beside the main content near the viewport edge on wide
+screens and becomes a horizontal list above it on narrow screens.
 The live leaderboard follows the task selected in the query composer and uses Enrich Arena's
-comparison rail, provider logos, and hover or
-selection details. Search offers hit rate, Jev relevance, catalog price, and price vs hit rate;
+comparison rail, provider logos, and hover or selection details. Search offers hit rate, Jev
+relevance, catalog price, and price vs hit rate;
 Fetch adds fact coverage, token efficiency, and fact coverage vs token efficiency; Sitemap uses
 hit rate and price. Single metrics can appear as vertical or horizontal bars. Comparison plots
 show both axes and scroll horizontally inside the chart when needed. Price values retain their

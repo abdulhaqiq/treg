@@ -910,6 +910,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "jev_memory_skill_md",
+    "path": "/skills/jev-memory/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "feedback_md",
     "path": "/feedback.md"
   },

@@ -988,3 +988,21 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
     errors: list[str] = []
     validator.check_spooled_response(ep, None, "x", errors)
     assert errors == []
+
+
+def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
+    """`store._Loader` uses libyaml's C parser when it is installed; every shipped catalog file must
+    parse to the same document as with the pure-Python SafeLoader, timestamps kept as strings."""
+    import yaml
+    from treg.domain.catalog import store
+
+    class Pure(yaml.SafeLoader):
+        pass
+    Pure.yaml_implicit_resolvers = store._Loader.yaml_implicit_resolvers
+    if not getattr(yaml, "__with_libyaml__", False):
+        pytest.skip("libyaml not installed")
+    assert issubclass(store._Loader, yaml.CSafeLoader)
+    for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        assert yaml.load(text, Loader=store._Loader) == yaml.load(text, Loader=Pure), path.name  # noqa: S506
+    assert yaml.load("checked: 2026-09-01", Loader=store._Loader) == {"checked": "2026-09-01"}  # noqa: S506

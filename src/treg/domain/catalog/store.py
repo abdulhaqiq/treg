@@ -297,7 +297,14 @@ def load(*, refresh: bool = False, directory: Path | None = None) -> Catalog:
     return _CACHE
 
 
-class _Loader(yaml.SafeLoader):
+# libyaml's C parser reads the catalog about 9x faster than the pure-Python one (141 files: 7.7 s ->
+# 0.9 s), with the same safe constructor and the same resolvers, so the documents are identical.
+# A worker process pays the whole load on its first call; at pure-Python speed that was ~27 s on a
+# small instance, longer than the async worker's per-poll timeout.
+_SafeBase = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+class _Loader(_SafeBase):
     """SafeLoader that keeps timestamps as the strings they were written as. The validator accepts
     `checked: 2026-09-01` unquoted, and a `date` object in a served row breaks every plain
     `json.dumps` of it (the /catalog/find stream did exactly that on the video-gen rows)."""

@@ -41,6 +41,10 @@ class Contract:
     # the caller sent answers about someone else entirely (a title-only search asked for the CEO of
     # one company returns CEOs of any company), so the router drops it instead of ranking it down.
     scoping: tuple[str, ...] = ()
+    # The provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per hit alone ignores
+    # time and reliability: for `ai-search.perplexity.answer` it ranked the cheaper, slower and less
+    # reliable cloro above dataforseo. A caller's own prefer header still replaces it.
+    prefer: tuple[str, ...] = ()
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -138,7 +142,8 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
             routed=bool(c.get("routed", True)),
-            scoping=tuple(str(k) for k in scoping))
+            scoping=tuple(str(k) for k in scoping),
+            prefer=tuple(str(p).lower() for p in c.get("prefer") or ()))
     return out
 
 

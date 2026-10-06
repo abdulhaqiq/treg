@@ -380,7 +380,7 @@ AGENTS: dict[str, dict] = {
             "treg.to is a ChatGPT Connector (and MCP server) that gives ChatGPT {n} ready-to-call "
             "APIs across {p} platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, "
             "ads and e-commerce. Calls run on treg.to's own keys and are metered from a prepaid "
-            "balance at the provider's rate with $0.000 markup. Every new team starts with $1.00 "
+            "balance at the provider's rate with $0.000 markup. Your first team starts with $1.00 "
             "free, and there are no provider accounts to open."),
         # Steps shown as numbered HTML list items. The setup line is the universal install.
         # {n} is interpolated from the catalog count at render time.
@@ -394,7 +394,7 @@ AGENTS: dict[str, dict] = {
         # slot rather than with a broken image (the old Plugins-directory PNG shows a dead UI).
         "faq": [
             ("Is treg.to free to use in ChatGPT?",
-             "Installing is free and every new team starts with $1.00 of calls. After that, each call "
+             "Installing is free and your first team starts with $1.00 of calls. After that, each call "
              "is metered from the team's prepaid balance at the provider's own rate, with no markup "
              "and no subscription. Calls on your team's own keys are free."),
             ("Do I need API keys from the providers?",
@@ -644,7 +644,7 @@ AGENTS["claude"] = {
         "treg.to is an MCP server for Claude that gives it {n} ready-to-call APIs across {p} "
         "platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, ads and e-commerce. "
         "Calls run on treg.to's own keys and are metered from a prepaid balance at the provider's "
-        "rate with $0.000 markup. Every new team starts with $1.00 free, and there are no provider "
+        "rate with $0.000 markup. Your first team starts with $1.00 free, and there are no provider "
         "accounts to open."),
     "install_steps": [
         "In Claude, send this in the chat: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
@@ -657,7 +657,7 @@ AGENTS["claude"] = {
     "install_image": None,
         "faq": [
             ("Is treg.to free to use in Claude?",
-             "Installing is free and every new team starts with $1.00 of calls. After that each call "
+             "Installing is free and your first team starts with $1.00 of calls. After that each call "
              "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
              "no subscription and no seats. Calls on your team's own keys are free."),
             ("Do I need API keys from the providers?",
@@ -675,45 +675,220 @@ AGENTS["claude"] = {
         ],
 }
 
+# The Claude Code page leads with lead enrichment (people search, finding and verifying work emails,
+# enriching a company) and shows the menu's other categories as a short index instead of reprinting
+# all of it. The first cut was the ChatGPT page with the name swapped, 95-98% identical to its siblings, and
+# Google left it "Discovered - currently not indexed". `focus` and `guide` are what make it its own
+# page; the route renders both, and an agent without them keeps the full menu.
 AGENTS["claude-code"] = {
     "name": "Claude Code",
     "h1_noun": "MCP server",
-    "title": "Claude Code MCP server: {n} APIs, no keys | treg.to",
+    "h1": "Lead enrichment in Claude Code: people, emails and companies from {n} APIs",
+    "title": "Claude Code MCP: lead enrichment, {n} APIs | treg.to",
     "description": (
-        "treg.to gives Claude Code {n} ready-to-call APIs across {p} platforms: work emails, LinkedIn profiles, creators, keyword volumes, backlinks, competitor ads. Priced per call at the provider's own rate with no markup and no provider signup."),
+        "Find people, find and verify work emails, and enrich companies from Claude Code: treg.to is "
+        "an MCP server and CLI with {n} APIs across {p} platforms, one key, priced per call at the "
+        "provider's own rate with no markup."),
     "definition": (
-        "treg.to is an MCP server for Claude Code that gives it {n} ready-to-call APIs across {p} "
-        "platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, ads and e-commerce. "
-        "One command registers it, calls run on treg.to's keys at the provider's rate with $0.000 "
-        "markup, and your own keys are never metered."),
+        "treg.to is an MCP server and CLI for Claude Code that gives it {n} ready-to-call APIs across "
+        "{p} platforms, built for lead enrichment: search people by company and title, find a work "
+        "email, verify it, enrich the company. Calls run on treg.to's "
+        "keys at the provider's rate with $0.000 markup, and your own keys are never metered."),
     "install_steps": [
         "In Claude Code, send this in the chat: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
         "It reads that page and registers treg.to as an MCP server for you. Prefer to do it "
         "yourself? <code>curl -fsSL https://treg.to/install.sh | sh</code> then "
         "<code>treg login</code> and <code>treg mcp install</code>.",
         "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
-        "Ask for what you want done, or call an endpoint directly with "
-        "<code>treg call &lt;endpoint-id&gt;</code>. The price comes back before the spend.",
+        "Ask for what you want done, or run <code>treg catalog get &lt;endpoint-id&gt;</code> for "
+        "the price and parameters, then <code>treg call &lt;endpoint-id&gt;</code>.",
     ],
     "install_image": None,
-        "faq": [
-            ("Is treg.to free to use in Claude Code?",
-             "Installing is free and every new team starts with $1.00 of calls. After that each call "
-             "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
-             "no subscription and no seats. Calls on your team's own keys are free."),
-            ("Do I need API keys from the providers?",
-             "No. treg.to makes the upstream request on its own key and relays the answer, so Claude Code "
-             "never holds a provider credential. If your team already pays for a provider, register "
-             "that key and those calls are never metered."),
-            ("What does a call cost?",
-             "It depends on the job and the provider: from well under a cent for a keyword lookup to "
-             "a few cents for a verified work email. treg.to adds $0.000 on top of the provider's "
-             "rate, and Claude Code tells you the price before it spends it."),
-            ("Does treg.to pick the provider for me?",
-             "No. Where several providers do one job they are shown side by side with prices and "
-             "measured reliability, and Claude Code picks, or you tell it how. treg.to does not route or "
-             "fail over between providers automatically."),
-        ],
+    "focus": ("Data enrichment", "Buying signals"),
+    "roles": ("GTM engineers", "SDRs", "founders doing outbound", "growth teams", "recruiters"),
+    "guide": [
+        {"id": "enrichment", "seclab": "The main job",
+         "h2": "Four calls that turn a company into a contact",
+         "html": (
+             "<p>Lead enrichment is one motion: who works there, what is their email, is it real, "
+             "and what is the company. Each step is a routed tool: "
+             "treg.to runs the providers for that job, your own keys first, then the cheapest per hit, "
+             "and the answer names the provider that served it. Claude Code can call them over MCP or "
+             "run them from its shell:</p>"
+             "<pre><code># 1. who: people at a company, by the function you sell to\n"
+             "treg call treg.people.search --method POST --data '{\"company_domain\":\"acme.com\",\"title\":\"marketing\"}'\n\n"
+             "# 2. their work email\n"
+             "treg call treg.people.email.find --method POST --data '{\"full_name\":\"Jane Doe\",\"domain\":\"acme.com\"}'\n\n"
+             "# 3. is it deliverable: a found email is a best match, not a checked one\n"
+             "treg call treg.people.email.verify --method POST --data '{\"email\":\"jane@acme.com\"}'\n\n"
+             "# 4. the company: size, industry, location, from a bare domain\n"
+             "treg call treg.companies.enrich --method POST --data '{\"domain\":\"acme.com\"}'</code></pre>"
+             "<p>Search for the buyer's function, not &ldquo;decision makers&rdquo;: in our 30 Sep run a "
+             "decision-makers list for five accounts held 45 senior people and not one marketing title, "
+             "while a title search for &ldquo;marketing&rdquo; found 20 people at all eight. Cap a whole "
+             "waterfall with the <code>X-Treg-Route-Max-Cost</code> header, and run step 3 on every "
+             "address before it goes into a sequence.</p>")},
+        {"id": "lead-list", "seclab": "A real run",
+         "h2": "A verified lead list from one prompt",
+         "html": (
+             "<p>Hand Claude Code the ICP and let it chain the four calls, dropping companies before "
+             "it pays for people:</p>"
+             "<pre><code>Using treg, build a list of US B2B software companies with 51-200 staff that "
+             "sell to marketing teams. Check each one against icp.md before any people lookup, find "
+             "the head of marketing or growth, find and verify their work email, and write the rows "
+             "to leads.csv with the provider that answered each step and what it cost.</code></pre>"
+             "<p>A related, broader run on 23 Sep took 50 companies (48 with a usable domain) to 27 "
+             "that passed the check and 20 verified deliverable contacts, for $2.33 metered "
+             "including news lookups and opener scoring: $0.12 per deliverable lead. The 21 "
+             "companies that failed the check never reached a paid step. The receipt is at "
+             "<a href=\"/workflows/find-and-verify-a-lead-list\">find and verify a lead list</a>, and "
+             "the whole method, from ICP to rollout, is the "
+             "<a href=\"/gtm-engineering\">GTM engineering playbook</a>.</p>")},
+        {"id": "mcp-or-cli", "seclab": "In Claude Code",
+         "h2": "MCP, CLI or skill: which to use",
+         "html": (
+             "<ul>"
+             "<li><b>MCP</b> for questions and small lookups. Claude Code sees "
+             "<code>catalog_search</code>, <code>catalog_get</code> and <code>call</code>, reads the "
+             "price before it spends, and the answer lands in the conversation.</li>"
+             "<li><b>CLI</b> for batches. A loop over 500 rows in Claude Code's shell writes each "
+             "answer to a file, so the rows never pass through the context window, and the CLI "
+             "prints what each call was charged.</li>"
+             "<li><b>The skill</b> is how Claude Code knows the flow. <code>install.sh</code> puts it "
+             "in <code>~/.claude/skills/treg/</code>; the same file is served at "
+             "<a href=\"/skill.md\">/skill.md</a>.</li>"
+             "</ul>")},
+        {"id": "cost", "seclab": "What it costs",
+         "h2": "Cost per correct work email, against the tools you would otherwise use",
+         "html": (
+             "<p>On the same 292 people (16 Sep 2026), cost per correct work email: treg.to "
+             "$0.0056, Monid $0.0257, Clay $0.0395, Freckle $0.0427, Deepline $0.0924. Exact match: "
+             "90.4%, 79.8%, 89.7%, 90.1% and 86.6%. Each column is an aggregator, not one provider. "
+             "The method and every row are in the "
+             "<a href=\"/blog/work-email-finding-bench\">work email finding bench</a>.</p>")},
+    ],
+    "faq": [
+        ("Is treg.to free to use in Claude Code?",
+         "Installing is free and your first team starts with $1.00 of calls. After that each call "
+         "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
+         "no subscription and no seats. Calls on your team's own keys are free."),
+        ("Do I need API keys from the providers?",
+         "No. treg.to makes the upstream request on its own key and relays the answer, so Claude Code "
+         "never holds a provider credential. If your team already pays for a provider, register "
+         "that key and those calls are never metered."),
+        ("Can Claude Code run a waterfall for work emails?",
+         "Yes, through the routed tools: treg.people.email.find tries its providers, your own keys "
+         "first and then the cheapest per hit, and stops at the first one that finds the address. "
+         "X-Treg-Route-Max-Cost caps the whole waterfall, and X-Treg-Route-Waterfall: 0 stops at the "
+         "first miss. Any other endpoint is exactly the provider you named."),
+        ("Is a found email safe to send to?",
+         "Not until it is verified. A finder returns its best match; run treg.people.email.verify on "
+         "every address, and treat catch-all and unknown as their own list rather than as valid."),
+        ("What does a call cost?",
+         "It depends on the job and the provider: from well under a cent for a keyword lookup to "
+         "a few cents for a verified work email. treg.to adds $0.000 on top of the provider's "
+         "rate, and Claude Code tells you the price before it spends it."),
+    ],
+}
+
+# Hermes Agent (Nous Research) connects to MCP servers from ~/.hermes/config.yaml. The light CLI has
+# no YAML writer, so `treg mcp install` detects Hermes and prints the block rather than writing it
+# (mcp_install.MANUAL_AGENTS); the page shows the same block. What Hermes adds that the other
+# clients do not is its own scheduler and messaging gateway, so its page leads with a recurring
+# check delivered to chat. treg.to answers the calls; the schedule and the delivery are Hermes's.
+AGENTS["hermes"] = {
+    "name": "Hermes Agent",
+    "h1_noun": "MCP server",
+    "h1": "Hermes Agent MCP server: {n} APIs for scheduled research",
+    "title": "Hermes Agent MCP server: {n} APIs, no keys | treg.to",
+    "description": (
+        "Add treg.to to Hermes Agent's config.yaml and it can call {n} APIs across {p} platforms: "
+        "people and company enrichment, hiring and funding signals, SEO, social. Run checks on "
+        "Hermes's schedule, delivered to Telegram or Slack, priced per call with no markup."),
+    "definition": (
+        "treg.to is an MCP server for Hermes Agent that gives it {n} ready-to-call APIs across {p} "
+        "platforms: people and company enrichment, hiring and funding signals, SEO data, social and "
+        "ads. Add one block to ~/.hermes/config.yaml; calls run on treg.to's keys at the provider's "
+        "rate with $0.000 markup, and your own keys are never metered."),
+    "install_steps": [
+        "Get your team token from the treg.to dashboard, or run <code>treg login</code>.",
+        "Add treg.to under <code>mcp_servers</code> in <code>~/.hermes/config.yaml</code> (the block "
+        "is below). <code>treg mcp install</code> detects Hermes and prints manual configuration "
+        "instructions rather than writing the file.",
+        "In Hermes, run <code>/reload-mcp</code>. The tools appear as "
+        "<code>mcp__treg__catalog_search</code>, <code>mcp__treg__catalog_get</code> and "
+        "<code>mcp__treg__call</code>.",
+        "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
+    ],
+    "install_image": None,
+    "focus": ("Buying signals", "Data enrichment"),
+    "roles": ("GTM engineers", "founders", "SDRs", "market researchers", "recruiters"),
+    "guide": [
+        {"id": "config", "seclab": "The config",
+         "h2": "The block for ~/.hermes/config.yaml",
+         "html": (
+             "<pre><code>mcp_servers:\n"
+             "  treg:\n"
+             "    url: \"https://treg.to/mcp/\"\n"
+             "    headers:\n"
+             "      Authorization: \"Bearer &lt;your team token&gt;\"\n"
+             "    tools:\n"
+             "      include: [catalog_search, catalog_get, call]</code></pre>"
+             "<p>The <code>include</code> list is optional. It keeps the three tools a research job "
+             "needs and leaves out the rest (balance, my_tools, review, feedback and others), so "
+             "Hermes carries fewer tool definitions into every turn. Drop the list to load them "
+             "all.</p>")},
+        {"id": "schedule", "seclab": "On a schedule",
+         "h2": "A weekly buying-signal check, delivered to your chat",
+         "html": (
+             "<p>Hermes has its own scheduler and sends results to Telegram, Slack, Discord and other "
+             "chats through its gateway, once the gateway is running and a chat is connected. treg.to "
+             "does not schedule anything: it answers the calls each run makes. A scheduled job runs "
+             "in a fresh session, so give it absolute paths and a file to remember what it already "
+             "sent:</p>"
+             "<pre><code>Every Monday at 8am, use treg to check the companies in "
+             "/path/to/accounts.csv for open sales, marketing or growth roles posted in the last 7 "
+             "days, and any funding round announced in that time. Skip closed postings. Compare "
+             "against /path/to/seen-signals.csv (company + source link), send me only the new ones "
+             "in Telegram, one line per company with the link, then add them to that file."
+             "</code></pre>"
+             "<p>For scale: in a separate 30 Sep check of 27 accounts with a 60-day window, 16 had "
+             "open GTM roles posted or first seen in that period, 355 of the 675 postings returned "
+             "were already closed, and the jobs and funding checks together cost $1.35. Keep the "
+             "source link on every line: no link, no signal. The method is chapter 9 of the "
+             "<a href=\"/gtm-engineering\">GTM engineering playbook</a>.</p>")},
+        {"id": "enrichment", "seclab": "Then act on it",
+         "h2": "From a signal to a contact",
+         "html": (
+             "<p>When a check turns something up, the same session can go one step further: search "
+             "the company's people by the function you sell to, find a work email with "
+             "<code>treg.people.email.find</code>, and verify it with "
+             "<code>treg.people.email.verify</code> before anything is sent. The seen-signals "
+             "file is the job's memory between runs; treg.to keeps no list for you.</p>"
+             "<p>The receipts for each step are on "
+             "<a href=\"/workflows/find-and-verify-a-lead-list\">find and verify a lead list</a>.</p>")},
+    ],
+    "faq": [
+        ("Is treg.to free to use in Hermes Agent?",
+         "Adding it is free and your first team starts with $1.00 of calls. After that each call is "
+         "metered from the team's prepaid balance at the provider's own rate, with no markup, no "
+         "subscription and no seats. Calls on your team's own keys are free."),
+        ("Do I need API keys from the providers?",
+         "No. treg.to makes the upstream request on its own key and relays the answer, so Hermes "
+         "only holds your treg.to team token. If your team already pays for a provider, register "
+         "that key and those calls are never metered."),
+        ("Does treg.to run the schedule?",
+         "No. Hermes's own scheduler runs the job and its gateway delivers the result. treg.to "
+         "answers each call the run makes and charges for those calls only."),
+        ("Can I use a treg.to skill in Hermes instead of MCP?",
+         "Hermes reads skills in the open SKILL.md format, and treg.to's skill is served at "
+         "treg.to/skill.md. The MCP block above follows Hermes's documented MCP configuration; "
+         "it gives Hermes the catalog search, and catalog_get shows the price before a call."),
+        ("Does treg.to pick the provider for me?",
+         "Only when you call a routed tool such as treg.people.email.find, which tries its providers "
+         "your own keys first, then cheapest per hit. Everywhere else the providers for a job are "
+         "shown side by side with prices and measured reliability, and Hermes, or you, chooses."),
+    ],
 }
 
 AGENTS["cursor"] = {
@@ -738,7 +913,7 @@ AGENTS["cursor"] = {
     "install_image": None,
         "faq": [
             ("Is treg.to free to use in Cursor?",
-             "Installing is free and every new team starts with $1.00 of calls. After that each call "
+             "Installing is free and your first team starts with $1.00 of calls. After that each call "
              "is metered from the team's prepaid balance at the provider's own rate, with no markup, "
              "no subscription and no seats. Calls on your team's own keys are free."),
             ("Do I need API keys from the providers?",
@@ -2736,7 +2911,7 @@ AGENTS["grok-bot"] = {
         "treg.to is an MCP server for Grok Bot that gives it {n} ready-to-call tools across {p} "
         "platforms: SEO data, LinkedIn and people enrichment, Reddit, YouTube, ads and e-commerce. "
         "Calls run on treg.to's own keys and are metered from a prepaid balance at the provider's "
-        "rate with $0.000 markup. Every new team starts with $1.00 free, and there are no provider "
+        "rate with $0.000 markup. Your first team starts with $1.00 free, and there are no provider "
         "accounts to open."),
     # {n} is interpolated from the catalog count at render time.
     "install_steps": [
@@ -2767,7 +2942,7 @@ AGENTS["grok-bot"] = {
          "There is no raw page-to-markdown scraper; website reading is a named-field extraction by "
          "domain. The catalog says what each tool covers on the page rather than pretending."),
         ("Is treg.to free to use in Grok Bot?",
-         "Adding it is free and every new team starts with $1.00 of calls. After that, each call is "
+         "Adding it is free and your first team starts with $1.00 of calls. After that, each call is "
          "metered from the team's prepaid balance at the provider's own rate, with no markup and no "
          "subscription. Calls on your team's own keys are free."),
         ("Do I need API keys from the providers?",

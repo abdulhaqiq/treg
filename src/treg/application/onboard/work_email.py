@@ -2,10 +2,11 @@
 
 Two steps, cheapest first. A domain on the catalog's free-mail list (`paths.email_domain`: free
 mailboxes, ISPs, disposable addresses) is personal, at once and for free. Any other domain is put to
-Jev once, as a house call, and the verdict is kept per domain: the first sign-up from a domain pays a
-judgment, the rest read it. When Jev cannot answer, the domain counts as personal for ten minutes,
-then is asked again. The verdict only decides who may enter the experiment; it never blocks a
-sign-up.
+Jev once, as a house call, with what its homepage says (a domain's spelling alone leaves small
+companies and throwaway mail services near even odds), and the verdict is kept per domain: the first
+sign-up from a domain pays a judgment, the rest read it. When Jev cannot answer, the domain counts as
+personal for ten minutes, then is asked again. The verdict only decides who may enter the experiment;
+it never blocks a sign-up.
 """
 from __future__ import annotations
 
@@ -19,21 +20,25 @@ from ...config import get_settings
 from ...domain.catalog.routing.paths import email_domain
 from ...infra.db import session_maker
 from ..house_calls import HouseCalls
+from . import page
 from .lookup import JEV_ENDPOINT, JEV_MODEL
 
 log = logging.getLogger("treg.onboarding")
 
-NS = "onboarding_domain"
+NS = "onboarding_work_domain"    # renamed when the question changed: verdicts to the old one are not kept
 TTL_S = 30 * 86400
 UNKNOWN_TTL_S = 600      # a domain Jev could not judge is treated as personal this long, then asked again
 JUDGE_TIMEOUT_S = 6
-WORK = 0.6        # Jev's yes probability at which a domain counts as a company's own
+HOMEPAGE_S = 3           # the homepage is read this long at most; without it Jev judges the name alone
+WORK = 0.5        # Jev's yes probability at which a domain counts as a company's own. Even odds count:
+                  # a personal domain in the new flow costs little, a company left out costs a sample
 
 
 QUESTION = ("Is {domain} the email domain of a company or organisation that its people work for, as "
-            "opposed to a free, personal, ISP, school or disposable mailbox?")
-CRITERIA = {"true": "A business's own domain: the address belongs to someone at that company.",
-            "false": "Anyone can get an address there, or it is a school, an ISP or a throwaway service."}
+            "opposed to a free, personal, ISP, school or disposable mailbox? Use its homepage when there is one.")
+CRITERIA = {"true": "A business's own domain: the address belongs to someone at that company, whose site it is.",
+            "false": "Anyone can get an address there (a mail, temporary-address or hosting service), or it is "
+                     "a school or an ISP."}
 
 
 async def cached(email: str) -> bool | None:
@@ -68,9 +73,12 @@ async def _judge(d: str, http: httpx.AsyncClient) -> bool:
     if not s.onboarding_treg_token:
         return False
     house = HouseCalls(http, s.onboarding_treg_token, "onboarding", s.onboarding_treg_url)
+    site = await _homepage(http, d)
+    state = (f"# An email domain\n\n<domain>{d}</domain>\n\n# Its homepage, https://{d}\n\n"
+             f"<homepage>{site[:600] if site else 'Not read: the site was slow, refused us, or does not exist.'}</homepage>")
     try:
         a = await asyncio.wait_for(house.request("POST", JEV_ENDPOINT, "judge", json={
-            "model": JEV_MODEL, "state": f"# An email domain\n\n<domain>{d}</domain>",
+            "model": JEV_MODEL, "state": state,
             "questions": {"work": {"type": "noul", "instructions": QUESTION.format(domain=d), "criteria": CRITERIA}}},
             headers={"X-Treg-Route-Max-Cost": "0.02"}, timeout=JUDGE_TIMEOUT_S), JUDGE_TIMEOUT_S + 1)
         p = float(a.body["answers"]["work"]["noul"]) if a.status == 200 else None
@@ -86,3 +94,11 @@ async def _judge(d: str, http: httpx.AsyncClient) -> bool:
     except Exception as exc:  # noqa: BLE001 - an unkept verdict is asked again next time
         log.info("onboarding: work-email verdict for %s not kept: %s", d, type(exc).__name__)
     return work
+
+
+async def _homepage(http: httpx.AsyncClient, d: str) -> str:
+    """What https://<d> says about itself, or empty: a slow or unsafe site is judged by its name."""
+    try:
+        return await asyncio.wait_for(page.text(http, d, timeout=HOMEPAGE_S), HOMEPAGE_S + 0.5)
+    except Exception:  # noqa: BLE001 - the homepage is evidence, never a reason to fail the judgment
+        return ""

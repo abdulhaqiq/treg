@@ -22,6 +22,10 @@ from test_routing import _relay_by_provider
 
 def test_web_input_enforces_task_limits_and_public_urls():
     assert web_arena.input_for("search", "open data") == {"q": "open data", "limit": 10}
+    assert web_arena.input_for("news", "  AI policy  ") == {"q": "AI policy", "limit": 10}
+    assert web_arena.input_for("papers", "graph search") == {"q": "graph search", "limit": 10}
+    assert web_arena.input_for("youtube", "graph search") == {"q": "graph search"}
+    assert web_arena.input_for("maps", "coffee shops in Austin TX") == {"q": "coffee shops in Austin TX"}
     assert web_arena.input_for("sitemap", "https://example.com") == {"url": "https://example.com", "limit": 10}
     assert web_arena.input_for("sitemap", "https://example.com", "  pricing  ") == {
         "url": "https://example.com", "limit": 10, "q": "pricing"}
@@ -240,6 +244,12 @@ def test_public_task_previews_show_verified_search_providers(monkeypatch):
         tasks = {row["id"]: row for row in app.tasks()}
         search = {row["provider"] for row in tasks["search"]["provider_previews"]}
         assert {"exa", "firecrawl", "tavily", "tinyfish", "serper", "spidercloud", "octen"} <= search
+        news = {row["provider"] for row in tasks["news"]["provider_previews"]}
+        assert news == {"anyapi", "cloro", "dataforseo", "exa", "litescrape", "search1api",
+                        "serpapi", "serper", "tavily", "tinyfish"}
+        assert {p["endpoint_id"] for p in tasks["papers"]["provider_previews"]} == app.PAPER_ENDPOINTS
+        assert {p["endpoint_id"] for p in tasks["youtube"]["provider_previews"]} == app.YOUTUBE_ENDPOINTS
+        assert {p["endpoint_id"] for p in tasks["maps"]["provider_previews"]} == app.MAPS_ENDPOINTS
         assert "valyu" not in search
         assert not tasks["brand"]["enabled"]
         assert tasks["brand"]["provider_previews"] == []
@@ -520,5 +530,153 @@ async def test_new_search_providers_join_one_ten_link_quote(clients, monkeypatch
             "tinyfish", "serper", "spidercloud", "octen"}
         assert next(p for p in quote["providers"] if p["provider"] == "tinyfish")["estimate_micro"] == 0
         assert quote["required_micro"] == quote["estimate_micro"]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_news_search_quotes_platform_providers_with_news_parameters(clients, monkeypatch):
+    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tinyfish,search1api,exa,anyapi,cloro,serpapi,serper,dataforseo,litescrape,tavily")
+    for provider in ("TINYFISH", "SEARCH1API", "EXA", "ANYAPI", "CLORO", "SERPAPI", "SERPER",
+                     "DATAFORSEO", "LITESCRAPE", "TAVILY"):
+        monkeypatch.setenv("TREG_PLATFORM_KEY_" + provider, "TEST-" + provider)
+    get_settings.cache_clear()
+    try:
+        response = await clients.post("/web-arena/api/quotes", json={
+            "task": "news", "value": "AI policy", "mode": "battle", "jev": False})
+        assert response.status_code == 200, response.text
+        quote = response.json()
+        assert {p["endpoint_id"] for p in quote["providers"]} == app.NEWS_ENDPOINTS
+        async with session_maker() as db:
+            from treg.models import WebArenaRun
+            saved = await db.get(WebArenaRun, quote["id"])
+        attempts = {a["provider"]: a for a in app.arena._unpack(saved.payload)["attempts"]}
+        assert attempts["tinyfish"]["query"]["domain_type"] == "news"
+        assert attempts["search1api"]["body"]["max_results"] == 10
+        assert attempts["exa"]["body"]["category"] == "news"
+        assert attempts["exa"]["body"]["numResults"] == 10
+        assert attempts["anyapi"]["body"]["limit"] == 10
+        assert attempts["serper"]["body"]["num"] == 10
+        assert attempts["cloro"]["body"]["pages"] == 1
+        assert attempts["serpapi"]["query"]["engine"] == "google_news"
+        assert attempts["dataforseo"]["body"] == [{"keyword": "AI policy", "location_code": 2840,
+                                                    "language_code": "en", "depth": 10}]
+        assert attempts["litescrape"]["query"]["tbm"] == "nws"
+        assert attempts["litescrape"]["query"]["num"] == "10"
+        assert attempts["tavily"]["body"]["topic"] == "news"
+        assert attempts["tavily"]["body"]["max_results"] == 10
+        assert attempts["tavily"]["body"]["include_usage"] is True
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(("task", "value", "expected"), [
+    ("papers", "graph search", app.PAPER_ENDPOINTS),
+    ("youtube", "graph search", app.YOUTUBE_ENDPOINTS),
+    ("maps", "coffee shops in Austin TX", app.MAPS_ENDPOINTS),
+])
+async def test_new_search_tasks_quote_platform_lineups(clients, monkeypatch, task, value, expected):
+    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "exa,tinyfish,serper,justoneapi,serpapi,tikhub,apify,dataforseo")
+    for provider in ("EXA", "TINYFISH", "SERPER", "JUSTONEAPI", "SERPAPI", "TIKHUB", "APIFY", "DATAFORSEO"):
+        monkeypatch.setenv("TREG_PLATFORM_KEY_" + provider, "TEST-" + provider)
+    get_settings.cache_clear()
+    try:
+        response = await clients.post("/web-arena/api/quotes", json={
+            "task": task, "value": value, "mode": "battle", "jev": True})
+        assert response.status_code == 200, response.text
+        quote = response.json()
+        assert {p["endpoint_id"] for p in quote["providers"]} == expected
+        assert quote["jev"] is (task != "maps")
+        async with session_maker() as db:
+            from treg.models import WebArenaRun
+            saved = await db.get(WebArenaRun, quote["id"])
+        attempts = {a["provider"]: a for a in app.arena._unpack(saved.payload)["attempts"]}
+        if task == "papers":
+            assert attempts["exa"]["body"] == {"query": value, "numResults": 10, "category": "publication"}
+            assert attempts["tinyfish"]["query"]["domain_type"] == "research_paper"
+        elif task == "youtube":
+            assert attempts["serpapi"]["query"]["engine"] == "youtube"
+            assert attempts["tikhub"]["query"]["type"] == "video"
+        else:
+            assert attempts["serpapi"]["query"]["type"] == "search"
+            assert attempts["apify"]["body"]["maxCrawledPlaces"] == 10
+            assert attempts["apify"]["body"]["maxCrawledPlacesPerSearch"] == 10
+            assert attempts["apify"]["query"]["maxTotalChargeUsd"] == "0.12"
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(("provider", "task", "answer", "expected_count"), [
+    ("apify", "maps", [{"place_id": str(i), "name": f"Cafe {i}", "address": "Austin",
+                       "rating": 4.5, "google_maps_url": f"https://maps.google.com/{i}",
+                       "extra": "x" * 60_000} for i in range(10)], 10),
+    ("justoneapi", "youtube", {"code": 0, "data": {"items": [
+        {"type": "channel", "id": "channel", "title": "A channel"},
+        {"type": "video", "id": "abc12345678", "title": "A video", "description": "About it"},
+    ], "nextToken": "next"}}, 1),
+])
+async def test_new_search_result_shapes_are_usable(clients, monkeypatch, provider, task, answer, expected_count):
+    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", provider)
+    monkeypatch.setenv("TREG_PLATFORM_KEY_" + provider.upper(), "TEST-" + provider)
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider({provider: [(201 if provider == "apify" else 200,
+                                                                        answer)]}, seen))
+    try:
+        quote = await clients.post("/web-arena/api/quotes", json={
+            "task": task, "value": "coffee shops in Austin TX" if task == "maps" else "claude mods",
+            "mode": "battle", "providers": [provider], "jev": False})
+        assert quote.status_code == 200, quote.text
+        run_id = quote.json()["id"]
+        assert (await clients.post(f"/web-arena/api/runs/{run_id}/start")).status_code == 200
+        worker = app._owners.get(run_id)
+        if worker:
+            await asyncio.wait_for(asyncio.shield(worker), 15)
+        attempt = (await clients.get(f"/web-arena/api/runs/{run_id}")).json()["attempts"][0]
+        assert attempt["state"] == "hit", attempt
+        rows = attempt["output"]["places" if task == "maps" else "videos"]
+        assert len(rows) == expected_count
+        if task == "maps":
+            assert "extra" not in rows[0]
+            assert attempt["output"]["count"] == 10
+        else:
+            assert rows[0]["url"] == "https://www.youtube.com/watch?v=abc12345678"
+            assert attempt["output"]["next_cursor"] == "next"
+            assert web_arena_quality._search_links(attempt["output"], "youtube")
+        assert len(seen) == 1
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_tinyfish_news_rate_limit_explains_retry(clients, monkeypatch):
+    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tinyfish")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TINYFISH", "TEST-TINYFISH")
+    get_settings.cache_clear()
+
+    async def relay(*args, **kwargs):
+        async def body():
+            yield b'{"error":{"code":"RATE_LIMIT_EXCEEDED"}}'
+        async def close():
+            return None
+        return UpstreamResponse(429, ((b"content-type", b"application/json"),
+                                      (b"retry-after", b"20")), body(), close)
+
+    monkeypatch.setattr(service, "relay", relay)
+    try:
+        quote = await clients.post("/web-arena/api/quotes", json={
+            "task": "news", "value": "AI policy", "mode": "battle", "providers": ["tinyfish"], "jev": False})
+        assert quote.status_code == 200, quote.text
+        run_id = quote.json()["id"]
+        assert (await clients.post(f"/web-arena/api/runs/{run_id}/start")).status_code == 200
+        worker = app._owners.get(run_id)
+        if worker:
+            await asyncio.wait_for(asyncio.shield(worker), 15)
+        attempt = (await clients.get(f"/web-arena/api/runs/{run_id}")).json()["attempts"][0]
+        assert attempt["state"] == "error"
+        assert attempt["status"] == 429
+        assert attempt["detail"] == "Try again in about 20 seconds."
     finally:
         get_settings.cache_clear()
