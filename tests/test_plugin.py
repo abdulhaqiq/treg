@@ -132,11 +132,12 @@ def test_the_connector_points_at_production_over_https():
     exactly one person, and reviewers test from their own machines."""
     import json as _json
     mcp = _json.loads((PLUGIN / ".mcp.json").read_text(encoding="utf-8"))
-    assert set(mcp) == {"treg"}
-    url = mcp["treg"]["url"]
+    # The documented shape (`mcpServers`, url only): the OpenAI plugin portal offers no Connect for a
+    # server declared any other way. Auth is OAuth, which the portal and Codex both run themselves.
+    assert set(mcp) == {"mcpServers"} and set(mcp["mcpServers"]) == {"treg"}
+    url = mcp["mcpServers"]["treg"]["url"]
     assert url.startswith("https://"), url
     assert "ngrok" not in url and "localhost" not in url and "127.0.0.1" not in url
-    assert mcp["treg"]["bearer_token_env_var"] == "TREG_TOKEN"
 
 
 def test_at_most_three_default_prompts(manifest):
