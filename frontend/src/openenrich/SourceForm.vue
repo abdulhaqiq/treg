@@ -50,6 +50,11 @@ async function addFilter(name) {
   await nextTick()
   document.getElementById(`oe-f-${name}`)?.focus()
 }
+// a value picked in one filter that belongs to another: that filter's card, with the value in it
+function addTo(name, item) {
+  if (!active.value.includes(name)) active.value.push(name)
+  if (!values[name].some((x) => x.label === item.label)) values[name] = [...values[name], item]
+}
 function removeFilter(name) {
   active.value = active.value.filter((n) => n !== name)
   values[name] = empty(byName[name])
@@ -123,6 +128,7 @@ async function loadMore() {
     const { records, ids } = listRecords(props.source.kind, a.rows, a.columns)
     const seen = new Set(res.rows.map(keyOf))
     const fresh = records.filter((x) => !seen.has(keyOf(x)))
+    res.repeats = (res.repeats || 0) + records.length - fresh.length
     res.rows.push(...fresh)
     res.ids = [...new Set([...res.ids, ...ids])]
     res.page = page
@@ -183,7 +189,7 @@ function create() {
             <span class="muted">to</span>
             <input v-model="values[name].max" type="number" min="0" :placeholder="byName[name].placeholders?.[1] || 'max'" />
           </div>
-          <ValuePicker v-else v-model="values[name]" :filter="byName[name]" :input-id="`oe-f-${name}`" />
+          <ValuePicker v-else v-model="values[name]" :filter="byName[name]" :input-id="`oe-f-${name}`" @elsewhere="addTo" />
           <small v-if="byName[name].note" class="muted">{{ byName[name].note }}</small>
         </div>
 
@@ -228,6 +234,7 @@ function create() {
         <template v-if="result">
           <strong>Preview</strong>
           <span class="muted">· {{ result.rows.length }} {{ source.kind }} · {{ usd(result.cost || 0) }} via {{ result.servedBy }}</span>
+          <span v-if="result.repeats" class="muted small" title="The provider sent rows already in the list on a later page; they are left out, but it bills every row it sends">· {{ result.repeats }} {{ result.repeats === 1 ? 'repeat' : 'repeats' }} dropped</span>
           <span v-if="stale" class="muted small">· filters changed, search again to update</span>
         </template>
         <span v-else class="muted">Add filters and search to preview results.</span>

@@ -106,7 +106,8 @@
 .oe .tagbox { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; border: 1px solid var(--line2); border-radius: var(--rb); padding: 5px 6px; cursor: text; background: var(--surface); }
 .oe .tagbox input, .oe .tagbox input:focus, .oe .tagbox input:focus-visible { border: 0; padding: 3px 4px; flex: 1; min-width: 80px; width: auto; outline: none; box-shadow: none; background: none; }
 .oe .tagbox:focus-within { border-color: var(--ink); }
-.oe .tagv { display: inline-flex; align-items: center; gap: 4px; background: var(--panel2); border-radius: 6px; padding: 2px 4px 2px 8px; font-size: 12.5px; }
+.oe .tagv { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; background: var(--panel2); border-radius: 6px; padding: 2px 4px 2px 8px; font-size: 12.5px; white-space: nowrap; }
+.oe .tagv-text { overflow: hidden; text-overflow: ellipsis; }
 .oe .tagv button { border: 0; background: none; padding: 0 3px; color: var(--muted); line-height: 1; }
 .oe .opts { display: flex; flex-wrap: wrap; gap: 6px; max-height: 180px; overflow: auto; }
 .oe .opt { border: 1px solid var(--line2); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; }

@@ -6,14 +6,15 @@ import { COUNTRIES } from './countries.js'
 import { LOOKUPS, lookupRetries, typoScore } from './jobs.js'
 
 const props = defineProps({ filter: Object, modelValue: Array, inputId: String })
-const emit = defineEmits(['update:modelValue'])
+// `elsewhere`: a suggestion that belongs to another filter (an industry search's description keyword)
+const emit = defineEmits(['update:modelValue', 'elsewhere'])
 const api = inject('oeApi')
 
 const LOCAL = { countries: COUNTRIES, countryNames: COUNTRIES.map((c) => ({ value: c.label, label: c.label })) }
 const local = Array.isArray(props.filter.options) ? props.filter.options : LOCAL[props.filter.options] || null
 const lookup = props.filter.lookup ? LOOKUPS[props.filter.lookup] : null
-// no value of this list matches: what the words could be instead (an AI company is a description
-// keyword, not an industry), as items that write their own field
+// no value of this list matches: what the words could be in another filter (an AI company is a
+// description keyword, not an industry); picking one adds it there
 const fallback = props.filter.fallback ? { ...props.filter.fallback, ...LOOKUPS[props.filter.fallback.lookup] } : null
 const extra = ref([])
 let asked = 0                  // the latest text asked about: an older answer arriving late is dropped
@@ -27,7 +28,7 @@ const loading = computed(() => listLoading.value || searching.value)
 const all = ref(null)          // a `once` lookup's whole list
 const items = computed(() => props.modelValue || [])
 // an item is known by its label and field: several industries share the same NAICS codes
-const key = (x) => (x && typeof x === 'object' ? `${x.field || ''}:${x.label}` : String(x))
+const key = (x) => (x && typeof x === 'object' ? `${x.elsewhere || ''}:${x.label}` : String(x))
 const chosen = computed(() => new Set(items.value.map(key)))
 
 let timer = null
@@ -59,7 +60,7 @@ async function forgiving(l, q) {
 async function fetchFallback() {
   const q = text.value.trim()
   if (!fallback || q.length < 3 || matches.value.length) return []
-  return (await forgiving(fallback, q)).map((o) => ({ ...o, field: fallback.field, note: fallback.note }))
+  return (await forgiving(fallback, q)).map((o) => ({ ...o, elsewhere: fallback.filter }))
 }
 watch(text, () => {
   clearTimeout(timer)
@@ -90,7 +91,8 @@ const matches = computed(() => {
 const suggestions = computed(() => [...matches.value, ...extra.value.filter((o) => !chosen.value.has(key(o)))].slice(0, 40))
 
 function add(item) {
-  if (!chosen.value.has(key(item))) emit('update:modelValue', [...items.value, item])
+  if (item.elsewhere) emit('elsewhere', item.elsewhere, { value: item.value, label: item.label })
+  else if (!chosen.value.has(key(item))) emit('update:modelValue', [...items.value, item])
   text.value = ''
 }
 function remove(item) {
@@ -111,7 +113,7 @@ const label = (x) => (x && typeof x === 'object' ? x.label : x)
 <template>
   <div class="picker-field" @focusout="open = false">
     <div class="tagbox" @click="$event.currentTarget.querySelector('input').focus()">
-      <span v-for="x in items" :key="key(x)" class="tagv">{{ label(x) }}<small v-if="x.note" class="muted"> · {{ x.note }}</small>
+      <span v-for="x in items" :key="key(x)" class="tagv" :title="label(x)"><span class="tagv-text">{{ label(x) }}</span>
         <button type="button" title="Remove" @mousedown.prevent @click.stop="remove(x)">×</button>
       </span>
       <input :id="inputId" v-model="text" :placeholder="items.length ? '' : filter.placeholder || (filter.type === 'search' ? 'Search…' : 'Type and press Enter')"
@@ -120,7 +122,7 @@ const label = (x) => (x && typeof x === 'object' ? x.label : x)
     </div>
     <div v-if="open && (suggestions.length || loading || (filter.type === 'search' && text.trim().length > 1))" class="suggest">
       <p v-if="loading" class="muted small">Searching…</p>
-      <p v-if="!loading && !matches.length && extra.length" class="muted small">No {{ filter.label.toLowerCase() }} by that name. As {{ fallback.note }}:</p>
+      <p v-if="!loading && !matches.length && extra.length" class="muted small">No {{ filter.label.toLowerCase() }} by that name. Add as {{ fallback.note }}:</p>
       <button v-for="o in suggestions" :key="key(o)" type="button" class="sugg-item" @mousedown.prevent @click="add(o)">{{ o.label }}</button>
       <p v-if="!loading && !suggestions.length" class="muted small">No match. Try another word.</p>
     </div>
