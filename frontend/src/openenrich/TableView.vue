@@ -53,7 +53,13 @@ function flush() {
   flushing = flushing.then(async () => {
     await flushTable(t.value, null)
     for (const c of children.values()) { const replaced = c.replaced; c.replaced = new Set(); await flushTable(c.table, replaced) }
-  }).catch((e) => { banner.value = `Could not save: ${e.message}` })
+  }).then(() => { if (banner.value.startsWith('Could not save')) banner.value = '' })
+    .catch((e) => {
+      // nothing counted as saved: try again shortly, so a moment out of reach loses no cells
+      banner.value = `Could not save: ${e.message}. Trying again…`
+      clearTimeout(saveTimer)
+      saveTimer = setTimeout(flush, 4000)
+    })
   return flushing
 }
 async function flushTable(table, replaced) {
@@ -208,12 +214,13 @@ async function runRow(run, row, cols, job, child, othersRunning, shared, fresh =
   setRun(row, group, res.state === 'hit' ? { state: 'hit', ...meta } : { state: res.state, error: res.error, ...meta })
 }
 
-// 429, or the same key still running from an earlier run: wait and ask again (a finished call
-// answers from treg's replay, free)
+// 429, the same key still running from an earlier run, or treg out of reach for a moment (a
+// network drop, a restart): wait and ask again. A finished call answers from treg's replay, free,
+// so asking again never pays twice.
 async function callWithRetry(tool, req) {
   for (let attempt = 0; ; attempt++) {
     const r = await api.run(tool, req)
-    const busy = r.status === 429 || (r.status === 409 && /in progress/i.test(JSON.stringify(r.answer)))
+    const busy = r.status === 0 || r.status === 429 || (r.status === 409 && /in progress/i.test(JSON.stringify(r.answer)))
     if (!busy || attempt >= 5) return r
     await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1)))
   }
