@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { fromStored, idempotencyKey } from '../src/openenrich/client.js'
-import { filterBody, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
+import { SOURCES, filterBody, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -226,13 +226,23 @@ test("a result column no row fills is left out, a row's name and domain stay", a
   assert.deepEqual(ids, ['name', 'domain', 'employees'])
 })
 
-test('filters make the search request: empty left out, tags as lists, ranges as min and max', () => {
-  const filters = [{ name: 'industry', type: 'text' }, { name: 'keywords', type: 'tags', strict: true },
-    { name: 'employees', type: 'range', strict: true }, { name: 'seniority', type: 'choice', multi: true, strict: true }, { name: 'name', type: 'text' }]
-  const body = filterBody(filters, { industry: ' Fintech ', keywords: ['payments', ' '], employees: { min: '11', max: '' }, seniority: [], name: '' })
-  assert.deepEqual(body, { industry: 'Fintech', keywords: ['payments'], employees_min: 11 })
-  assert.equal(usesStrict(filters, body), true)
-  assert.equal(usesStrict(filters, { industry: 'Fintech' }), false)
+test('filters make the search request: conditions pick the field, one value goes to its single field', () => {
+  const people = SOURCES.find((x) => x.id === 'people')
+  const f = Object.fromEntries(people.filters.map((x) => [x.name, x]))
+  const filters = [f.title, f.seniority, f.department, f.size, f.per_company, f.full_name]
+  const body = filterBody(filters, {
+    title: ['Head of Growth'], seniority: [{ value: 'vp', label: 'VP' }, { value: 'director', label: 'Director' }],
+    department: [{ value: 'sales', label: 'Sales' }], size: { min: '50', max: '' }, per_company: '2', full_name: '',
+  }, { department: 'none' })
+  assert.deepEqual(body, { title: 'Head of Growth', seniority: ['vp', 'director'], department_exclude: ['sales'], employees_min: 50, per_company: 2 })
+  // two titles: the list field; a filter-only search still has its own anchor (department) or not
+  assert.deepEqual(filterBody([f.title], { title: ['CFO', 'CEO'] }), { titles: ['CFO', 'CEO'] })
+  assert.equal(usesStrict(people, { title: 'CFO' }), false)
+  assert.equal(usesStrict(people, body), true)
+  // an industry option carries its NAICS codes, sent flat
+  const companies = SOURCES.find((x) => x.id === 'companies')
+  const industry = companies.filters.find((x) => x.name === 'industry')
+  assert.deepEqual(filterBody([industry], { industry: [{ value: [5112, 5415], label: 'Software' }] }), { naics: [5112, 5415] })
 })
 
 test('a stored queued or running run reads as not run yet', () => {

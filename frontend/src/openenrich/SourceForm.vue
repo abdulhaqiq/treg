@@ -5,6 +5,7 @@
 import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { FIXED, MAX_SEEDS, ROUTE_CAP_USD, filterBody, listRecords, priceOf, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
 import { icon } from './icons.js'
+import ValuePicker from './ValuePicker.vue'
 
 const props = defineProps({ source: Object })
 const emit = defineEmits(['cancel', 'created'])
@@ -12,10 +13,10 @@ const api = inject('oeApi')
 
 const filters = props.source.filters
 const byName = Object.fromEntries(filters.map((f) => [f.name, f]))
-const empty = (f) => (f.type === 'tags' || (f.type === 'choice' && f.multi) ? [] : f.type === 'range' ? { min: '', max: '' } : '')
+const empty = (f) => (f.type === 'range' ? { min: '', max: '' } : f.type === 'text' || f.type === 'number' ? '' : [])
 const values = reactive(Object.fromEntries(filters.map((f) => [f.name, empty(f)])))
 const active = ref(filters.filter((f) => f.open).map((f) => f.name))
-const drafts = reactive({})        // a tags filter's text not yet added
+const conditions = reactive(Object.fromEntries(filters.filter((f) => f.ops).map((f) => [f.name, f.ops[0].id])))  // filter -> its condition (ops)
 const picker = ref(false)
 const pickQuery = ref('')
 const limit = ref(25)
@@ -36,7 +37,11 @@ const pickable = computed(() => {
   for (const f of left) (groups[f.suggested && !q ? 'Popular' : f.group] ||= []).push(f)
   return Object.entries(groups)
 })
-const op = (f) => (f.type === 'range' ? 'between' : f.type === 'tags' || f.multi ? 'is any of' : 'is')
+const op = (f) => (f.type === 'range' ? 'between' : f.type === 'number' ? 'at most' : f.ops?.length === 1 ? f.ops[0].label : 'is')
+const picked = (f, o) => values[f.name].some((x) => JSON.stringify(x.value) === JSON.stringify(o.value))
+function togglePick(f, o) {
+  values[f.name] = picked(f, o) ? values[f.name].filter((x) => JSON.stringify(x.value) !== JSON.stringify(o.value)) : [...values[f.name], o]
+}
 
 async function addFilter(name) {
   if (!active.value.includes(name)) active.value.push(name)
@@ -49,26 +54,16 @@ function removeFilter(name) {
   active.value = active.value.filter((n) => n !== name)
   values[name] = empty(byName[name])
 }
-function addTag(f) {
-  const parts = String(drafts[f.name] || '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean)
-  for (const v of parts) if (!values[f.name].includes(v)) values[f.name].push(v)
-  drafts[f.name] = ''
-}
-function backTag(f) {
-  if (!drafts[f.name] && values[f.name].length) values[f.name].pop()
-}
-
-const body = computed(() => filterBody(filters.filter((f) => active.value.includes(f.name)), values))
-const canSearch = computed(() => Object.keys(body.value).length > 0 || Object.values(drafts).some((d) => String(d || '').trim()))
+const body = computed(() => filterBody(filters.filter((f) => active.value.includes(f.name)), values, conditions))
+const canSearch = computed(() => Object.keys(body.value).some((k) => (props.source.identity || []).includes(k)))
 const price = computed(() => {
   const p = priceOf(tool.value, Object.keys(body.value))
   return p.known ? `${usd(p.min * 1e6)}–${usd(p.max * 1e6)}` : ''
 })
 const columns = computed(() => result.value?.ids || FIXED[props.source.kind])
-watch([values, limit, active], () => { if (result.value) stale.value = true }, { deep: true })
+watch([values, limit, active, conditions], () => { if (result.value) stale.value = true }, { deep: true })
 
 async function search() {
-  for (const f of filters) if (f.type === 'tags' && drafts[f.name]) addTag(f)
   busy.value = true
   error.value = ''
   try {
@@ -77,7 +72,7 @@ async function search() {
     const multi = filters.find((f) => f.split && b[f.name])
     const seeds = multi ? b[multi.name].slice(0, MAX_SEEDS) : []
     const bodies = multi ? seeds.map((v) => ({ ...b, [multi.name]: v })) : [b]
-    const strict = usesStrict(filters, b)
+    const strict = usesStrict(props.source, b)
     const runs = await Promise.all(bodies.map((x) => api.run(props.source.tool,
       { method: 'POST', body: x, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude, fresh: true, strict })))
     const answers = runs.map(readAnswer)
@@ -169,31 +164,26 @@ function create() {
           <header>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(byName[name].icon)" /></svg>
             <strong>{{ byName[name].label }}</strong>
-            <span class="op">{{ op(byName[name]) }}</span>
+            <select v-if="byName[name].ops?.length > 1" v-model="conditions[name]" class="op-select">
+              <option v-for="o in byName[name].ops" :key="o.id" :value="o.id">{{ o.label }}</option>
+            </select>
+            <span v-else class="op">{{ op(byName[name]) }}</span>
             <button type="button" class="icon" title="Remove filter" @click="removeFilter(name)">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path :d="icon('x')" /></svg>
             </button>
           </header>
           <input v-if="byName[name].type === 'text'" :id="`oe-f-${name}`" v-model="values[name]" :placeholder="byName[name].placeholder" />
-          <div v-else-if="byName[name].type === 'tags'" class="tagbox" @click="$event.currentTarget.querySelector('input').focus()">
-            <span v-for="v in values[name]" :key="v" class="tagv">{{ v }}
-              <button type="button" title="Remove" @click.stop="values[name] = values[name].filter((x) => x !== v)">×</button>
-            </span>
-            <input :id="`oe-f-${name}`" v-model="drafts[name]" :placeholder="values[name].length ? '' : byName[name].placeholder"
-                   @keydown.enter.prevent="addTag(byName[name])" @keydown.,.prevent="addTag(byName[name])"
-                   @keydown.backspace="backTag(byName[name])" @blur="addTag(byName[name])" />
-          </div>
-          <div v-else-if="byName[name].type === 'choice'" class="opts">
-            <label v-for="o in byName[name].options" :key="o.value ?? o" :class="['opt', { on: byName[name].multi ? values[name].includes(o.value ?? o) : values[name] === (o.value ?? o) }]">
-              <input v-if="byName[name].multi" v-model="values[name]" type="checkbox" :value="o.value ?? o" hidden />
-              <input v-else v-model="values[name]" type="radio" :value="o.value ?? o" hidden />{{ o.label ?? o }}
-            </label>
+          <input v-else-if="byName[name].type === 'number'" :id="`oe-f-${name}`" v-model="values[name]" type="number" min="1" :placeholder="byName[name].placeholder" />
+          <div v-else-if="byName[name].type === 'pick'" class="opts">
+            <button v-for="o in byName[name].options" :key="o.value" type="button" :class="['opt', { on: picked(byName[name], o) }]"
+                    @click="togglePick(byName[name], o)">{{ o.label }}</button>
           </div>
           <div v-else-if="byName[name].type === 'range'" class="range">
-            <input :id="`oe-f-${name}`" v-model="values[name].min" type="number" min="0" placeholder="min" />
+            <input :id="`oe-f-${name}`" v-model="values[name].min" type="number" min="0" :placeholder="byName[name].placeholders?.[0] || 'min'" />
             <span class="muted">to</span>
-            <input v-model="values[name].max" type="number" min="0" placeholder="max" />
+            <input v-model="values[name].max" type="number" min="0" :placeholder="byName[name].placeholders?.[1] || 'max'" />
           </div>
+          <ValuePicker v-else v-model="values[name]" :filter="byName[name]" :input-id="`oe-f-${name}`" />
           <small v-if="byName[name].note" class="muted">{{ byName[name].note }}</small>
         </div>
 
@@ -225,6 +215,7 @@ function create() {
           <button class="primary wide" :disabled="busy || !canSearch">
             {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
           </button>
+          <p v-if="Object.keys(body).length && !canSearch" class="muted small center">Add a title, department, industry, location, keyword or technology to search on.</p>
           <p v-if="price" class="muted small center">
             One search<template v-if="filters.some((f) => f.split)"> per domain (up to {{ MAX_SEEDS }})</template> costs {{ price }}. No results, no charge.
           </p>

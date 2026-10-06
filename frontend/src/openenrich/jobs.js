@@ -1,69 +1,144 @@
 // What a user can do, and the pure helpers behind it (mapping inputs, reading answers, CSV).
 // No Vue and no fetch here, so `npm test` covers it with node alone.
 
-// Where a list starts. A search's `filters` are what the filter builder offers, each sent as one
-// field of the routed search: `text` (one value), `tags` (several, sent as a list), `choice` (from
-// `options`, several when `multi`), `range` (`min`/`max` fields). `suggested` ones show as chips;
-// `strict` ones are contract filters a provider may not express, so a search using one asks treg to
-// skip providers that would ignore it (X-Treg-Route-Strict-Filters). `split`: the search takes one
-// value, so each value is its own search (lookalikes of several companies).
+// ---- what a search can filter on ---------------------------------------------------------------
+// Value lists are the providers' own (the routed searches' contract notes name them): a filter's
+// values are picked, never typed blind, so a search cannot silently match nothing.
+const opts = (pairs) => pairs.map(([value, label]) => ({ value, label }))
+const humanize = (id) => id.replace(/_and_/g, ' & ').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
+
+export const SENIORITIES = opts([['owner', 'Owner'], ['founder', 'Founder'], ['c_suite', 'C-suite'], ['partner', 'Partner'], ['vp', 'VP'],
+  ['head', 'Head'], ['director', 'Director'], ['manager', 'Manager'], ['senior', 'Senior'], ['entry', 'Entry'], ['intern', 'Intern']])
+export const DEPARTMENTS = ['sales', 'marketing', 'business_development', 'customer_success_and_support', 'engineering_technical',
+  'information_technology', 'product_management', 'design', 'research', 'quality_assurance', 'operations', 'finance', 'accounting',
+  'human_resources', 'legal', 'consulting', 'administrative', 'purchasing', 'program_and_project_management', 'media_and_communication',
+  'education', 'medical_health', 'real_estate', 'manufacturing_and_production', 'transportation_and_logistics', 'energy_mining_and_utilities',
+  'skilled_trades_construction_and_maintenance', 'hospitality_food_and_guest_services', 'community_and_social_services',
+  'public_administration_and_government', 'military_and_protective_services', 'arts_entertainment_and_performance',
+  'sports_and_recreation', 'agriculture_forestry_and_animal_care', 'beauty_and_personal_care'].map((value) => ({ value, label: humanize(value) }))
+export const EMPLOYEE_RANGES = opts([['1-10', '1–10'], ['11-50', '11–50'], ['51-200', '51–200'], ['201-500', '201–500'],
+  ['501-1K', '501–1,000'], ['1K-5K', '1,000–5,000'], ['5K-10K', '5,000–10,000'], ['over-10K', '10,000+']])
+export const REVENUE_RANGES = opts([['under-1m', 'Under $1M'], ['1m-10m', '$1M–10M'], ['10m-50m', '$10M–50M'], ['50m-100m', '$50M–100M'],
+  ['100m-200m', '$100M–200M'], ['200m-1b', '$200M–1B'], ['over-1b', 'Over $1B']])
+// people search reads revenue in finer bands
+export const PEOPLE_REVENUE = opts([['very_small', '$0–100K'], ['small_lower', '$100K–500K'], ['small_upper', '$500K–1M'],
+  ['lower_mid_sized', '$1M–5M'], ['mid_sized_lower', '$5M–10M'], ['mid_sized_upper', '$10M–25M'], ['large_lower', '$25M–50M'],
+  ['large_upper', '$50M–100M'], ['enterprise_lower', '$100M–500M'], ['enterprise_upper', '$500M–1B'], ['global_giants_lower', '$1B–5B'],
+  ['global_giants_upper', '$5B–10B'], ['super_enterprises', '$10B+']])
+export const COMPANY_TYPES = opts([['private', 'Private'], ['public', 'Public'], ['nonprofit', 'Nonprofit'], ['educational', 'Educational'],
+  ['government', 'Government'], ['partnership', 'Partnership'], ['self-employed', 'Self-employed'], ['self-owned', 'Self-owned']])
+export const FUNDING_ROUNDS = opts([['seed', 'Seed'], ['angel', 'Angel'], ['series_a', 'Series A'], ['series_b', 'Series B'],
+  ['series_c', 'Series C'], ['series_d', 'Series D'], ['series_e', 'Series E'], ['series_f', 'Series F'], ['series_g', 'Series G'],
+  ['series_h', 'Series H'], ['venture', 'Venture (series unknown)'], ['debt_financing', 'Debt financing']])
+export const CATEGORIES = opts([['b2b', 'B2B'], ['b2c', 'B2C'], ['b2g', 'B2G'], ['saas', 'SaaS'], ['e-commerce', 'E-commerce'],
+  ['marketplace', 'Marketplace'], ['media', 'Media'], ['mobile', 'Mobile'], ['service-provider', 'Service provider']])
+
+// Type-ahead value lists, read through treg (free lookups): `query` builds the lookup's query string
+// from what the user typed, `read` turns its answer into options. `once`: one lookup, filtered here.
+export const LOOKUPS = {
+  peopleIndustries: { tool: 'leadsforge.people.search.filters.industries', query: (q) => ({ search: q, limit: 20 }),
+    read: (a) => (Array.isArray(a) ? a : []).map((x) => ({ value: x.name, label: x.name.replace(/^\w/, (c) => c.toUpperCase()) })) },
+  companyIndustries: { tool: 'companyenrich.industries.list', once: true,
+    read: (a) => (Array.isArray(a) ? a : []).map((x) => ({ value: x.naicsCodes, label: x.name.replace(/\//g, ' › ') })) },
+  technologies: { tool: 'companyenrich.technologies.autocomplete', query: (q) => ({ query: q }),
+    read: (a) => (Array.isArray(a) ? a : []).map((x) => ({ value: x, label: x })) },
+  keywords: { tool: 'companyenrich.keywords.autocomplete', query: (q) => ({ query: q }),
+    read: (a) => (Array.isArray(a) ? a : []).map((x) => ({ value: x, label: x })) },
+}
+
+const ANY = (key, single) => ({ id: 'any', label: 'is any of', key, single })
+const NONE = (key) => ({ id: 'none', label: 'is none of', key })
+
+// Where a list starts. A search's `filters` are what the builder offers. A filter's `type` says how
+// its values are given: `pick` (a short list, as pills), `search` (a long or remote list, typed to
+// find: `options` here, or a `lookup`), `tags` (free words, with `options` as suggestions), `text`,
+// `range` (`key`_min / `key`_max) or `number`. Its `ops` are the conditions a provider can apply,
+// each writing one field of the search; `single` is the field one value goes to (a field more
+// providers take). `identity` names the fields a search may be made of alone; any other field asks
+// treg to skip providers that would ignore it (X-Treg-Route-Strict-Filters). `split`: the search
+// takes one value, so each value is its own search (lookalikes of several companies).
 export const SOURCES = [
   {
     id: 'companies', label: 'Find companies', kind: 'companies', tool: 'treg.companies.search',
-    hint: 'Filter by industry, technology or country',
+    hint: 'Filter by industry, size, location, funding or technology',
+    identity: ['q', 'name', 'industry', 'technology', 'domain', 'naics', 'technologies', 'keywords', 'countries', 'employee_ranges',
+      'revenue_ranges', 'company_type', 'category', 'funding_rounds'],
     filters: [
-      { name: 'industry', label: 'Industry', icon: 'building', group: 'Company', type: 'text', placeholder: 'Software', suggested: true },
-      { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'text', placeholder: 'US', note: 'ISO code', suggested: true, strict: true },
-      { name: 'technology', label: 'Uses technology', icon: 'code', group: 'Company', type: 'text', placeholder: 'Stripe', suggested: true },
-      { name: 'employees', label: 'Company size', icon: 'users', group: 'Company', type: 'range', note: 'employees', suggested: true, strict: true },
+      { name: 'industry', label: 'Industry', icon: 'building', group: 'Company', type: 'search', lookup: 'companyIndustries', ops: [ANY('naics')], suggested: true },
+      { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'search', options: 'countries', ops: [ANY('countries', 'country')], suggested: true },
+      { name: 'size', label: 'Company size', icon: 'users', group: 'Company', type: 'pick', options: EMPLOYEE_RANGES, ops: [ANY('employee_ranges')], suggested: true },
+      { name: 'technology', label: 'Technology', icon: 'code', group: 'Company', type: 'search', lookup: 'technologies', ops: [ANY('technologies', 'technology')], suggested: true },
+      { name: 'revenue', label: 'Annual revenue', icon: 'dollar', group: 'Company', type: 'pick', options: REVENUE_RANGES, ops: [ANY('revenue_ranges')] },
+      { name: 'funding', label: 'Funding round', icon: 'trend', group: 'Company', type: 'pick', options: FUNDING_ROUNDS, ops: [ANY('funding_rounds')] },
+      { name: 'type', label: 'Company type', icon: 'briefcase', group: 'Company', type: 'pick', options: COMPANY_TYPES, ops: [ANY('company_type')] },
+      { name: 'category', label: 'Business model', icon: 'layers', group: 'Company', type: 'pick', options: CATEGORIES, ops: [ANY('category')] },
+      { name: 'keywords', label: 'Description keywords', icon: 'tag', group: 'Company', type: 'search', lookup: 'keywords', ops: [ANY('keywords')] },
+      { name: 'founded', label: 'Founded', icon: 'hash', group: 'Company', type: 'range', key: 'founded', placeholders: ['from year', 'to year'] },
       { name: 'name', label: 'Company name', icon: 'tag', group: 'Company identifiers', type: 'text', placeholder: 'Acme' },
       { name: 'domain', label: 'Domain', icon: 'link', group: 'Company identifiers', type: 'text', placeholder: 'acme.com' },
-      // a description alone reaches one provider, with thin rows: it is offered, not suggested
-      { name: 'q', label: 'Description', icon: 'search', group: 'Company', type: 'text', placeholder: 'AI design tools' },
+      // a description alone reaches one provider, with thin rows: offered, not suggested
+      { name: 'q', label: 'Describe them', icon: 'search', group: 'Company identifiers', type: 'text', placeholder: 'AI design tools for teams' },
     ],
   },
   {
     id: 'people', label: 'Find people', kind: 'people', tool: 'treg.people.search',
-    hint: 'Filter by job title, company or location',
+    hint: 'Filter by role, seniority, department or their company',
+    identity: ['q', 'company_domain', 'title', 'full_name', 'titles', 'department', 'company_industry', 'company_keywords',
+      'company_technology', 'company_location'],
     filters: [
-      { name: 'title', label: 'Job title', icon: 'briefcase', group: 'Person', type: 'text', placeholder: 'Head of Growth', suggested: true },
-      { name: 'company_domain', label: 'Company domain', icon: 'link', group: 'Company', type: 'text', placeholder: 'ramp.com', suggested: true },
-      { name: 'seniority', label: 'Seniority', icon: 'trend', group: 'Person', type: 'choice', multi: true, suggested: true, strict: true,
-        options: [['owner', 'Owner'], ['founder', 'Founder'], ['c_suite', 'C-suite'], ['partner', 'Partner'], ['vp', 'VP'], ['head', 'Head'],
-          ['director', 'Director'], ['manager', 'Manager'], ['senior', 'Senior'], ['entry', 'Entry'], ['intern', 'Intern']].map(([value, label]) => ({ value, label })) },
-      { name: 'location', label: 'Location', icon: 'pin', group: 'Location', type: 'text', placeholder: 'London, United Kingdom', suggested: true, strict: true },
-      { name: 'employees', label: 'Company size', icon: 'building', group: 'Company', type: 'range', note: 'employees at their current company', strict: true },
-      { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'text', placeholder: 'GB', note: 'ISO code', strict: true },
-      { name: 'keywords', label: 'Skills and topics', icon: 'tag', group: 'Person', type: 'tags', placeholder: 'payments', strict: true },
+      { name: 'title', label: 'Job title', icon: 'briefcase', group: 'Person', type: 'tags', placeholder: 'Head of Growth', ops: [ANY('titles', 'title'), NONE('title_exclude')], suggested: true },
+      { name: 'seniority', label: 'Seniority', icon: 'trend', group: 'Person', type: 'pick', options: SENIORITIES, ops: [ANY('seniority'), NONE('seniority_exclude')], suggested: true },
+      { name: 'department', label: 'Department', icon: 'layers', group: 'Person', type: 'search', options: DEPARTMENTS, ops: [ANY('department'), NONE('department_exclude')], suggested: true },
+      { name: 'location', label: 'Person location', icon: 'pin', group: 'Location', type: 'tags', options: 'countryNames', placeholder: 'United Kingdom', ops: [ANY('location', 'location'), NONE('location_exclude')] },
+      { name: 'company_domain', label: 'Company domain', icon: 'link', group: 'Company', type: 'tags', placeholder: 'ramp.com', ops: [ANY('company_domain', 'company_domain'), NONE('company_domain_exclude')], suggested: true },
+      { name: 'industry', label: 'Company industry', icon: 'building', group: 'Company', type: 'search', lookup: 'peopleIndustries', ops: [ANY('company_industry'), NONE('company_industry_exclude')], suggested: true },
+      { name: 'size', label: 'Company size', icon: 'users', group: 'Company', type: 'range', key: 'employees', placeholders: ['min employees', 'max employees'] },
+      { name: 'company_location', label: 'Company location', icon: 'pin', group: 'Location', type: 'tags', options: 'countryNames', placeholder: 'United States', ops: [ANY('company_location'), NONE('company_location_exclude')] },
+      { name: 'funding', label: 'Company funding', icon: 'trend', group: 'Company', type: 'pick', options: FUNDING_ROUNDS, ops: [ANY('funding_rounds')] },
+      { name: 'revenue', label: 'Company revenue', icon: 'dollar', group: 'Company', type: 'pick', options: PEOPLE_REVENUE, ops: [ANY('company_revenue')] },
+      { name: 'type', label: 'Company type', icon: 'briefcase', group: 'Company', type: 'pick', options: COMPANY_TYPES, ops: [ANY('company_type')] },
+      { name: 'technology', label: 'Company technology', icon: 'code', group: 'Company', type: 'search', lookup: 'technologies', ops: [ANY('company_technology')] },
+      { name: 'company_keywords', label: 'Company keywords', icon: 'tag', group: 'Company', type: 'tags', placeholder: 'payments', ops: [ANY('company_keywords'), NONE('company_keywords_exclude')] },
+      { name: 'founded', label: 'Company founded', icon: 'hash', group: 'Company', type: 'range', key: 'founded', placeholders: ['from year', 'to year'] },
+      { name: 'tenure', label: 'Years in role', icon: 'hash', group: 'Person', type: 'range', key: 'tenure', placeholders: ['min', 'max'] },
+      { name: 'skills', label: 'Skills and topics', icon: 'tag', group: 'Person', type: 'tags', placeholder: 'payments', ops: [ANY('keywords')] },
+      { name: 'per_company', label: 'At most per company', icon: 'filter', group: 'Person', type: 'number', key: 'per_company', placeholder: '3' },
       { name: 'full_name', label: 'Full name', icon: 'user', group: 'Person', type: 'text', placeholder: 'Ada Lovelace' },
-      { name: 'q', label: 'Keywords', icon: 'search', group: 'Person', type: 'text', placeholder: 'fintech growth' },
     ],
   },
   {
     id: 'similar', label: 'Lookalikes of…', kind: 'companies', tool: 'treg.companies.similar',
-    hint: 'Companies like ones you already know', noLimit: true,
+    hint: 'Companies like ones you already know', noLimit: true, identity: ['domain'],
     filters: [{ name: 'domain', label: 'Company domains', icon: 'link', group: 'Company', type: 'tags', placeholder: 'ramp.com', split: true, open: true }],
   },
 ]
 
-// The search request a set of filter values makes: empty ones left out, `tags` and multi `choice`
-// as lists, `range` as `<name>_min` / `<name>_max`.
-export function filterBody(filters, values) {
+// The search request a set of filter values makes. A list filter's values (`{value, label}` items,
+// or words for `tags`) go to the field of its condition, or to the condition's `single` field when
+// there is one value; a `range` writes `<key>_min` / `<key>_max`; empty ones are left out.
+export function filterBody(filters, values, conditions = {}) {
   const body = {}
   for (const f of filters) {
     const v = values[f.name]
+    const op = (f.ops || []).find((o) => o.id === conditions[f.name]) || f.ops?.[0]
     if (f.type === 'range') {
-      if (v?.min !== '' && v?.min != null) body[`${f.name}_min`] = Number(v.min)
-      if (v?.max !== '' && v?.max != null) body[`${f.name}_max`] = Number(v.max)
+      if (v?.min !== '' && v?.min != null) body[`${f.key}_min`] = Number(v.min)
+      if (v?.max !== '' && v?.max != null) body[`${f.key}_max`] = Number(v.max)
+    } else if (f.type === 'number') {
+      if (v !== '' && v != null) body[f.key || f.name] = Number(v)
     } else if (Array.isArray(v)) {
-      const list = v.map((x) => String(x).trim()).filter(Boolean)
-      if (list.length) body[f.name] = list
-    } else if (typeof v === 'string' && v.trim()) body[f.name] = v.trim()
+      const list = v.flatMap((x) => (x && typeof x === 'object' ? x.value : String(x).trim())).filter((x) => x !== '' && x != null)
+      if (!list.length) continue
+      const key = op?.key || f.name
+      if (op?.single && list.length === 1) body[op.single] = list[0]
+      else body[key] = list
+    } else if (typeof v === 'string' && v.trim()) body[op?.key || f.name] = v.trim()
   }
   return body
 }
 
-export const usesStrict = (filters, body) => filters.some((f) => f.strict && Object.keys(body).some((k) => k === f.name || k.startsWith(`${f.name}_`)))
+// a field the search cannot be made of alone is a filter a provider may not apply: ask treg to skip those
+export const usesStrict = (source, body) => Object.keys(body).some((k) => k !== 'limit' && k !== 'page' && !(source.identity || []).includes(k))
 
 export const COLUMN_JOBS = [
   { id: 'judge', group: 'AI', label: 'Ask AI to judge', tool: 'openrouter.ai-judge.decide', judge: true,

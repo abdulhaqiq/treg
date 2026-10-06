@@ -107,12 +107,15 @@ reloads the table on focus, and refreshes the header balance after a run. Its CS
 `.oe`, its colliding class names are `oe-` prefixed, and its grid is a `.ui-table` so the dashboard's
 global table rules skip it.
 
-**Searches.** A source's filters are data (`SOURCES` in `jobs.js`): text, tags, choice or range, each
-one field of the routed search (`filterBody`). A search using a contract filter (country, location,
-seniority, company size…) sends `X-Treg-Route-Strict-Filters`, so a provider that would ignore it is
-skipped. "Load more" asks for the next `page` with every other provider excluded, so the list continues
-from the provider that served it; one that cannot page answers no_route_candidate, uncharged, and the
-list ends there.
+**Searches.** A source's filters are data (`SOURCES` in `jobs.js`). Values are picked, not typed blind:
+short lists as pills, long or remote ones by typing (`ValuePicker`: countries, departments, and the
+providers' free lookups for industries, technologies and keywords, read through `/call/`), free words
+only for titles, places and keywords. A filter's conditions (`ops`: is any of, is none of) are the ones
+a provider applies, each writing one field of the routed search (`filterBody`). A search using a field
+it cannot be made of alone (`identity`) sends `X-Treg-Route-Strict-Filters`, so a provider that would
+ignore it is skipped. "Load more" asks for the next `page` with every other provider excluded, so the
+list continues from the provider that served it; one that cannot page answers no_route_candidate,
+uncharged, and the list ends there.
 
 **Column types.** A search or a job knows what its fields hold (`typeOfField`). An imported CSV is
 typed from its values first (`detectType`: email, LinkedIn person or company, website, domain,

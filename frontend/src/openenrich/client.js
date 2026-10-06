@@ -45,6 +45,9 @@ export function makeClient(headers) {
     platform: (slug) => must(`/catalog/platforms/${enc(slug)}`),
     tool: (id) => must(`/catalog/endpoints/${enc(id)}`),
     columns: (id) => must(`/table-columns/${enc(id)}`).catch(() => null),
+    // a free value-list lookup (industries, technologies…) as the provider answers it
+    lookup: (tool, query = {}) => must(`/call/${tool}${Object.keys(query).length ? `?${new URLSearchParams(query)}` : ''}`)
+      .then((a) => (a && typeof a === 'object' && !Array.isArray(a) ? (({ _treg, ...rest }) => rest)(a) : a)),
 
     // One call answered as rows and columns. Never throws: the caller reads the status.
     // `fresh`: ask the provider again instead of replaying an earlier identical call (a search the
