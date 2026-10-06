@@ -1865,3 +1865,26 @@ async def test_when_crawl4ai_fails_linkup_answers_with_the_same_schema(clients, 
     assert r.status_code == 200, r.text
     assert [s[0] for s in seen] == ["crawl4ai", "linkup"] and r.json()["_treg"]["provider"] == "linkup"
     assert seen[1][3]["schema"] == _SCHEMA and seen[1][3]["mode"] == "standard"
+
+
+def test_search_pages_and_firmographic_filters_reach_the_providers_that_take_them():
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    cat = catalog_store.load()
+
+    def sent(adapter, contract, given):
+        ident, _ = canonical_identity(cat.contracts[contract], given)
+        ad = cat.adapters[adapter]
+        return ad.to_upstream(ident, adapter_accepts(ad, ident))
+
+    people = {"company_domain": "ramp.com", "page": 2, "seniority": ["c_suite", "vp"], "employees_min": 50, "employees_max": 500}
+    assert sent("companyenrich.people.search", "people.search", people)[1]["seniority"] == ["c-suite", "vp"]
+    assert sent("companyenrich.people.search", "people.search", people)[1]["page"] == 2
+    b = sent("leadsforge.people.search", "people.search", people)[1]
+    assert b["leadSeniorities"] == {"include": ["c_suite", "vp"]} and b["companyEmployeeNumberRange"] == {"min": 50, "max": 500}
+    assert sent("dropleads.people.search", "people.search", people)[1]["pagination"]["page"] == 2
+    q = sent("enrichlayer.people.search", "people.search", people)[0]
+    assert q["current_company_employee_count_min"] == "50" and q["current_company_employee_count_max"] == "500"
+    # no page asked: the first one, as before
+    assert sent("prospeo.people.search", "people.search", {"company_domain": "ramp.com"})[1]["page"] == 1
+    assert "page" not in sent("quickenrich.companies.search", "companies.search", {"industry": "fintech"})[1]
+    assert sent("thecompaniesapi.companies.search", "companies.search", {"industry": "fintech", "page": 3})[0]["page"] == "3"

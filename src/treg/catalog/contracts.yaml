@@ -275,6 +275,10 @@ contracts:
       location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"}
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
+      page: {type: int, default: null, note: "1-based page of results, for providers that page; send it with X-Treg-Route-Strict-Filters so a provider that cannot page is skipped rather than answering page 1 again (a provider with a fixed page size, prospeo's 25, pages in its own size)"}
+      seniority: {type: list, default: null, note: "any of owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern"}
+      employees_min: {type: int, default: null, note: "current company has at least this many employees"}
+      employees_max: {type: int, default: null, note: "current company has at most this many employees"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     scoping: [company_domain]
     output:
@@ -339,6 +343,9 @@ contracts:
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it"}
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
+      page: {type: int, default: null, note: "1-based page of results, for providers that page; send it with X-Treg-Route-Strict-Filters so a provider that cannot page is skipped rather than answering page 1 again (a provider with a fixed page size, prospeo's 25, pages in its own size)"}
+      employees_min: {type: int, default: null, note: "has at least this many employees"}
+      employees_max: {type: int, default: null, note: "has at most this many employees"}
     output:
       companies: {type: list, required: true, note: "the provider's own company rows (name, domain, industry, size, location…) — shapes differ per provider; raw is the same body"}
       count: {type: int}
