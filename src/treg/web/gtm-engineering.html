@@ -1045,7 +1045,7 @@ such roles, B if 1+, else C. Show the tier, the roles and their links.</pre></di
       trs.forEach(function (tr, i) { tr.querySelectorAll('.fade').forEach(function (el) { el.classList.add('in'); }); if (ROWS[i][6] === 'drop') tr.classList.add('drop'); });
       paintBoard('find'); board.classList.add('in'); bdRows.querySelectorAll('.bd-row').forEach(function (r) { r.classList.add('in'); }); bdBadge.classList.add('in');
       dCur.hidden = true; dTyped.textContent = 'find and verify the marketing lead at each kept company';
-      dStatus.textContent = '20 deliverable leads · 21 companies dropped before any paid step'; dMeter.textContent = '$2.33';
+      dStatus.textContent = '20 deliverable leads · 21 companies dropped before any paid lookup'; dMeter.textContent = '$2.33';
       return;
     }
     typeInto('list 50 Series-A US SaaS companies, 51 to 200 staff', 400);
@@ -1060,7 +1060,7 @@ such roles, B if 1+, else C. Show the tier, the roles and their links.</pre></di
     at(7350, function () { bdRows.querySelectorAll('.bd-row').forEach(function (r) { r.classList.add('in', 'picked'); }); });
     trs.forEach(function (tr, i) { at(7500 + i * 150, function () { tr.querySelector('.fit').classList.add('in'); }); });
     trs.forEach(function (tr, i) { if (ROWS[i][6] === 'drop') at(8900 + i * 60, function () { tr.classList.add('drop'); }); });
-    at(9300, function () { bdBadge.classList.add('in'); dStatus.textContent = '27 kept · 21 dropped before any paid step'; });
+    at(9300, function () { bdBadge.classList.add('in'); dStatus.textContent = '27 kept · 21 dropped before any paid lookup'; });
     at(9700, function () { dTyped.textContent = ''; dCur.hidden = true; dReply.hidden = false; dReply.innerHTML = '↩ 27 fit <s>· 21 dropped · nothing spent on them</s>'; });
     at(11200, function () { dReply.hidden = true; dCur.hidden = false; board.classList.remove('in'); });
     typeInto('find and verify the marketing lead at each kept company', 11300);
@@ -1078,7 +1078,7 @@ such roles, B if 1+, else C. Show the tier, the roles and their links.</pre></di
     at(16300, function () {
       dTyped.textContent = ''; dCur.hidden = true; dReply.hidden = false;
       dReply.innerHTML = '↩ 20 deliverable leads <s>· $2.33 · $0.12 each</s>';
-      dStatus.textContent = '20 deliverable · 1 unknown kept apart · 21 dropped before paying';
+      dStatus.textContent = '20 deliverable · 1 unknown kept apart · 21 dropped before the paid lookups';
     });
     at(21500, play);
   }

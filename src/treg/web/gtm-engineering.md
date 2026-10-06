@@ -66,7 +66,7 @@ Rule: a lookalike goes through the same size filter and ICP check as any other r
 ## Qualify on the fields you already have before any expensive lookup
 
 Recorded 23 Sep 2026: 50 companies, 48 with a usable domain, 27 passed the ICP check (jev on the team's own key, unmetered), 21 dropped before any
-paid step, 20 verified deliverable. $2.33 metered, $0.12 per deliverable lead; enriching all 48 would have cost an
+paid lookup, 20 verified deliverable. $2.33 metered, $0.12 per deliverable lead; enriching all 48 would have cost an
 estimated $4.12. Details: {BASE}/workflows/find-and-verify-a-lead-list
 
 Rule: no expensive lookup (people, emails, news) runs on a row that has not passed the check; if a row lacks the

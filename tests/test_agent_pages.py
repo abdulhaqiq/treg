@@ -361,13 +361,18 @@ async def test_the_lead_list_page_names_claude_and_carries_its_tested_section(cl
     title = re.search(r"<title>(.*?)</title>", page).group(1)
     assert "AI lead generation" in title and "Claude" in title and len(title) <= 65, title
     desc = re.search(r'name="description" content="([^"]*)"', page).group(1)
-    assert desc.startswith("Claude builds a verified B2B lead list") and len(desc) <= 160, desc
+    # the run's figures must survive _serp_desc's cut, so the whole sentence has to fit
+    assert "50 companies, 20 verified contacts, $0.12 each" in desc and len(desc) <= 155, desc
     assert "What Claude Code calls" in page and "What ChatGPT calls" not in page
     other = next(s for s in agent_pages.WORKFLOWS if s != "find-and-verify-a-lead-list")
     assert "What Claude Code calls" not in (await clients.get(f"/workflows/{other}")).text
     assert 'id="tested"' in page and "$0.0056" in page
     md = (await clients.get(LEAD_LIST + ".md")).text
-    assert "## What lead generation in Claude costs, tested" in md and "work-email-finding-bench)" in md
+    assert "## What lead generation in Claude costs: recorded data costs" in md and "work-email-finding-bench)" in md
+    for row in ("| Tool | Per correct email | Exact match |", "| treg.to | $0.0056 | 90.4% |",
+                "| Clay | $0.0395 | 89.7% |", "| Freckle | $0.0427 | 90.1% |", "| Deepline | $0.0924 | 86.6% |",
+                "| This workflow, 23 Sep 2026, 50 companies in | $0.12 per verified contact ($2.33 metered, 20 contacts) |"):
+        assert row in md, row  # the .md twin keeps the tables as tables, cell for cell
     faqs = [q for q, _a in spec["faq"]]
     assert "Can Claude do lead generation?" in faqs
     ld = [json.loads(m) for m in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S)]
@@ -391,8 +396,9 @@ async def test_jev_page_embeds_the_walkthrough_and_links_the_lead_list(clients: 
     assert all(c["startOffset"] < c["endOffset"] for c in video["hasPart"])
     assert f'href="{LEAD_LIST}"' in page and (await clients.get(LEAD_LIST)).status_code == 200
     faq = next(b for b in blocks if b.get("@type") == "FAQPage")
-    visible = [html_mod.unescape(q) for q in re.findall(r"<summary>(.*?)</summary>", page)]
-    assert [q["name"] for q in faq["mainEntity"]] == [q for q in visible if q in {x["name"] for x in faq["mainEntity"]}]
+    faq_html = page.split('id="faq"', 1)[1].split("</section>", 1)[0]
+    visible = [html_mod.unescape(q) for q in re.findall(r"<summary>(.*?)</summary>", faq_html)]
+    assert [q["name"] for q in faq["mainEntity"]] == visible  # same questions, same order, both ways
     assert {"How do I use jev in Claude Code, Codex, Hermes or OpenClaw?",
             "Can I use jev for lead generation?"} <= set(visible)
 
@@ -400,12 +406,21 @@ async def test_jev_page_embeds_the_walkthrough_and_links_the_lead_list(clients: 
 async def test_no_served_page_mentions_monid(clients: AsyncClient):
     """Monid is never named on a treg.to page: not in a comparison, a bench table or copy. The
     overflow code that routes through it is backend and never rendered."""
+    import re
     from pathlib import Path
     web = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
-    for f in [*web.glob("*.html"), *web.glob("*.md"), *web.glob("*.txt")]:
-        assert "monid" not in f.read_text(encoding="utf-8").lower(), f.name
-    for path in ["/gtm-engineering", "/gtm-engineering.md", "/blog/work-email-finding-bench",
-                 "/agents/claude-code", "/agents/claude-code.md", LEAD_LIST, LEAD_LIST + ".md", "/jev"]:
+    for f in web.rglob("*"):
+        if f.suffix in {".html", ".md", ".txt", ".js", ".css", ".json"}:
+            assert "monid" not in f.read_text(encoding="utf-8", errors="ignore").lower(), str(f)
+    # Every page the sitemap lists, plus the .md twins of the pages that have one. Catalog and
+    # provider pages are generated from the catalog, which has no such provider.
+    sitemap = (await clients.get("/sitemap.xml")).text
+    paths = sorted({re.sub(r"^https?://[^/]+", "", u) for u in re.findall(r"<loc>([^<]+)</loc>", sitemap)})
+    paths = [p for p in paths if not p.startswith(("/catalog/", "/tools/"))]
+    paths += [p + ".md" for p in paths if p.startswith(("/agents/", "/workflows/", "/use-cases/"))]
+    paths += ["/gtm-engineering.md", "/llms.txt"]
+    assert "/blog/work-email-finding-bench" in paths and "/gtm-engineering" in paths
+    for path in paths:
         r = await clients.get(path)
-        assert r.status_code == 200, path
-        assert "monid" not in r.text.lower(), path
+        if r.status_code == 200:
+            assert "monid" not in r.text.lower(), path

@@ -726,9 +726,21 @@ _MD_ALT = '<link rel="alternate" type="text/markdown" href="{href}"/>'
 
 
 def _guide_md(fragment: str) -> str:
-    """An agent page's hand-written `guide` HTML as Markdown for the `.md` twin. The fragments use a
-    small fixed vocabulary (p, pre/code, ul/li, a, b, code), so this maps that and strips the rest."""
-    s = re.sub(r"<pre><code>(.*?)</code></pre>", lambda m: f"\n```\n{m.group(1)}\n```\n", fragment, flags=re.S)
+    """Hand-written page sections (an agent's `guide`, a workflow's `sections`) as Markdown for the
+    `.md` twin. The fragments use a small fixed vocabulary (p, table, pre/code, ul/li, a, b, code), so
+    this maps that and strips the rest; a table becomes a pipe table rather than run-together cells."""
+    def _table(m: re.Match) -> str:  # one Markdown table per <table>, header row then a separator
+        rows = [[re.sub(r"<[^>]+>", "", c).strip()
+                 for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr, flags=re.S)]
+                for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", m.group(0), flags=re.S)]
+        rows = [r for r in rows if r]
+        if not rows:
+            return ""
+        out = ["| " + " | ".join(rows[0]) + " |", "|" + "---|" * len(rows[0])]
+        out += ["| " + " | ".join(r) + " |" for r in rows[1:]]
+        return "\n" + "\n".join(out) + "\n\n"
+    s = re.sub(r"<table[^>]*>.*?</table>", _table, fragment, flags=re.S)
+    s = re.sub(r"<pre><code>(.*?)</code></pre>", lambda m: f"\n```\n{m.group(1)}\n```\n", s, flags=re.S)
     s = re.sub(r'<a href="([^"]+)">(.*?)</a>',
                lambda m: f"[{m.group(2)}]({get_settings().public_url.rstrip('/')}{m.group(1)})"
                if m.group(1).startswith("/") else f"[{m.group(2)}]({m.group(1)})", s)
