@@ -1684,6 +1684,12 @@ def test_linkedin_url_is_normalised_once_for_every_adapter():
     assert P.linkedin_handle(P.linkedin_url("WWW.LinkedIn.com/in/Patrick")) == "Patrick"
 
 
+def test_a_pasted_website_is_routed_as_its_domain():
+    from treg.domain.catalog.routing.contracts import canonical_identity
+    ident, variant = canonical_identity(catalog_store.load().contracts["companies.similar"], {"domain": "https://www.Treg.to/"})
+    assert variant == ("domain",) and ident["domain"] == "treg.to"
+
+
 @pytest.mark.parametrize(("raw", "expected"), [
     # a path that merely mentions linkedin.com is a handle-shaped string, never promoted to that host
     ("evil.example/?linkedin.com/in/x", "https://www.linkedin.com/in/evil.example/?linkedin.com/in/x"),
