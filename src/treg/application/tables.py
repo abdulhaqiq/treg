@@ -60,6 +60,8 @@ class Job(_Strict):
     field: str | None = None
     needs: list[list[str]] = Field(default_factory=list)
     maxCost: float | None = Field(default=None, ge=0, le=100)   # noqa: N815 — the page's spelling
+    # providers the user left out of a routed tool (X-Treg-Route-Exclude); empty = every provider
+    exclude: list[str] = Field(default_factory=list, max_length=60)
     linked: bool = False
     limit: int | None = Field(default=None, ge=1, le=100)
     child: str | None = None

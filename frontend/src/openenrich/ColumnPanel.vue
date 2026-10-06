@@ -1,6 +1,7 @@
 <script setup>
 import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { iconFor } from './icons.js'
+import ProviderPicker from './ProviderPicker.vue'
 import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd, typeOfField, JEV_TOOL, COLUMN_TYPES, inputHints } from './jobs.js'
 
 // `edit`: a job column's group to change; the panel opens on its saved settings
@@ -25,6 +26,8 @@ const test = ref(null)         // {values, cost, row} after "Test on row 1"
 const testing = ref(false)
 
 const routed = ref([])         // every people and company enrichment, from the catalog shelves
+const chosen = ref([])         // providers picked for a routed enrichment; none = every provider
+const cards = ref([])          // ProviderPicker's view of them (price per row)
 
 onMounted(async () => {
   for (const j of COLUMN_JOBS) api.tool(j.tool).then((t) => (tools[j.tool] = t)).catch(() => {})
@@ -47,6 +50,10 @@ onMounted(async () => {
   const saved = editing.value[0].job
   const known = COLUMN_JOBS.find((j) => j.tool === saved.tool && !!j.linked === !!saved.linked && !!j.judge === !!saved.judge)
   await pick(known || { id: 'edit', tool: saved.tool, label: editing.value[0].label, linked: saved.linked })
+  if (saved.exclude?.length) {
+    const all = [...new Set((tools[saved.tool]?.routing?.plan || []).map((c) => c.endpoint_id.split('.')[0]))]
+    chosen.value = all.filter((x) => !saved.exclude.includes(x))
+  }
   if (saved.judge) {
     judgeType.value = saved.judge.type
     judgeInstr.value = saved.judge.instructions
@@ -57,7 +64,8 @@ onMounted(async () => {
     return
   }
   for (const k of Object.keys(mapping)) { delete mapping[k]; delete custom[k] }
-  for (const k of identity.value.flat()) mapping[k] = ''
+  // a linked column maps only the company domain (its title and count are their own fields)
+  if (!saved.linked) for (const k of identity.value.flat()) mapping[k] = ''
   for (const [k, v] of Object.entries(saved.inputs || {})) {
     if (saved.linked && k === 'title') { peopleTitle.value = v; continue }
     mapping[k] = v
@@ -102,6 +110,7 @@ const isJudge = computed(() => !!job.value?.judge)
 const labelList = computed(() => [...new Set(judgeLabels.value.split(',').map((x) => x.trim()).filter(Boolean))])
 
 async function pick(j) {
+  if (j.tool !== job.value?.tool) chosen.value = []
   job.value = j
   error.value = ''
   if (j.judge) {
@@ -171,6 +180,15 @@ const ready = computed(() => props.table.rows.filter((r) => {
   return Object.keys(fillInputs(fromRow.value, r)).length && satisfies(needs.value, filled)
 }).length)
 const price = computed(() => priceOf(tool.value, Object.keys(inputs.value)))
+// with providers picked, the price is theirs, not the route's
+const pickedPrice = computed(() => {
+  const ps = cards.value.filter((c) => chosen.value.includes(c.slug))
+  if (!ps.length) return ''
+  const per = (c) => (job.value?.linked && c.perResult ? c.unit * (Number(peopleLimit.value) || 1) : c.unit)
+  const lo = Math.min(...ps.map(per)), hi = Math.max(...ps.map(per))
+  const fmt = (x) => (x === 0 ? 'free' : usd(x * 1e6))
+  return `${lo === hi ? fmt(lo) : `${fmt(lo)} – ${fmt(hi)}`} a row from ${ps.map((c) => c.name).join(', ')}.`
+})
 const needsTest = computed(() => !isJudge.value && !job.value?.linked && !contract.value && !test.value && !props.edit)
 const canRun = computed(() => {
   if (isJudge.value) {
@@ -216,13 +234,18 @@ function add(rows) {
     return emit('add', { rows, columns: [{ id, label: judgeName.value || 'ai_judgment',
       job: { group, tool: job.value.tool, method: 'POST', field: 'value', judge } }] })
   }
-  const maxCost = tool.value?.endpoint?.kind === 'routed' ? ROUTE_CAP_USD : undefined
-  const base = { group, tool: job.value.tool, method: method.value, inputs: { ...inputs.value }, needs: needs.value, maxCost }
+  const routedTool = tool.value?.endpoint?.kind === 'routed'
+  // picked providers: every other one is left out, and the cap covers the dearest picked
+  const picked = cards.value.filter((c) => chosen.value.includes(c.slug))
+  const exclude = routedTool && chosen.value.length ? cards.value.map((c) => c.slug).filter((x) => !chosen.value.includes(x)) : []
+  const maxCost = routedTool ? Math.max(ROUTE_CAP_USD, Math.ceil(Math.max(0, ...picked.map((c) => c.unit)) * 120) / 100) : undefined
+  const base = { group, tool: job.value.tool, method: method.value, inputs: { ...inputs.value }, needs: needs.value, maxCost,
+    ...(exclude.length ? { exclude } : {}) }
   if (job.value.linked) {
     // people searches can bill per person returned: the cap scales with the count asked for
     const limit = Number(peopleLimit.value) || 3
     const id = editing.value[0]?.id || uniqueColumnId(others.value, 'people')
-    return emit('add', { rows, columns: [{ id, label: 'People', job: { ...base, maxCost: ROUTE_CAP_USD * limit, linked: true, limit } }] })
+    return emit('add', { rows, columns: [{ id, label: 'People', job: { ...base, maxCost: Math.max(ROUTE_CAP_USD * limit, Math.ceil(Math.max(0, ...picked.map((c) => (c.perResult ? c.unit * limit : c.unit))) * 120) / 100), linked: true, limit } }] })
   }
   const columns = []
   for (const field of keep.value) {
@@ -301,13 +324,18 @@ function add(rows) {
 
         <template v-if="job.providers?.length > 1">
           <h4>Provider</h4>
-          <select :value="job.tool" @change="pick({ ...job, tool: $event.target.value })">
-            <option v-for="p in job.providers" :key="p.id" :value="p.id">
-              {{ p.name }}<template v-if="job.providers.filter((x) => x.name === p.name).length > 1"> · {{ p.endpoint }}</template>
-              <template v-if="p.price != null"> · {{ usd(p.price * 1e6) }}</template>
-            </option>
-          </select>
+          <div class="provider-choice">
+            <button v-for="p in job.providers" :key="p.id" type="button" :class="['pchoice', { on: p.id === job.tool }]"
+                    :title="p.endpoint" @click="p.id !== job.tool && pick({ ...job, tool: p.id })">
+              <img :src="`/logos/${p.slug}.svg`" alt="" @error="$event.target.style.visibility = 'hidden'" />
+              <span>{{ p.name }}<small v-if="job.providers.filter((x) => x.name === p.name).length > 1"> · {{ p.endpoint }}</small></span>
+              <small class="muted">{{ p.price == null ? '' : p.price === 0 ? 'free' : usd(p.price * 1e6) }}</small>
+            </button>
+          </div>
         </template>
+
+        <ProviderPicker v-if="tool?.endpoint?.kind === 'routed'" v-model="chosen" :tool="tool" :rows="job.linked ? Number(peopleLimit) || 1 : 1"
+                        :have="Object.keys(inputs)" :noun="job.linked ? 'search' : 'enrichment'" @cards="cards = $event" />
 
         <h4>Inputs</h4>
         <div v-for="(v, k) in mapping" :key="k" class="input-row">
@@ -350,6 +378,7 @@ function add(rows) {
         <p class="small">
           <strong>{{ ready }}</strong> of {{ table.rows.length }} rows have the inputs.
           <template v-if="isJudge">About $0.0001 a row (a fraction of a cent, settled at the provider's reported cost).</template>
+          <template v-else-if="pickedPrice">{{ pickedPrice }}</template>
           <template v-else-if="price.known">
             From {{ usd(price.min * 1e6) }} a row<template v-if="price.cap">, never over {{ usd(price.cap * (job.linked ? Number(peopleLimit) || 1 : 1) * 1e6) }}</template>.
             <template v-if="tool?.endpoint?.cost?.type === 'per_success'">No result, no charge.</template>

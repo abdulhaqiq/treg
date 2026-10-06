@@ -52,7 +52,8 @@ Every write meets typed models (pydantic, unknown keys refused), so a later writ
 agent) cannot leave a cell the page cannot read:
 
 - `Column {id, label, type?, job?}`; `type` is one of `COLUMN_TYPES`.
-- `Job {group, tool, method, inputs, field?, needs, maxCost?, linked, limit?, child?, judge?, policy}`.
+- `Job {group, tool, method, inputs, field?, needs, maxCost?, exclude, linked, limit?, child?, judge?, policy}`;
+  `exclude` names the providers of a routed tool the user left out (sent as `X-Treg-Route-Exclude`).
 - `Judge {type: noul|choice|score, instructions, labels, levels?, evidence}`: an AI judgment column.
 - `Run {state, call_id?, inputs, served_by?, cost_micro, replay, error?, link?, confidence?, at?}`.
 

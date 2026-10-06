@@ -147,6 +147,12 @@
 .oe .vendors.wide img { margin-right: 0; }
 .oe .vendor { display: inline-flex; border-radius: 6px; outline: none; }
 .oe .vendor { cursor: pointer; }
+.oe .oe-side .vendors-row { margin: 12px 0 0; }
+.oe .provider-choice { display: flex; flex-direction: column; gap: 6px; }
+.oe .pchoice { display: flex; align-items: center; gap: 10px; text-align: left; padding: 7px 10px; }
+.oe .pchoice img { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; }
+.oe .pchoice span { flex: 1; }
+.oe .pchoice.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 .oe .vendor.off img { opacity: .35; filter: grayscale(1); }
 .oe .vendor.picked img { opacity: 1; filter: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
 .oe .vendors.wide:has(.picked) .vendor:not(.picked) img { opacity: .3; filter: grayscale(1); }

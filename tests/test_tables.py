@@ -106,6 +106,10 @@ async def test_columns_rows_and_names_are_checked(clients: AsyncClient, table_on
         {"id": "fit", "label": "fit", "job": {"group": "g2", "tool": "openrouter.ai-judge.decide", "field": "value",
          "judge": {"type": "noul", "instructions": "Is this B2B SaaS?", "evidence": ["site"]}}}]})
     assert ok.status_code == 201, ok.text
+    # a column may keep to the providers the user picked
+    picked = await clients.post("/tables", json={"name": "picked", "columns": [{"id": "email", "label": "email",
+        "job": {"group": "g3", "tool": "treg.people.email.find", "field": "email", "exclude": ["hunter", "tomba"]}}]})
+    assert picked.json()["columns"][0]["job"]["exclude"] == ["hunter", "tomba"]
     assert ok.json()["columns"][0]["type"] == "website"
     bad_run = await clients.post("/tables/typed/rows", json={"rows": [{"cells": {}, "runs": {"g2": {"state": "done"}}}]})
     assert bad_run.status_code == 422

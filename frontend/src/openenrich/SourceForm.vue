@@ -6,6 +6,7 @@ import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue
 import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, filterBody, searchCap, searchCostRange, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
 import { icon } from './icons.js'
 import ValuePicker from './ValuePicker.vue'
+import ProviderPicker from './ProviderPicker.vue'
 import { cachedLookup } from './lookups.js'
 import { LOOKUPS } from './jobs.js'
 
@@ -29,38 +30,26 @@ const stale = ref(false)
 const busy = ref(false)
 const error = ref('')
 
-// each provider's endpoint (billing, name), read once, for the price range and the hover cards
-const endpoints = ref({})
 onMounted(async () => {
   // a filter's whole value list (industries) is fetched now, so it is ready when the filter opens
   for (const f of filters) if (LOOKUPS[f.lookup]?.once) cachedLookup(api, LOOKUPS[f.lookup].tool).catch(() => {})
-  try { tool.value = await api.tool(props.source.tool) } catch { return }
-  const ids = [...new Set((tool.value?.routing?.plan || []).map((c) => c.endpoint_id))]
-  const got = await Promise.all(ids.map((id) => api.tool(id).then((t) => [id, t?.endpoint || null]).catch(() => [id, null])))
-  endpoints.value = Object.fromEntries(got)
+  try { tool.value = await api.tool(props.source.tool) } catch {}
 })
-// Providers the user picked: the search asks only them (every other one excluded); none = auto
-const chosen = ref(new Set())
-function toggleProvider(slug) {
-  const next = new Set(chosen.value)
-  if (next.has(slug)) next.delete(slug); else next.add(slug)
-  chosen.value = next
-}
-const allSlugs = computed(() => [...new Set((tool.value?.routing?.plan || []).map((c) => c.endpoint_id.split('.')[0]))])
-const excluded = computed(() => (chosen.value.size ? allSlugs.value.filter((x) => !chosen.value.has(x)) : []))
-const pickedCards = computed(() => providerCards.value.filter((c) => chosen.value.has(c.slug)))
+// Providers the user picked (ProviderPicker): the search asks only them (every other one excluded)
+const chosen = ref([])
+const cards = ref([])            // ProviderPicker's view of each provider, for the cap and the price range
+const allSlugs = computed(() => cards.value.map((c) => c.slug))
+const excluded = computed(() => (chosen.value.length ? allSlugs.value.filter((x) => !chosen.value.includes(x)) : []))
+const pickedCards = computed(() => cards.value.filter((c) => chosen.value.includes(c.slug)))
 // a picked provider may cost more than the default cap: the cap rises to what it asks
 const capFor = (rows) => {
   const base = searchCap(rows)
-  if (!chosen.value.size) return base
+  if (!chosen.value.length) return base
   const n = Number(rows) || 0
   const most = Math.max(0, ...pickedCards.value.map((c) => (c.perResult ? c.unit * n : c.unit)))
   return Math.max(base, Math.ceil(most * 120) / 100)
 }
-const costs = computed(() => (chosen.value.size
-  ? Object.entries(endpoints.value).filter(([id]) => chosen.value.has(id.split('.')[0])).map(([, e]) => e?.cost || null)
-  : Object.values(endpoints.value).map((e) => e?.cost || null)))
-const range = computed(() => searchCostRange(costs.value, limit.value, capFor(limit.value)))
+const asCost = (c) => ({ type: c.unit === 0 ? 'free' : c.perResult ? 'per_result' : 'per_call', usd: c.unit })
 
 // a search field's name in the builder's words (seniority_exclude → "Seniority (is none of)")
 const fieldLabel = computed(() => {
@@ -75,30 +64,8 @@ const fieldLabel = computed(() => {
   }
   return out
 })
-// One card per provider (its cheapest endpoint): the cost of this search there, how it bills, the
-// filters it applies, and whether this search's filters skip it.
-const providerCards = computed(() => {
-  const n = Number(limit.value) || 0
-  const cap = searchCap(n)
-  const used = Object.keys(body.value).filter((k) => !(props.source.identity || []).includes(k))
-  const cards = {}
-  for (const row of tool.value?.routing?.plan || []) {
-    const slug = row.endpoint_id.split('.')[0]
-    const ep = endpoints.value[row.endpoint_id]
-    const c = ep?.cost || {}
-    const cost = c.type === 'free' ? 0 : c.type === 'per_result' ? (c.usd || 0) * n : (c.usd ?? row.usd ?? 0)
-    const takes = (row.filters || []).filter((k) => fieldLabel.value[k])
-    const missing = used.filter((k) => !(row.filters || []).includes(k))
-    const card = { slug, name: ep?.provider_display || slug, cost, overCap: !chosen.value.size && cost > cap, works: row.works,
-      unit: c.type === 'free' ? 0 : c.usd ?? row.usd ?? 0, perResult: c.type === 'per_result',
-      billing: c.type === 'free' ? 'free' : c.type === 'per_result' ? `${usd((c.usd || 0) * 1e6)} per result` : `${usd((c.usd || 0) * 1e6)} per search`,
-      // the filters this search uses first, then the rest
-      takes: [...new Set(takes.map((k) => fieldLabel.value[k]))].sort((x, y) => used.some((k) => fieldLabel.value[k] === y) - used.some((k) => fieldLabel.value[k] === x)), using: new Set(used.filter((k) => takes.includes(k)).map((k) => fieldLabel.value[k])),
-      skipped: [...new Set(missing.map((k) => fieldLabel.value[k] || k))] }
-    if (!cards[slug] || card.cost < cards[slug].cost) cards[slug] = card
-  }
-  return Object.values(cards)
-})
+const usedFields = computed(() => Object.keys(body.value).filter((k) => !(props.source.identity || []).includes(k)))
+const range = computed(() => searchCostRange((chosen.value.length ? pickedCards.value : cards.value).map(asCost), limit.value, capFor(limit.value)))
 const money = (x) => (x === 0 ? 'free' : usd(x * 1e6))
 
 const look = { companies: ['building', '#2563eb'], people: ['users', '#7c3aed'], similar: ['copy', '#d97706'] }[props.source.id] || ['search', '#64748b']
@@ -292,32 +259,8 @@ function create() {
         </label>
 
         <div class="fb-foot">
-          <div v-if="providers.length" class="vendors-row">
-            <span class="fb-label">{{ chosen.size ? `${chosen.size} of ${providers.length} providers picked` : `${providers.length} providers behind this search` }}</span>
-            <span class="vendors wide">
-              <span v-for="c in providerCards" :key="c.slug" :class="['vendor', { off: c.skipped.length || c.overCap, picked: chosen.has(c.slug) }]"
-                    tabindex="0" role="button" :aria-pressed="chosen.has(c.slug)" @click="toggleProvider(c.slug); $event.currentTarget.blur()" @keydown.enter="toggleProvider(c.slug)">
-                <img :src="`/logos/${c.slug}.svg`" :alt="c.name" @error="$event.target.style.visibility = 'hidden'" />
-                <span class="vcard">
-                  <strong>{{ c.name }}</strong>
-                  <span>{{ c.cost === 0 ? `Free for ${limit} results` : `~${usd(c.cost * 1e6)} for ${limit} results · ${c.billing}` }}</span>
-                  <span v-if="c.works != null" class="muted">Works on {{ Math.round(c.works * 100) }}% of calls</span>
-                  <span v-if="c.overCap" class="warn">Over this search's {{ usd(searchCap(limit) * 1e6) }} cap: not asked</span>
-                  <span v-if="c.skipped.length" class="warn">Skipped: does not apply {{ c.skipped.join(', ') }}</span>
-                  <span v-if="c.takes.length" class="vlabel">Applies</span>
-                  <span v-if="c.takes.length" class="vfilters">
-                    <span v-for="t in c.takes.slice(0, 8)" :key="t" :class="{ on: c.using.has(t) }">{{ t }}</span>
-                    <span v-if="c.takes.length > 8" class="more-n">+{{ c.takes.length - 8 }} more</span>
-                  </span>
-                  <span v-else class="muted">Applies no filters beyond its search fields</span>
-                  <span class="muted vhint">{{ chosen.has(c.slug) ? 'Click to stop using it' : 'Click to use only the providers you pick' }}</span>
-                </span>
-              </span>
-            </span>
-            <small v-if="!chosen.size" class="muted">Auto: treg asks them in turn, cheapest first, and the first with an answer fills the preview. Click logos to use only the ones you pick.</small>
-            <small v-else class="muted picked-line">Using only {{ pickedCards.map((c) => c.name).join(', ') }} ·
-              <a href="#" @click.prevent="chosen = new Set()">back to auto</a></small>
-          </div>
+          <ProviderPicker v-model="chosen" :tool="tool" :rows="Number(limit) || 0" :used="usedFields" :labels="fieldLabel"
+                          :cap="searchCap(limit)" noun="search" @cards="cards = $event" />
           <button class="primary wide" :disabled="busy || !canSearch">
             {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
           </button>

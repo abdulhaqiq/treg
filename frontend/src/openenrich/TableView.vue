@@ -22,6 +22,16 @@ function openMenu(col, e) {
   const r = e.currentTarget.getBoundingClientRect()
   menuAt.value = { top: `${Math.round(r.bottom + 4)}px`, left: `${Math.round(Math.min(r.left, window.innerWidth - 240))}px` }
   menu.value = col.id
+  menuScroll = null
+}
+// the menu stays put on the window: a real scroll of the grid closes it, not the nudge a click on a
+// half-hidden header makes to bring it into view
+let menuScroll = null
+function gridScrolled(e) {
+  if (!menu.value) return
+  const at = [e.target.scrollLeft, e.target.scrollTop]
+  if (!menuScroll) { menuScroll = at; return }
+  if (Math.abs(at[0] - menuScroll[0]) > 40 || Math.abs(at[1] - menuScroll[1]) > 40) menu.value = null
 }
 
 const CONCURRENCY = 10   // calls in flight across the whole table: a waterfall row takes 5-15 s, so rows run side by side
@@ -55,10 +65,11 @@ function flush() {
     for (const c of children.values()) { const replaced = c.replaced; c.replaced = new Set(); await flushTable(c.table, replaced) }
   }).then(() => { if (banner.value.startsWith('Could not save')) banner.value = '' })
     .catch((e) => {
-      // nothing counted as saved: try again shortly, so a moment out of reach loses no cells
-      banner.value = `Could not save: ${e.message}. Trying again…`
-      clearTimeout(saveTimer)
-      saveTimer = setTimeout(flush, 4000)
+      // nothing counted as saved. Out of reach or a server fault: try again shortly, so a moment
+      // away loses no cells. Refused (4xx): saying so is all, the same save would be refused again.
+      const transient = !e.status || e.status >= 500
+      banner.value = `Could not save: ${e.message}${transient ? '. Trying again…' : ''}`
+      if (transient) { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 4000) }
     })
   return flushing
 }
@@ -175,7 +186,8 @@ async function runRow(run, row, cols, job, child, othersRunning, shared, fresh =
     }
     req = job.method === 'GET'
       ? { method: 'GET', query: inputs }
-      : { method: job.method || 'POST', body: job.linked ? { ...inputs, limit: job.limit } : inputs, maxCost: job.maxCost }
+      : { method: job.method || 'POST', body: job.linked ? { ...inputs, limit: job.limit } : inputs, maxCost: job.maxCost,
+          ...(job.exclude?.length ? { exclude: job.exclude } : {}) }
   }
   setRun(row, group, { state: 'running' })
   if (fresh) req.fresh = true
@@ -425,7 +437,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
     <p v-if="banner" class="oe-banner">{{ banner }}</p>
 
     <div class="oe-layout">
-      <div class="oe-grid-wrap" @click="menu = null" @scroll="menu = null">
+      <div class="oe-grid-wrap" @click="menu = null" @scroll="gridScrolled">
         <table class="oe-grid ui-table">
           <thead>
             <tr>
