@@ -4,6 +4,7 @@
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { COUNTRIES } from './countries.js'
 import { LOOKUPS, lookupRetries, typoScore } from './jobs.js'
+import { cachedLookup } from './lookups.js'
 
 const props = defineProps({ filter: Object, modelValue: Array, inputId: String })
 // `elsewhere`: a suggestion that belongs to another filter (an industry search's description keyword)
@@ -37,7 +38,7 @@ async function fetchRemote() {
   if (lookup.once) {
     if (!all.value && !listLoading.value) {
       listLoading.value = true
-      try { all.value = lookup.read(await api.lookup(lookup.tool)) } catch { all.value = [] } finally { listLoading.value = false }
+      try { all.value = lookup.read(await cachedLookup(api, lookup.tool)) } catch { all.value = [] } finally { listLoading.value = false }
     }
     return
   }
@@ -50,7 +51,7 @@ async function fetchRemote() {
 // ask the lookup for what was typed; nothing back (a typo), ask again word by word and keep what
 // is close to the typed text
 async function forgiving(l, q) {
-  const ask = async (t) => { try { return l.read(await api.lookup(l.tool, l.query(t))) } catch { return [] } }
+  const ask = async (t) => { try { return l.read(await cachedLookup(api, l.tool, l.query(t))) } catch { return [] } }
   const first = await ask(q)
   if (first.length) return first
   const found = new Map()
@@ -73,7 +74,7 @@ watch(text, () => {
       const more = await fetchFallback()
       if (mine === asked) extra.value = more
     } finally { if (mine === asked) searching.value = false }
-  }, 220)
+  }, 120)
 })
 onMounted(() => { if (lookup?.once) fetchRemote() })
 

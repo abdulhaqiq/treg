@@ -6,6 +6,8 @@ import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue
 import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, filterBody, searchCap, searchCostRange, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
 import { icon } from './icons.js'
 import ValuePicker from './ValuePicker.vue'
+import { cachedLookup } from './lookups.js'
+import { LOOKUPS } from './jobs.js'
 
 // `providers`: the providers this search can ask, shown so the user sees what stands behind it
 const props = defineProps({ source: Object, providers: { type: Array, default: () => [] } })
@@ -30,6 +32,8 @@ const error = ref('')
 // each provider's endpoint (billing, name), read once, for the price range and the hover cards
 const endpoints = ref({})
 onMounted(async () => {
+  // a filter's whole value list (industries) is fetched now, so it is ready when the filter opens
+  for (const f of filters) if (LOOKUPS[f.lookup]?.once) cachedLookup(api, LOOKUPS[f.lookup].tool).catch(() => {})
   try { tool.value = await api.tool(props.source.tool) } catch { return }
   const ids = [...new Set((tool.value?.routing?.plan || []).map((c) => c.endpoint_id))]
   const got = await Promise.all(ids.map((id) => api.tool(id).then((t) => [id, t?.endpoint || null]).catch(() => [id, null])))
