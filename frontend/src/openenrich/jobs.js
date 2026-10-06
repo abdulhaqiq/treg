@@ -26,8 +26,8 @@ export const SOURCES = [
   },
   {
     id: 'similar', label: 'Lookalikes of…', kind: 'companies', tool: 'treg.companies.similar',
-    hint: 'Companies like one you already know', noLimit: true,
-    fields: [{ name: 'domain', label: 'Company domain', placeholder: 'ramp.com' }],
+    hint: 'Companies like ones you already know', noLimit: true,
+    fields: [{ name: 'domain', label: 'Company domains', placeholder: 'ramp.com, mercury.com', multi: true }],
   },
 ]
 
@@ -570,6 +570,13 @@ const EXTRA = {
 
 // List rows as a table's records: the fixed columns plus the extras any row has, duplicates (same
 // domain, LinkedIn or name) dropped, at most `limit` rows (some providers ignore the limit).
+// A field that takes several values (`ramp.com, https://mercury.com/`): one search each, at most
+// MAX_SEEDS so a pasted list cannot run up a bill.
+export const MAX_SEEDS = 10
+export function splitList(text) {
+  return [...new Set(String(text || '').split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean))].slice(0, MAX_SEEDS)
+}
+
 export function listRecords(kind, rows, columns, limit = Infinity) {
   const extra = EXTRA[kind] || {}
   const recs = rows.map((r) => {

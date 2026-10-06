@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, reactive, ref, watch } from 'vue'
-import { FIXED, ROUTE_CAP_USD, listRecords, priceOf, readAnswer, tableFromRows, usd } from './jobs.js'
+import { FIXED, MAX_SEEDS, ROUTE_CAP_USD, listRecords, priceOf, readAnswer, splitList, tableFromRows, usd } from './jobs.js'
 
 const props = defineProps({ source: Object })
 const emit = defineEmits(['cancel', 'created'])
@@ -30,15 +30,25 @@ async function search() {
   error.value = ''
   try {
     const body = { ...filled.value, ...(props.source.noLimit ? {} : { limit: Number(limit.value) || 25 }) }
-    const r = await api.run(props.source.tool, { method: 'POST', body, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude, fresh: true })
-    const a = readAnswer(r)
-    if (a.state === 'hit') {
-      const { records, ids } = listRecords(props.source.kind, a.rows, a.columns, body.limit)
-      result.value = { rows: records, ids, body, cost: r.cost_micro, servedBy: r.served_by }
+    // a multi field runs one search per value; the answers are merged, the seeds themselves left out
+    const multi = props.source.fields.find((f) => f.multi && body[f.name])
+    const seeds = multi ? splitList(body[multi.name]) : []
+    const bodies = multi ? seeds.map((v) => ({ ...body, [multi.name]: v })) : [body]
+    const runs = await Promise.all(bodies.map((b) => api.run(props.source.tool, { method: 'POST', body: b, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude, fresh: true })))
+    const answers = runs.map(readAnswer)
+    const hits = answers.filter((a) => a.state === 'hit')
+    if (hits.length) {
+      const own = new Set(seeds.map((v) => v.toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split('/')[0]))
+      const rows = hits.flatMap((a) => a.rows).filter((r) => !own.has(String(r.domain || '').toLowerCase()))
+      const cols = [...new Set(hits.flatMap((a) => a.columns))]
+      const { records, ids } = listRecords(props.source.kind, rows, cols, body.limit)
+      result.value = { rows: records, ids, body, cost: runs.reduce((n, r) => n + (r.cost_micro || 0), 0),
+        servedBy: [...new Set(runs.map((r) => r.served_by).filter(Boolean))].join(', ') }
       stale.value = false
     } else {
       result.value = null
-      error.value = a.state === 'miss' ? 'No results. Loosen a filter and search again.' : a.error
+      const failed = answers.find((a) => a.state !== 'miss')
+      error.value = failed ? failed.error : 'No results. Loosen a filter and search again.'
     }
   } catch (e) {
     error.value = e.message
@@ -48,7 +58,8 @@ async function search() {
 }
 
 function create() {
-  const name = Object.values(result.value.body).find((v) => typeof v === 'string') || props.source.label
+  const name = (Object.values(result.value.body).find((v) => typeof v === 'string') || props.source.label)
+    .replace(/[a-z]+:\/\/(www\.)?/gi, '').replace(/\/(?=[\s,]|$)/g, '')
   emit('created', tableFromRows(name, props.source.kind, result.value.rows, columns.value,
     { source: { tool: props.source.tool, body: result.value.body } }))
 }
@@ -72,7 +83,7 @@ function create() {
         <button class="primary wide" :disabled="busy || !Object.keys(filled).length">
           {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
         </button>
-        <p v-if="price" class="muted small center">One search costs {{ price }}. No results, no charge.</p>
+        <p v-if="price" class="muted small center">One search<template v-if="source.fields.some((f) => f.multi)"> per domain (up to {{ MAX_SEEDS }})</template> costs {{ price }}. No results, no charge.</p>
       </form>
     </aside>
 

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { idempotencyKey } from '../src/openenrich/client.js'
-import { autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
+import { MAX_SEEDS, splitList, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -224,4 +224,10 @@ test("a result column no row fills is left out, a row's name and domain stay", a
   const columns = ['name', 'domain', 'industry', 'employees', 'location', 'linkedin_url']
   const { ids } = listRecords('companies', [{ name: 'Elvex', domain: 'elvex.com', employees: '11-50' }, { domain: 'x.ai' }], columns)
   assert.deepEqual(ids, ['name', 'domain', 'employees'])
+})
+
+test('a pasted list of domains splits into one seed each, deduped and capped', () => {
+  assert.deepEqual(splitList('https://superdesign.dev/, https://www.magicpath.ai/\nramp.com;ramp.com'),
+    ['https://superdesign.dev/', 'https://www.magicpath.ai/', 'ramp.com'])
+  assert.equal(splitList(Array.from({ length: 15 }, (_, i) => `d${i}.com`).join(',')).length, MAX_SEEDS)
 })
