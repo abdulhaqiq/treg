@@ -46,7 +46,8 @@ The `branddev` provider keeps its catalog identifier and logo but appears as Con
 `web_arena.quote` takes a task and one input. Search, News Search, and Paper Search ask for
 10 results. YouTube Search and Maps Search compare the first ten returned rows. Maps queries
 should name the area, such as "coffee shops in Austin TX". Fetch asks for one URL,
-and Sitemap asks for a site URL with an optional search phrase and up to 10 URLs. The phrase goes
+and Sitemap asks for a site URL with an optional search phrase and up to 10 URLs. A bare address
+such as apple.com is read as its https site; other schemes are rejected. The phrase goes
 to adapters that accept it; URL-only adapters continue with the URL, and Olostep joins only when
 the phrase is present. Sitemap hides the Jev quality switch and records Jev as off; URL validity
 checks always run. Sitemap result cards show the unique valid URL count without a coverage claim.

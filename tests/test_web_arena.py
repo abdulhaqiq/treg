@@ -36,6 +36,16 @@ def test_web_input_enforces_task_limits_and_public_urls():
         web_arena.input_for("brand", "example.com")
 
 
+def test_web_input_reads_a_bare_address_as_https():
+    assert web_arena.input_for("fetch", "apple.com/iphone") == {"url": "https://apple.com/iphone"}
+    assert web_arena.input_for("sitemap", " www.apple.com ")["url"] == "https://www.apple.com"
+    assert web_arena.input_for("fetch", "http://example.com")["url"] == "http://example.com"
+    with pytest.raises(web_arena.WebArenaError):
+        web_arena.input_for("fetch", "ftp://example.com")
+    with pytest.raises(web_arena.WebArenaError):
+        web_arena.input_for("fetch", "localhost/admin")
+
+
 def test_sitemap_counts_only_unique_same_host_urls_without_claiming_coverage():
     result = web_arena.url_rows(["https://example.com/a#one", "https://example.com/a#two",
         "https://other.com/a", "bad", {"url": "https://example.com/b"}], "https://example.com")
