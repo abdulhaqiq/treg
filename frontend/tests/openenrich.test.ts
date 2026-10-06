@@ -243,6 +243,9 @@ test('filters make the search request: conditions pick the field, one value goes
   const companies = SOURCES.find((x) => x.id === 'companies')
   const industry = companies.filters.find((x) => x.name === 'industry')
   assert.deepEqual(filterBody([industry], { industry: [{ value: [5112, 5415], label: 'Software' }] }), { naics: [5112, 5415] })
+  // no industry by that name: the words go in as a description keyword
+  assert.deepEqual(filterBody([industry], { industry: [{ value: 'artificial intelligence', label: 'artificial intelligence', field: 'keywords' }] }),
+    { keywords: ['artificial intelligence'] })
 })
 
 test('a stored queued or running run reads as not run yet', () => {

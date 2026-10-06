@@ -64,7 +64,8 @@ export const SOURCES = [
     identity: ['q', 'name', 'industry', 'technology', 'domain', 'naics', 'technologies', 'keywords', 'countries', 'employee_ranges',
       'revenue_ranges', 'company_type', 'category', 'funding_rounds'],
     filters: [
-      { name: 'industry', label: 'Industry', icon: 'building', group: 'Company', type: 'search', lookup: 'companyIndustries', ops: [ANY('naics')], suggested: true },
+      { name: 'industry', label: 'Industry', icon: 'building', group: 'Company', type: 'search', lookup: 'companyIndustries', ops: [ANY('naics')], suggested: true,
+        fallback: { lookup: 'keywords', field: 'keywords', note: 'a description keyword' } },
       { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'search', options: 'countries', ops: [ANY('countries', 'country')], suggested: true },
       { name: 'size', label: 'Company size', icon: 'users', group: 'Company', type: 'pick', options: EMPLOYEE_RANGES, ops: [ANY('employee_ranges')], suggested: true },
       { name: 'technology', label: 'Technology', icon: 'code', group: 'Company', type: 'search', lookup: 'technologies', ops: [ANY('technologies', 'technology')], suggested: true },
@@ -127,7 +128,10 @@ export function filterBody(filters, values, conditions = {}) {
     } else if (f.type === 'number') {
       if (v !== '' && v != null) body[f.key || f.name] = Number(v)
     } else if (Array.isArray(v)) {
-      const list = v.flatMap((x) => (x && typeof x === 'object' ? x.value : String(x).trim())).filter((x) => x !== '' && x != null)
+      // an item may write its own field (an industry search's description-keyword suggestion)
+      const own = v.filter((x) => x && typeof x === 'object' && x.field)
+      for (const x of own) body[x.field] = [...(body[x.field] || []), x.value]
+      const list = v.filter((x) => !own.includes(x)).flatMap((x) => (x && typeof x === 'object' ? x.value : String(x).trim())).filter((x) => x !== '' && x != null)
       if (!list.length) continue
       const key = op?.key || f.name
       if (op?.single && list.length === 1) body[op.single] = list[0]
