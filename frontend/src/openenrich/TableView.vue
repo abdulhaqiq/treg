@@ -6,7 +6,7 @@ import { loadTable, toStoredRows } from './client.js'
 
 // `fresh`: a table just made from a search, so the next step (adding a column) is already open
 const props = defineProps({ table: Object, fresh: Boolean })
-const emit = defineEmits(['open', 'balance'])
+const emit = defineEmits(['open', 'balance', 'renamed'])
 const api = inject('oeApi')
 
 const t = ref(props.table)
@@ -332,6 +332,20 @@ function pill(row, col) {
   return { queued: 'Queued', running: 'Running', miss: 'No result', skipped: 'Missing input', error: 'Error' }[state] ?? ''
 }
 
+// ---- the table's name, edited in place ----------------------------------------------------------
+const naming = ref(null)         // the name being typed, or null
+const nameError = ref('')
+async function rename() {
+  const next = (naming.value || '').trim()
+  naming.value = null
+  if (!next || next === t.value.name) return
+  try {
+    await flush()                // pending cells first, under the old name
+    const stored = await api.update(t.value.name, { name: next })
+    emit('renamed', stored.name)
+  } catch (e) { nameError.value = e.message }
+}
+
 // ---- a cell opened in the side panel: its whole value, editable, and the call that filled it ----
 const editing = ref(null)        // the text being edited, or null when reading
 function openCell(row, col) {
@@ -388,7 +402,9 @@ onUnmounted(() => window.removeEventListener('focus', reload))
   <div class="sheet">
     <div class="bar">
       <a v-if="t.parent" class="crumb-link" href="#" @click.prevent="emit('open', t.parent.table)">← {{ t.parent.table }}</a>
-      <strong class="title">{{ t.name }}</strong>
+      <input v-if="naming != null" v-model="naming" class="title-edit" autofocus @keydown.enter="rename" @keydown.esc="naming = null" @blur="rename" />
+      <strong v-else class="title" title="Rename" @click="naming = t.name; nameError = ''">{{ t.name }}<span class="pencil">✎</span></strong>
+      <span v-if="nameError" class="warn small">{{ nameError }}</span>
       <span class="muted small">{{ t.rows.length }} rows · {{ t.columns.length }} columns</span>
       <span v-for="(x, g) in runs" :key="g" class="run-status">
         <span class="dot" /> {{ x.label }} {{ x.done }} / {{ x.total }} · {{ usd(x.spent) }}

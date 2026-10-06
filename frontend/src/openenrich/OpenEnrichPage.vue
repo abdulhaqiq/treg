@@ -69,6 +69,12 @@ async function created(t) {
   }
 }
 
+// a renamed table opens under its new name, its address replaced (the old one names nothing now)
+async function renamed(name) {
+  history.replaceState({ view: 'openenrich', oe: name }, '', `/openenrich/${name}`)
+  await open(name, true)
+}
+
 async function removeTable(t) {
   if (!confirm(`Delete the table “${t.name}” and its ${t.rows} rows? This cannot be undone.`)) return
   await api.remove(t.name)
@@ -133,7 +139,7 @@ onUnmounted(() => { window.removeEventListener('popstate', fromPath); window.rem
     <p v-if="loading" class="muted">Loading…</p>
 
     <section v-else-if="table" class="oe-main">
-      <TableView :key="table.name" :table="table" :fresh="fresh" @open="open" @balance="refreshAccount" />
+      <TableView :key="table.name" :table="table" :fresh="fresh" @open="open" @renamed="renamed" @balance="refreshAccount" />
     </section>
 
     <section v-else-if="source" class="oe-main full">

@@ -76,6 +76,18 @@ async def test_a_linked_table_replaces_a_parents_rows_and_survives_its_parent(cl
                                                              "rows": [{"cells": {"first_name": "C"}, "parent_row": "c1"}]})
     names = [i["cells"]["first_name"] for i in (await clients.get("/tables/companies-people")).json()["items"]]
     assert names == ["C"]
+    # renaming the linked table follows it into the parent: the column's child and each row's link
+    await clients.patch("/tables/companies", json={"columns": [{"id": "people", "label": "People",
+        "job": {"group": "g9", "tool": "treg.people.search", "linked": True, "child": "companies-people"}}]})
+    await clients.post("/tables/companies/rows", json={"rows": [{"id": "c1", "cells": {"people": 1},
+        "runs": {"g9": {"state": "hit", "link": "companies-people"}}}]})
+    r = await clients.patch("/tables/companies-people", json={"name": "Fintech founders"})
+    assert r.json()["name"] == "fintech-founders"
+    parent = (await clients.get("/tables/companies")).json()
+    assert parent["columns"][0]["job"]["child"] == "fintech-founders"
+    assert parent["items"][0]["runs"]["g9"]["link"] == "fintech-founders"
+    assert (await clients.get("/tables/fintech-founders")).json()["parent"] == {"table": "companies", "column": "people"}
+    await clients.patch("/tables/fintech-founders", json={"name": "companies-people"})
     assert (await clients.delete("/tables/companies")).status_code == 204
     assert (await clients.get("/tables/companies-people")).json()["parent"] is None
 

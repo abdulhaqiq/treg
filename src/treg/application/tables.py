@@ -258,10 +258,26 @@ async def update_table(db: AsyncSession, *, org_id: int, name: str, body: dict) 
     if "columns" in body:
         doc.columns = _columns(body["columns"])
     if body.get("name") and slug(body["name"]) != doc.name:
+        old = doc.name
         doc.name = await _free_name(db, org_id, body["name"])
+        if doc.parent_id is not None:
+            await _relink(db, doc.parent_id, old, doc.name)
     doc.updated_at = utcnow_naive()
     await db.commit()
     return await get_table(db, org_id=org_id, name=doc.name, limit=1)
+
+
+async def _relink(db: AsyncSession, parent_id: int, old: str, new: str) -> None:
+    """A linked table is named in its parent: the column that writes to it (`job.child`) and each
+    row's run (`link`). A rename follows it there, or the parent's people links open nothing."""
+    parent = await db.get(TableDoc, parent_id)
+    if parent is None:
+        return
+    parent.columns = [{**c, "job": {**c["job"], "child": new}} if (c.get("job") or {}).get("child") == old else c
+                      for c in parent.columns or []]
+    for row in (await db.execute(select(TableRow).where(TableRow.table_id == parent_id))).scalars().all():
+        if any((r or {}).get("link") == old for r in (row.runs or {}).values()):
+            row.runs = {g: ({**r, "link": new} if (r or {}).get("link") == old else r) for g, r in row.runs.items()}
 
 
 async def delete_table(db: AsyncSession, *, org_id: int, name: str) -> None:
