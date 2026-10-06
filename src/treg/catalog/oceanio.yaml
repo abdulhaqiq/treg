@@ -283,6 +283,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/search/companies
+    # Ocean.io rejects unknown top-level keys with 422; refuse them before the call instead.
+    body_allowlist: true
     name: "Search companies by industry, technology or region"
     summary: "Search companies using filters"
     input:
@@ -321,13 +323,16 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/search/companies
+    # Ocean.io rejects unknown top-level keys with 422; refuse them before the call instead.
+    body_allowlist: true
     name: "Find lookalike companies from seed domains"
     summary: "Search companies using filters — seeded with lookalikeDomains, this returns companies similar to your seeds"
     input:
       body:
-        companiesFilters: {type: object, required: true, note: "must carry `lookalikeDomains`: a list of seed domains (your best customers, a competitor's logo wall). Combine with the ordinary filters — primaryLocations, companySizes, industries — to constrain the neighbourhood", example: {lookalikeDomains: ["stripe.com", "adyen.com"], companySizes: ["201-500"]}}
+        companiesFilters: {type: object, required: true, note: "must carry `lookalikeDomains` INSIDE this object, never at the top level of the body: a list of up to 10 seed domains (your best customers, a competitor's logo wall). Combine with the ordinary filters — primaryLocations, companySizes, industries — to constrain the neighbourhood", example: {lookalikeDomains: ["stripe.com", "adyen.com"], companySizes: ["201-500"]}}
         size: {type: integer, required: false, note: "how many similar companies to return — the price dial, max 10,000 with your own key; the shared key requires an explicit size of 1-100", example: 2}
         searchAfter: {type: string, required: false, note: "cursor from the previous page"}
+        peopleFilters: {type: object, required: false, note: "narrows to companies that EMPLOY people matching these filters"}
         fields: {type: "array[string]", required: false, note: "which Company fields to return"}
       note: "the same route as oceanio.companies.search, listed separately because lookalike-by-seed-domain is a job of its own and few providers do it. Each row carries `relevance`: A / B / C. `minRelevance` and `maxRelevance` inside companiesFilters let you keep only the close matches"
     test_request:
@@ -358,6 +363,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/search/people
+    # Ocean.io rejects unknown top-level keys with 422; refuse them before the call instead.
+    body_allowlist: true
     name: "Search people by job title, skills or company filters"
     summary: "Search people using filters and/or people Ids"
     input:
