@@ -1079,6 +1079,15 @@ adapters:
     const: {body.category: company}
     out: {companies: results, count: "len(results)"}
     miss: "results == []"
+  oceanio.companies.search:
+    # Domain only: industries take Ocean.io's exact vocabulary (free text is a false miss) and
+    # technologies is an object, not a list.
+    accepts: [[domain]]
+    in: {domain: body.companiesFilters.includeDomains}
+    in_expr: {body.companiesFilters.includeDomains: "list(domain)", body.size: "at_most(limit, 100)"}
+    cost_units: "at_most(limit, 100)"
+    out: {companies: companies, count: total, next_cursor: searchAfter}
+    miss: "companies == []"
   hunter.x.discover-companies:
     accepts: [[q]]
     in:  {q: body.query}

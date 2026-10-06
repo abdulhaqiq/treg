@@ -298,7 +298,7 @@ endpoints:
     test_request:
       body:
         size: 2
-        companiesFilters: {lookalikeDomains: ["stripe.com"]}
+        companiesFilters: {includeDomains: ["stripe.com"]}
         fields: ["domain", "name", "description", "employeeCountOcean", "webTraffic", "technologies", "headcountGrowth", "primaryCountry", "industries"]
     cost:
       type: per_result
@@ -313,7 +313,7 @@ endpoints:
       reported_charge: {path: creditsUsed, unit: credit}
       note: 'OBSERVED live 2026-08-20: size=2 returned creditsUsed 0.4 and the balance fell by 0.4 — 0.2 per company returned, four times the bulk-lookup rate. `size` is the whole price. Matches the published rate card: "Search Companies — 0.2 credits / result".'
     docs_url: https://app.ocean.io/docs/searchCompaniesV3
-    verified: '2026-08-20'
+    verified: '2026-10-06'
     example_response: examples/oceanio.companies.search.json
 
   - id: oceanio.companies.lookalike
