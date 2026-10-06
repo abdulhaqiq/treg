@@ -1,54 +1,99 @@
 <script setup>
-import { computed, inject, onMounted, reactive, ref, watch } from 'vue'
-import { FIXED, MAX_SEEDS, ROUTE_CAP_USD, listRecords, priceOf, readAnswer, splitList, tableFromRows, usd } from './jobs.js'
+// A search that becomes a table: a filter builder on the left (suggested chips, one card per filter,
+// "Add filter" with every filter the search takes), the preview on the right. "Create table" keeps
+// the previewed rows; it does not search again.
+import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { FIXED, MAX_SEEDS, ROUTE_CAP_USD, filterBody, listRecords, priceOf, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
+import { icon } from './icons.js'
 
 const props = defineProps({ source: Object })
 const emit = defineEmits(['cancel', 'created'])
 const api = inject('oeApi')
 
-const values = reactive(Object.fromEntries(props.source.fields.map((f) => [f.name, ''])))
+const filters = props.source.filters
+const byName = Object.fromEntries(filters.map((f) => [f.name, f]))
+const empty = (f) => (f.type === 'tags' || (f.type === 'choice' && f.multi) ? [] : f.type === 'range' ? { min: '', max: '' } : '')
+const values = reactive(Object.fromEntries(filters.map((f) => [f.name, empty(f)])))
+const active = ref(filters.filter((f) => f.open).map((f) => f.name))
+const drafts = reactive({})        // a tags filter's text not yet added
+const picker = ref(false)
+const pickQuery = ref('')
 const limit = ref(25)
 const tool = ref(null)
-const result = ref(null)       // {rows, columns, cost, servedBy} of the last search
+const result = ref(null)           // {rows, ids, body, cost, servedBy} of the last search
 const stale = ref(false)
 const busy = ref(false)
 const error = ref('')
 
 onMounted(() => api.tool(props.source.tool).then((t) => (tool.value = t)).catch(() => {}))
 
-const filled = computed(() => Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim()).map(([k, v]) => [k, v.trim()])))
+const look = { companies: ['building', '#2563eb'], people: ['users', '#7c3aed'], similar: ['copy', '#d97706'] }[props.source.id] || ['search', '#64748b']
+const suggested = computed(() => filters.filter((f) => f.suggested && !active.value.includes(f.name)))
+const pickable = computed(() => {
+  const q = pickQuery.value.trim().toLowerCase()
+  const left = filters.filter((f) => !active.value.includes(f.name) && (!q || `${f.label} ${f.group}`.toLowerCase().includes(q)))
+  const groups = {}
+  for (const f of left) (groups[f.suggested && !q ? 'Popular' : f.group] ||= []).push(f)
+  return Object.entries(groups)
+})
+const op = (f) => (f.type === 'range' ? 'between' : f.type === 'tags' || f.multi ? 'is any of' : 'is')
+
+async function addFilter(name) {
+  if (!active.value.includes(name)) active.value.push(name)
+  picker.value = false
+  pickQuery.value = ''
+  await nextTick()
+  document.getElementById(`oe-f-${name}`)?.focus()
+}
+function removeFilter(name) {
+  active.value = active.value.filter((n) => n !== name)
+  values[name] = empty(byName[name])
+}
+function addTag(f) {
+  const parts = String(drafts[f.name] || '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean)
+  for (const v of parts) if (!values[f.name].includes(v)) values[f.name].push(v)
+  drafts[f.name] = ''
+}
+function backTag(f) {
+  if (!drafts[f.name] && values[f.name].length) values[f.name].pop()
+}
+
+const body = computed(() => filterBody(filters.filter((f) => active.value.includes(f.name)), values))
+const canSearch = computed(() => Object.keys(body.value).length > 0 || Object.values(drafts).some((d) => String(d || '').trim()))
 const price = computed(() => {
-  const p = priceOf(tool.value, Object.keys(filled.value))
+  const p = priceOf(tool.value, Object.keys(body.value))
   return p.known ? `${usd(p.min * 1e6)}–${usd(p.max * 1e6)}` : ''
 })
 const columns = computed(() => result.value?.ids || FIXED[props.source.kind])
-watch([values, limit], () => { if (result.value) stale.value = true })
+watch([values, limit, active], () => { if (result.value) stale.value = true }, { deep: true })
 
-// The search is the table: "Create table" keeps these rows, it does not search again.
 async function search() {
+  for (const f of filters) if (f.type === 'tags' && drafts[f.name]) addTag(f)
   busy.value = true
   error.value = ''
   try {
-    const body = { ...filled.value, ...(props.source.noLimit ? {} : { limit: Number(limit.value) || 25 }) }
-    // a multi field runs one search per value; the answers are merged, the seeds themselves left out
-    const multi = props.source.fields.find((f) => f.multi && body[f.name])
-    const seeds = multi ? splitList(body[multi.name]) : []
-    const bodies = multi ? seeds.map((v) => ({ ...body, [multi.name]: v })) : [body]
-    const runs = await Promise.all(bodies.map((b) => api.run(props.source.tool, { method: 'POST', body: b, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude, fresh: true })))
+    const b = { ...body.value, ...(props.source.noLimit ? {} : { limit: Number(limit.value) || 25 }) }
+    // a multi filter on a field the search takes one of (lookalikes): one search per value, merged,
+    // the seeds themselves left out
+    const multi = filters.find((f) => f.multi && b[f.name])
+    const seeds = multi ? b[multi.name].slice(0, MAX_SEEDS) : []
+    const bodies = multi ? seeds.map((v) => ({ ...b, [multi.name]: v })) : [b]
+    const strict = usesStrict(filters, b)
+    const runs = await Promise.all(bodies.map((x) => api.run(props.source.tool,
+      { method: 'POST', body: x, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude, fresh: true, strict })))
     const answers = runs.map(readAnswer)
     const hits = answers.filter((a) => a.state === 'hit')
     if (hits.length) {
       const own = new Set(seeds.map((v) => v.toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split('/')[0]))
       const rows = hits.flatMap((a) => a.rows).filter((r) => !own.has(String(r.domain || '').toLowerCase()))
-      const cols = [...new Set(hits.flatMap((a) => a.columns))]
-      const { records, ids } = listRecords(props.source.kind, rows, cols, body.limit)
-      result.value = { rows: records, ids, body, cost: runs.reduce((n, r) => n + (r.cost_micro || 0), 0),
+      const { records, ids } = listRecords(props.source.kind, rows, [...new Set(hits.flatMap((a) => a.columns))], b.limit)
+      result.value = { rows: records, ids, body: b, cost: runs.reduce((n, r) => n + (r.cost_micro || 0), 0),
         servedBy: [...new Set(runs.map((r) => r.served_by).filter(Boolean))].join(', ') }
       stale.value = false
     } else {
       result.value = null
       const failed = answers.find((a) => a.state !== 'miss')
-      error.value = failed ? failed.error : 'No results. Loosen a filter and search again.'
+      error.value = failed ? failed.error : 'No results. Remove a filter and search again.'
     }
   } catch (e) {
     error.value = e.message
@@ -58,8 +103,8 @@ async function search() {
 }
 
 function create() {
-  const name = (Object.values(result.value.body).find((v) => typeof v === 'string') || props.source.label)
-    .replace(/[a-z]+:\/\/(www\.)?/gi, '').replace(/\/(?=[\s,]|$)/g, '')
+  const first = Object.values(result.value.body).flat().find((v) => typeof v === 'string') || props.source.label
+  const name = first.replace(/[a-z]+:\/\/(www\.)?/gi, '').replace(/\/(?=[\s,]|$)/g, '')
   emit('created', tableFromRows(name, props.source.kind, result.value.rows, columns.value,
     { source: { tool: props.source.tool, body: result.value.body } }))
 }
@@ -69,32 +114,96 @@ function create() {
   <div class="finder">
     <aside class="filters">
       <button class="ghost back" @click="emit('cancel')">← Back</button>
-      <h1>{{ source.label }}</h1>
-      <p class="muted small">{{ source.hint }}.</p>
-      <form @submit.prevent="search">
-        <label v-for="f in source.fields" :key="f.name" class="oe-field">
-          <span>{{ f.label }}</span>
-          <input v-model="values[f.name]" :placeholder="f.placeholder" />
-        </label>
+      <div class="finder-head">
+        <span class="tile" :style="{ '--tint': look[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(look[0])" /></svg></span>
+        <div><h1>{{ source.label }}</h1><p class="muted small">{{ source.hint }}</p></div>
+      </div>
+
+      <form class="fb" @submit.prevent="search">
+        <div v-if="suggested.length" class="sugg">
+          <span class="fb-label">Suggested</span>
+          <div class="fchips">
+            <button v-for="f in suggested" :key="f.name" type="button" class="fchip" @click="addFilter(f.name)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(f.icon)" /></svg>{{ f.label }}
+            </button>
+          </div>
+        </div>
+
+        <div v-for="name in active" :key="name" class="fcard">
+          <header>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(byName[name].icon)" /></svg>
+            <strong>{{ byName[name].label }}</strong>
+            <span class="op">{{ op(byName[name]) }}</span>
+            <button type="button" class="icon" title="Remove filter" @click="removeFilter(name)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path :d="icon('x')" /></svg>
+            </button>
+          </header>
+          <input v-if="byName[name].type === 'text'" :id="`oe-f-${name}`" v-model="values[name]" :placeholder="byName[name].placeholder" />
+          <div v-else-if="byName[name].type === 'tags'" class="tagbox" @click="$event.currentTarget.querySelector('input').focus()">
+            <span v-for="v in values[name]" :key="v" class="tagv">{{ v }}
+              <button type="button" title="Remove" @click.stop="values[name] = values[name].filter((x) => x !== v)">×</button>
+            </span>
+            <input :id="`oe-f-${name}`" v-model="drafts[name]" :placeholder="values[name].length ? '' : byName[name].placeholder"
+                   @keydown.enter.prevent="addTag(byName[name])" @keydown.,.prevent="addTag(byName[name])"
+                   @keydown.backspace="backTag(byName[name])" @blur="addTag(byName[name])" />
+          </div>
+          <div v-else-if="byName[name].type === 'choice'" class="opts">
+            <label v-for="o in byName[name].options" :key="o.value ?? o" :class="['opt', { on: byName[name].multi ? values[name].includes(o.value ?? o) : values[name] === (o.value ?? o) }]">
+              <input v-if="byName[name].multi" v-model="values[name]" type="checkbox" :value="o.value ?? o" hidden />
+              <input v-else v-model="values[name]" type="radio" :value="o.value ?? o" hidden />{{ o.label ?? o }}
+            </label>
+          </div>
+          <div v-else-if="byName[name].type === 'range'" class="range">
+            <input :id="`oe-f-${name}`" v-model="values[name].min" type="number" min="0" placeholder="min" />
+            <span class="muted">to</span>
+            <input v-model="values[name].max" type="number" min="0" placeholder="max" />
+          </div>
+          <small v-if="byName[name].note" class="muted">{{ byName[name].note }}</small>
+        </div>
+
+        <div class="add-wrap">
+          <button v-if="pickable.length" type="button" class="add-filter" @click="picker = !picker">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path :d="icon('plus')" /></svg>
+            Add filter
+          </button>
+          <div v-if="picker" class="picker" @keydown.esc="picker = false">
+            <input v-model="pickQuery" placeholder="Search filters" autofocus />
+            <div class="picker-body">
+              <section v-for="[group, list] in pickable" :key="group">
+                <h4>{{ group }}</h4>
+                <button v-for="f in list" :key="f.name" type="button" class="pick" @click="addFilter(f.name)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(f.icon)" /></svg>
+                  <span>{{ f.label }}</span><small>{{ f.group }}</small>
+                </button>
+              </section>
+            </div>
+          </div>
+        </div>
+
         <label v-if="!source.noLimit" class="oe-field">
           <span>Number of results</span>
           <input v-model.number="limit" type="number" min="1" max="100" />
         </label>
-        <button class="primary wide" :disabled="busy || !Object.keys(filled).length">
-          {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
-        </button>
-        <p v-if="price" class="muted small center">One search<template v-if="source.fields.some((f) => f.multi)"> per domain (up to {{ MAX_SEEDS }})</template> costs {{ price }}. No results, no charge.</p>
+
+        <div class="fb-foot">
+          <button class="primary wide" :disabled="busy || !canSearch">
+            {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
+          </button>
+          <p v-if="price" class="muted small center">
+            One search<template v-if="filters.some((f) => f.multi)"> per domain (up to {{ MAX_SEEDS }})</template> costs {{ price }}. No results, no charge.
+          </p>
+        </div>
       </form>
     </aside>
 
     <section class="results">
       <header class="results-bar">
         <template v-if="result">
-          <strong>{{ result.rows.length }} {{ source.kind }}</strong>
-          <span class="muted small">via {{ result.servedBy }} · {{ usd(result.cost || 0) }}</span>
+          <strong>Preview</strong>
+          <span class="muted">· {{ result.rows.length }} {{ source.kind }} · {{ usd(result.cost || 0) }} via {{ result.servedBy }}</span>
           <span v-if="stale" class="muted small">· filters changed, search again to update</span>
         </template>
-        <span v-else class="muted">Set filters and search to preview results.</span>
+        <span v-else class="muted">Add filters and search to preview results.</span>
         <span class="spacer" />
         <button class="primary" :disabled="!result" @click="create">Create table with {{ result?.rows.length || 0 }} rows</button>
       </header>

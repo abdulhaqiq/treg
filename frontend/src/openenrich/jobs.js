@@ -1,35 +1,64 @@
 // What a user can do, and the pure helpers behind it (mapping inputs, reading answers, CSV).
 // No Vue and no fetch here, so `npm test` covers it with node alone.
 
+// Where a list starts. A search's `filters` are what the filter builder offers, each sent as one
+// field of the routed search: `text` (one value), `tags` (several, sent as a list), `choice` (from
+// `options`, several when `multi`), `range` (`min`/`max` fields). `suggested` ones show as chips;
+// `strict` ones are contract filters a provider may not express, so a search using one asks treg to
+// skip providers that would ignore it (X-Treg-Route-Strict-Filters).
 export const SOURCES = [
   {
     id: 'companies', label: 'Find companies', kind: 'companies', tool: 'treg.companies.search',
     hint: 'Filter by industry, technology or country',
-    // no free-text field: treg sends a description to one provider only, with thin rows
-    fields: [
-      { name: 'industry', label: 'Industry', placeholder: 'Software' },
-      { name: 'technology', label: 'Uses technology', placeholder: 'Stripe' },
-      { name: 'country', label: 'Country', placeholder: 'US (ISO code)' },
-      { name: 'name', label: 'Company name', placeholder: 'Acme' },
+    filters: [
+      { name: 'industry', label: 'Industry', icon: 'building', group: 'Company', type: 'text', placeholder: 'Software', suggested: true },
+      { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'text', placeholder: 'US', note: 'ISO code', suggested: true, strict: true },
+      { name: 'technology', label: 'Uses technology', icon: 'code', group: 'Company', type: 'text', placeholder: 'Stripe', suggested: true },
+      { name: 'name', label: 'Company name', icon: 'tag', group: 'Company identifiers', type: 'text', placeholder: 'Acme' },
+      { name: 'domain', label: 'Domain', icon: 'link', group: 'Company identifiers', type: 'text', placeholder: 'acme.com' },
+      // a description alone reaches one provider, with thin rows: it is offered, not suggested
+      { name: 'q', label: 'Description', icon: 'search', group: 'Company', type: 'text', placeholder: 'AI design tools' },
     ],
   },
   {
     id: 'people', label: 'Find people', kind: 'people', tool: 'treg.people.search',
     hint: 'Filter by job title, company or location',
-    fields: [
-      { name: 'title', label: 'Job title', placeholder: 'Head of Growth' },
-      { name: 'company_domain', label: 'Company domain', placeholder: 'ramp.com' },
-      { name: 'location', label: 'Location', placeholder: 'London, United Kingdom' },
-      { name: 'country', label: 'Country', placeholder: 'GB (ISO code)' },
-      { name: 'q', label: 'Keywords', placeholder: 'fintech, payments' },
+    filters: [
+      { name: 'title', label: 'Job title', icon: 'briefcase', group: 'Person', type: 'text', placeholder: 'Head of Growth', suggested: true },
+      { name: 'company_domain', label: 'Company domain', icon: 'link', group: 'Company', type: 'text', placeholder: 'ramp.com', suggested: true },
+      { name: 'location', label: 'Location', icon: 'pin', group: 'Location', type: 'text', placeholder: 'London, United Kingdom', suggested: true, strict: true },
+      { name: 'country', label: 'Country', icon: 'pin', group: 'Location', type: 'text', placeholder: 'GB', note: 'ISO code', strict: true },
+      { name: 'keywords', label: 'Skills and topics', icon: 'tag', group: 'Person', type: 'tags', placeholder: 'payments', strict: true },
+      { name: 'full_name', label: 'Full name', icon: 'user', group: 'Person', type: 'text', placeholder: 'Ada Lovelace' },
+      { name: 'q', label: 'Keywords', icon: 'search', group: 'Person', type: 'text', placeholder: 'fintech growth' },
     ],
   },
   {
     id: 'similar', label: 'Lookalikes of…', kind: 'companies', tool: 'treg.companies.similar',
     hint: 'Companies like ones you already know', noLimit: true,
-    fields: [{ name: 'domain', label: 'Company domains', placeholder: 'ramp.com, mercury.com', multi: true }],
+    filters: [{ name: 'domain', label: 'Company domains', icon: 'link', group: 'Company', type: 'tags', placeholder: 'ramp.com', multi: true, open: true }],
   },
 ]
+
+// The search request a set of filter values makes: empty ones left out, `tags` and multi `choice`
+// as lists, `range` as `<name>_min` / `<name>_max`. A `multi` filter on a field the search takes one
+// of (lookalikes) is split into one search per value by the caller.
+export function filterBody(filters, values) {
+  const body = {}
+  for (const f of filters) {
+    const v = values[f.name]
+    if (f.type === 'range') {
+      if (v?.min !== '' && v?.min != null) body[`${f.name}_min`] = Number(v.min)
+      if (v?.max !== '' && v?.max != null) body[`${f.name}_max`] = Number(v.max)
+    } else if (Array.isArray(v)) {
+      const list = v.map((x) => String(x).trim()).filter(Boolean)
+      if (list.length) body[f.name] = list
+    } else if (typeof v === 'string' && v.trim()) body[f.name] = v.trim()
+  }
+  return body
+}
+
+export const usesStrict = (filters, body) => filters.some((f) => f.strict && Object.keys(body).some((k) => k === f.name || k.startsWith(`${f.name}_`)))
 
 export const COLUMN_JOBS = [
   { id: 'judge', group: 'AI', label: 'Ask AI to judge', tool: 'openrouter.ai-judge.decide', judge: true,
@@ -570,12 +599,8 @@ const EXTRA = {
 
 // List rows as a table's records: the fixed columns plus the extras any row has, duplicates (same
 // domain, LinkedIn or name) dropped, at most `limit` rows (some providers ignore the limit).
-// A field that takes several values (`ramp.com, https://mercury.com/`): one search each, at most
-// MAX_SEEDS so a pasted list cannot run up a bill.
+// a pasted list of seeds (lookalikes): at most this many searches, so a list cannot run up a bill
 export const MAX_SEEDS = 10
-export function splitList(text) {
-  return [...new Set(String(text || '').split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean))].slice(0, MAX_SEEDS)
-}
 
 export function listRecords(kind, rows, columns, limit = Infinity) {
   const extra = EXTRA[kind] || {}

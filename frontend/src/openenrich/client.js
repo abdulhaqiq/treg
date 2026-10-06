@@ -49,12 +49,16 @@ export function makeClient(headers) {
     // One call answered as rows and columns. Never throws: the caller reads the status.
     // `fresh`: ask the provider again instead of replaying an earlier identical call (a search the
     // user runs again wants today's answer; a column re-run wants the replay, which is free)
-    async run(tool, { method = 'POST', query = {}, body, maxCost, exclude, fresh = false } = {}) {
+    // `strict`: skip providers that would ignore a filter the search sends. `only`: ask just this
+    // provider (a search's next page continues the list the first page came from).
+    async run(tool, { method = 'POST', query = {}, body, maxCost, exclude, fresh = false, strict = false, only = null } = {}) {
       const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== '' && v != null)).toString()
-      const route = { ...(exclude?.length ? { exclude } : {}), ...(fresh ? { fresh: Date.now() } : {}) }
+      const route = { ...(exclude?.length ? { exclude } : {}), ...(fresh ? { fresh: Date.now() } : {}), ...(strict ? { strict } : {}), ...(only ? { only } : {}) }
       const extra = { 'Idempotency-Key': await idempotencyKey(tool, method, query, body, route) }
       if (maxCost) extra['X-Treg-Route-Max-Cost'] = String(maxCost)
       if (exclude?.length) extra['X-Treg-Route-Exclude'] = exclude.join(',')
+      if (strict) extra['X-Treg-Route-Strict-Filters'] = '1'
+      if (only) Object.assign(extra, { 'X-Treg-Route-Prefer': only, 'X-Treg-Route-Waterfall': '0' })
       try {
         const r = await call(`/table/${tool}${qs ? `?${qs}` : ''}`, { method, body: method === 'GET' ? undefined : body, extra })
         const meta = r.json?._treg || {}

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { fromStored, idempotencyKey } from '../src/openenrich/client.js'
-import { MAX_SEEDS, splitList, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
+import { filterBody, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -226,10 +226,13 @@ test("a result column no row fills is left out, a row's name and domain stay", a
   assert.deepEqual(ids, ['name', 'domain', 'employees'])
 })
 
-test('a pasted list of domains splits into one seed each, deduped and capped', () => {
-  assert.deepEqual(splitList('https://superdesign.dev/, https://www.magicpath.ai/\nramp.com;ramp.com'),
-    ['https://superdesign.dev/', 'https://www.magicpath.ai/', 'ramp.com'])
-  assert.equal(splitList(Array.from({ length: 15 }, (_, i) => `d${i}.com`).join(',')).length, MAX_SEEDS)
+test('filters make the search request: empty left out, tags as lists, ranges as min and max', () => {
+  const filters = [{ name: 'industry', type: 'text' }, { name: 'keywords', type: 'tags', strict: true },
+    { name: 'employees', type: 'range', strict: true }, { name: 'seniority', type: 'choice', multi: true, strict: true }, { name: 'name', type: 'text' }]
+  const body = filterBody(filters, { industry: ' Fintech ', keywords: ['payments', ' '], employees: { min: '11', max: '' }, seniority: [], name: '' })
+  assert.deepEqual(body, { industry: 'Fintech', keywords: ['payments'], employees_min: 11 })
+  assert.equal(usesStrict(filters, body), true)
+  assert.equal(usesStrict(filters, { industry: 'Fintech' }), false)
 })
 
 test('a stored queued or running run reads as not run yet', () => {
