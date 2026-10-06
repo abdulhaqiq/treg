@@ -218,3 +218,10 @@ test('a judgment column asks one question over the evidence and reads the answer
   const score = judgeBody({ type: 'score', levels: 3, instructions: 'Fit?', evidence: ['name'] }, row, cols)
   assert.deepEqual(Object.keys(score.questions.q.criteria), ['1', '2', '3'])
 })
+
+test("a result column no row fills is left out, a row's name and domain stay", async () => {
+  const { listRecords } = await import('../src/openenrich/jobs.js')
+  const columns = ['name', 'domain', 'industry', 'employees', 'location', 'linkedin_url']
+  const { ids } = listRecords('companies', [{ name: 'Elvex', domain: 'elvex.com', employees: '11-50' }, { domain: 'x.ai' }], columns)
+  assert.deepEqual(ids, ['name', 'domain', 'employees'])
+})

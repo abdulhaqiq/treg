@@ -592,7 +592,11 @@ export function listRecords(kind, rows, columns, limit = Infinity) {
     out.push(rec)
     if (out.length >= limit) break
   }
-  const ids = [...keptColumns(kind, columns)]
+  // a column every row left empty says nothing (the provider does not return it): leave it out,
+  // except the ones a row is known by
+  const filled = (id) => out.some((r) => r[id] != null && r[id] !== '')
+  const always = new Set(['name', 'domain', 'first_name', 'last_name', 'full_name'])
+  const ids = keptColumns(kind, columns).filter((id) => always.has(id) || filled(id))
   for (const name of Object.keys(extra)) if (out.some((r) => r[name])) ids.splice(kind === 'people' && name === 'full_name' ? 0 : ids.length, 0, name)
   return { records: out, ids }
 }
