@@ -682,10 +682,9 @@ adapters:
   oceanio.companies.lookalike:
     accepts: [[domain]]
     in: {domain: body.companiesFilters.lookalikeDomains}
-    in_expr: {body.companiesFilters.lookalikeDomains: "list(domain)"}
     # The shared key requires an explicit size of 1-100, and size is the whole price.
-    const: {body.size: 10}
-    cost_units: "10"
+    in_expr: {body.companiesFilters.lookalikeDomains: "list(domain)", body.size: "at_most(limit, 100)"}
+    cost_units: "at_most(limit, 100)"
     out: {companies: companies, count: total}
     miss: "companies == []"
   findymail.lookalike.search:
