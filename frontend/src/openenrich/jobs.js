@@ -83,6 +83,9 @@ export const lookupRetries = (typed) => {
   return [...new Set([...ws, ...ws.map((w) => w.slice(0, 4))])]
 }
 
+// The providers a routed search can ask right now (its routing plan), each once, in plan order.
+export const providersOf = (tool) => [...new Set((tool?.routing?.plan || []).map((c) => c.endpoint_id.split('.')[0]))]
+
 const ANY = (key, single) => ({ id: 'any', label: 'is any of', key, single })
 const NONE = (key) => ({ id: 'none', label: 'is none of', key })
 

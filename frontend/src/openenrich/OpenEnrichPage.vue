@@ -1,10 +1,10 @@
 <script setup>
 // openenrich (docs/context/architecture/tables.md): the team's tables. Lives at /openenrich and
 // /openenrich/<table>; the dashboard's session is the only credential.
-import { onMounted, onUnmounted, provide, ref } from 'vue'
+import { onMounted, onUnmounted, provide, reactive, ref } from 'vue'
 import { useDashboard } from '../state/context'
 import { loadTable, makeClient } from './client.js'
-import { JEV_TOOL, SOURCES, applyTypeAnswers, detectColumns, parseCsv, readAnswer, rowId, typeQuestion, uniqueColumnId } from './jobs.js'
+import { JEV_TOOL, SOURCES, providersOf, applyTypeAnswers, detectColumns, parseCsv, readAnswer, rowId, typeQuestion, uniqueColumnId } from './jobs.js'
 import SourceForm from './SourceForm.vue'
 import { icon } from './icons.js'
 import TableView from './TableView.vue'
@@ -20,13 +20,22 @@ const table = ref(null)         // the open table
 const loading = ref(false)
 const error = ref('')
 const csvInput = ref(null)
+const fresh = ref(false)        // the open table was just created
+const root = ref(null)
+const providers = reactive({})  // source id -> provider slugs behind its search
+
+// The page is the window's height below the dashboard header, so only the table scrolls
+function fit() {
+  if (root.value) root.value.style.height = `${Math.max(480, window.innerHeight - root.value.getBoundingClientRect().top - 16)}px`
+}
 
 // a run spends the team's balance: the dashboard header shows it, so refresh that
 const refreshAccount = () => dash.loadBilling?.()
 
 const nameFromPath = () => (/^\/openenrich\/([a-z0-9][a-z0-9-]{0,79})\/?$/.exec(location.pathname) || [])[1] || null
 
-async function open(name, fromPop = false) {
+async function open(name, fromPop = false, isNew = false) {
+  fresh.value = isNew
   loading.value = true
   error.value = ''
   try {
@@ -54,7 +63,7 @@ async function created(t) {
   try {
     const stored = await api.create({ name: t.name, kind: t.kind, columns: t.columns, source: t.source || null,
       rows: t.rows.map((r) => ({ id: r.id, cells: r.cells })) })
-    await open(stored.name)
+    await open(stored.name, false, true)
   } catch (e) {
     error.value = e.message
   }
@@ -105,14 +114,17 @@ const ago = (iso) => {
 }
 
 onMounted(() => {
+  fit()
+  window.addEventListener('resize', fit)
+  for (const s of SOURCES) api.tool(s.tool).then((t) => (providers[s.id] = providersOf(t))).catch(() => {})
   fromPath()
   window.addEventListener('popstate', fromPath)
 })
-onUnmounted(() => window.removeEventListener('popstate', fromPath))
+onUnmounted(() => { window.removeEventListener('popstate', fromPath); window.removeEventListener('resize', fit) })
 </script>
 
 <template>
-  <div class="oe">
+  <div ref="root" class="oe">
     <header v-if="table" class="oe-top">
       <a href="/openenrich" @click.prevent="home()">← All tables</a>
     </header>
@@ -121,11 +133,11 @@ onUnmounted(() => window.removeEventListener('popstate', fromPath))
     <p v-if="loading" class="muted">Loading…</p>
 
     <section v-else-if="table" class="oe-main">
-      <TableView :key="table.name" :table="table" @open="open" @balance="refreshAccount" />
+      <TableView :key="table.name" :table="table" :fresh="fresh" @open="open" @balance="refreshAccount" />
     </section>
 
     <section v-else-if="source" class="oe-main full">
-      <SourceForm :source="source" @cancel="source = null" @created="created" />
+      <SourceForm :source="source" :providers="providers[source.id] || []" @cancel="source = null" @created="created" />
     </section>
 
     <section v-else class="oe-main narrow">
@@ -137,6 +149,10 @@ onUnmounted(() => window.removeEventListener('popstate', fromPath))
         <button v-for="s in SOURCES" :key="s.id" class="card source" @click="source = s">
           <span class="tile" :style="{ '--tint': look(s.id)[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(look(s.id)[0])" /></svg></span>
           <span><strong>{{ s.label }}</strong><small>{{ s.hint }}</small></span>
+          <span v-if="providers[s.id]?.length" class="vendors" :title="providers[s.id].join(', ')">
+            <img v-for="p in providers[s.id].slice(0, 6)" :key="p" :src="`/logos/${p}.svg`" :alt="p" @error="$event.target.remove()" />
+            <small>{{ providers[s.id].length }} {{ providers[s.id].length === 1 ? 'provider' : 'providers' }}</small>
+          </span>
         </button>
         <button class="card source" @click="csvInput.click()">
           <span class="tile" :style="{ '--tint': look('csv')[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon('upload')" /></svg></span>

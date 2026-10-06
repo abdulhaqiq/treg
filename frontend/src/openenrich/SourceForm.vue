@@ -7,7 +7,8 @@ import { FIXED, MAX_SEEDS, ROUTE_CAP_USD, filterBody, listRecords, priceOf, read
 import { icon } from './icons.js'
 import ValuePicker from './ValuePicker.vue'
 
-const props = defineProps({ source: Object })
+// `providers`: the providers this search can ask, shown so the user sees what stands behind it
+const props = defineProps({ source: Object, providers: { type: Array, default: () => [] } })
 const emit = defineEmits(['cancel', 'created'])
 const api = inject('oeApi')
 
@@ -107,6 +108,7 @@ async function search() {
 // when it cannot page, which answers no_route_candidate for nothing and ends the list.
 const keyOf = (r) => String(r.domain || r.linkedin_url || r.full_name || r.name || '').toLowerCase()
 const loadingMore = ref(false)
+const gridWrap = ref(null)
 async function loadMore() {
   const res = result.value
   loadingMore.value = true
@@ -132,6 +134,8 @@ async function loadMore() {
     res.rows.push(...fresh)
     res.ids = [...new Set([...res.ids, ...ids])]
     res.page = page
+    // the new rows are at the bottom: show them
+    if (fresh.length) nextTick(() => gridWrap.value?.scrollTo({ top: gridWrap.value.scrollHeight, behavior: 'smooth' }))
     res.pageCost = r.cost_micro || 0
     if (!fresh.length || records.length < (res.body.limit || 0)) res.done = true
   } finally {
@@ -154,6 +158,13 @@ function create() {
       <div class="finder-head">
         <span class="tile" :style="{ '--tint': look[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(look[0])" /></svg></span>
         <div><h1>{{ source.label }}</h1><p class="muted small">{{ source.hint }}</p></div>
+      </div>
+      <div v-if="providers.length" class="vendors-row">
+        <span class="fb-label">{{ providers.length }} providers behind this search</span>
+        <span class="vendors wide">
+          <img v-for="p in providers" :key="p" :src="`/logos/${p}.svg`" :alt="p" :title="p" @error="$event.target.remove()" />
+        </span>
+        <small class="muted">treg asks them in turn; the first with an answer fills the preview. A filter only some of them take narrows it to those.</small>
       </div>
 
       <form class="fb" @submit.prevent="search">
@@ -233,7 +244,8 @@ function create() {
       <header class="results-bar">
         <template v-if="result">
           <strong>Preview</strong>
-          <span class="muted">· {{ result.rows.length }} {{ source.kind }} · {{ usd(result.cost || 0) }} via {{ result.servedBy }}</span>
+          <span class="muted">· {{ result.rows.length }} {{ source.kind }} · {{ usd(result.cost || 0) }} via</span>
+          <span v-for="p in [...new Set(result.servedBy.split(', ').map((x) => x.split('.')[0]))]" :key="p" class="served"><img :src="`/logos/${p}.svg`" alt="" @error="$event.target.remove()" />{{ p }}</span>
           <span v-if="result.repeats" class="muted small" title="The provider sent rows already in the list on a later page; they are left out, but it bills every row it sends">· {{ result.repeats }} {{ result.repeats === 1 ? 'repeat' : 'repeats' }} dropped</span>
           <span v-if="stale" class="muted small">· filters changed, search again to update</span>
         </template>
@@ -242,7 +254,7 @@ function create() {
         <button class="primary" :disabled="!result" @click="create">Create table with {{ result?.rows.length || 0 }} rows</button>
       </header>
       <p v-if="error" class="oe-banner">{{ error }}</p>
-      <div class="oe-grid-wrap">
+      <div ref="gridWrap" class="oe-grid-wrap">
         <table class="oe-grid ui-table">
           <thead><tr><th class="num">#</th><th v-for="c in columns" :key="c">{{ c }}</th></tr></thead>
           <tbody v-if="result">

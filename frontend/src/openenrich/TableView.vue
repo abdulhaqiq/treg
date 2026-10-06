@@ -4,12 +4,13 @@ import { COLUMN_TYPES, cellFrom, cellValue, fillInputs, host, judgeBody, judgeVa
 import ColumnPanel from './ColumnPanel.vue'
 import { loadTable, toStoredRows } from './client.js'
 
-const props = defineProps({ table: Object })
+// `fresh`: a table just made from a search, so the next step (adding a column) is already open
+const props = defineProps({ table: Object, fresh: Boolean })
 const emit = defineEmits(['open', 'balance'])
 const api = inject('oeApi')
 
 const t = ref(props.table)
-const adding = ref(false)
+const adding = ref(props.fresh)
 const detail = ref(null)       // {row, column} shown in the side panel
 const runs = reactive({})      // column group -> {label, queue, fresh, done, total, spent, stopping}: one per running column
 const banner = ref('')

@@ -15,6 +15,8 @@
   color: var(--text);
 }
 .oe, .oe * { box-sizing: border-box; }
+/* the dashboard pads its main area for long pages; openenrich fits the window instead */
+#maincontent:has(> .oe) { padding-bottom: 0; }
 .oe h1 { font-family: var(--display); font-weight: 400; font-size: 30px; margin: 0; letter-spacing: 0; }
 .oe h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 36px 0 10px; }
 .oe h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
@@ -43,7 +45,7 @@
 .oe .oe-banner { background: var(--warn-soft); color: var(--warn); padding: 8px 12px; border-radius: 8px; margin: 8px 0; }
 
 /* top bar */
-.oe { display: flex; flex-direction: column; height: calc(100vh - 32px); min-height: 520px; padding: 8px 0 24px; }
+.oe { display: flex; flex-direction: column; height: calc(100vh - 96px); min-height: 480px; padding: 8px 0 0; }
 .oe .oe-top { display: flex; align-items: center; gap: 8px; padding: 4px 0 12px; flex: none; }
 .oe .brand { font-weight: 700; color: var(--text); letter-spacing: -.02em; font-size: 14px; }
 .oe .crumb { color: var(--muted); }
@@ -138,6 +140,15 @@
 .oe .results { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px 18px; background: var(--panel); }
 .oe .results-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; min-height: 36px; font-size: 14px; }
 .oe .results .oe-grid-wrap { flex: 0 1 auto; align-self: stretch; }
+.oe .vendors { display: flex; align-items: center; margin-top: auto; }
+.oe .vendors img { width: 22px; height: 22px; border-radius: 6px; background: var(--surface); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--line); object-fit: contain; padding: 2px; margin-right: -4px; }
+.oe .vendors small { margin-left: 12px; color: var(--muted); font-size: 12px; }
+.oe .vendors.wide { flex-wrap: wrap; gap: 6px; margin: 8px 0 6px; }
+.oe .vendors.wide img { margin-right: 0; }
+.oe .vendors-row { margin: -6px 0 16px; }
+.oe .vendors-row small { display: block; font-size: 11.5px; line-height: 1.4; }
+.oe .served { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); }
+.oe .served img { width: 16px; height: 16px; border-radius: 4px; }
 .oe .more { display: flex; justify-content: center; padding: 14px 0 4px; }
 .oe .ghost-row span { display: block; height: 10px; border-radius: 4px; background: var(--gray-soft); width: 70%; }
 
