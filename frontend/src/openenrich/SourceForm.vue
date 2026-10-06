@@ -30,7 +30,7 @@ async function search() {
   error.value = ''
   try {
     const body = { ...filled.value, ...(props.source.noLimit ? {} : { limit: Number(limit.value) || 25 }) }
-    const r = await api.run(props.source.tool, { method: 'POST', body, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude })
+    const r = await api.run(props.source.tool, { method: 'POST', body, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude, fresh: true })
     const a = readAnswer(r)
     if (a.state === 'hit') {
       const { records, ids } = listRecords(props.source.kind, a.rows, a.columns, body.limit)

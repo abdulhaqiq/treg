@@ -47,9 +47,12 @@ export function makeClient(headers) {
     columns: (id) => must(`/table-columns/${enc(id)}`).catch(() => null),
 
     // One call answered as rows and columns. Never throws: the caller reads the status.
-    async run(tool, { method = 'POST', query = {}, body, maxCost, exclude } = {}) {
+    // `fresh`: ask the provider again instead of replaying an earlier identical call (a search the
+    // user runs again wants today's answer; a column re-run wants the replay, which is free)
+    async run(tool, { method = 'POST', query = {}, body, maxCost, exclude, fresh = false } = {}) {
       const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== '' && v != null)).toString()
-      const extra = { 'Idempotency-Key': await idempotencyKey(tool, method, query, body, exclude?.length ? { exclude } : {}) }
+      const route = { ...(exclude?.length ? { exclude } : {}), ...(fresh ? { fresh: Date.now() } : {}) }
+      const extra = { 'Idempotency-Key': await idempotencyKey(tool, method, query, body, route) }
       if (maxCost) extra['X-Treg-Route-Max-Cost'] = String(maxCost)
       if (exclude?.length) extra['X-Treg-Route-Exclude'] = exclude.join(',')
       try {
