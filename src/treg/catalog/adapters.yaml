@@ -826,9 +826,9 @@ adapters:
     in: {domain: body.domains, name: body.companyNames}
     in_expr: {body.domains: "list(domain)", body.companyNames: "list(name)"}
     out: {name: "data.companies[0].name", domain: "data.companies[0].domain",
-          website: "data.companies[0].websiteUrl", description: "data.companies[0].description",
+          website: "data.companies[0].websiteUrl",
           industry: "data.companies[0].industry", employees: "data.companies[0].employees",
-          founded: "data.companies[0].yearFounded",
+          founded: "data.companies[0].foundedYear",
           location: "join(data.companies[0].city, data.companies[0].country)",
           linkedin_url: "data.companies[0].linkedinUrl"}
     miss: "data.companies == []"
