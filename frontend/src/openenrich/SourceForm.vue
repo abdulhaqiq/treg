@@ -39,8 +39,28 @@ onMounted(async () => {
   const got = await Promise.all(ids.map((id) => api.tool(id).then((t) => [id, t?.endpoint || null]).catch(() => [id, null])))
   endpoints.value = Object.fromEntries(got)
 })
-const costs = computed(() => Object.values(endpoints.value).map((e) => e?.cost || null))
-const range = computed(() => searchCostRange(costs.value, limit.value, searchCap(limit.value)))
+// Providers the user picked: the search asks only them (every other one excluded); none = auto
+const chosen = ref(new Set())
+function toggleProvider(slug) {
+  const next = new Set(chosen.value)
+  if (next.has(slug)) next.delete(slug); else next.add(slug)
+  chosen.value = next
+}
+const allSlugs = computed(() => [...new Set((tool.value?.routing?.plan || []).map((c) => c.endpoint_id.split('.')[0]))])
+const excluded = computed(() => (chosen.value.size ? allSlugs.value.filter((x) => !chosen.value.has(x)) : []))
+const pickedCards = computed(() => providerCards.value.filter((c) => chosen.value.has(c.slug)))
+// a picked provider may cost more than the default cap: the cap rises to what it asks
+const capFor = (rows) => {
+  const base = searchCap(rows)
+  if (!chosen.value.size) return base
+  const n = Number(rows) || 0
+  const most = Math.max(0, ...pickedCards.value.map((c) => (c.perResult ? c.unit * n : c.unit)))
+  return Math.max(base, Math.ceil(most * 120) / 100)
+}
+const costs = computed(() => (chosen.value.size
+  ? Object.entries(endpoints.value).filter(([id]) => chosen.value.has(id.split('.')[0])).map(([, e]) => e?.cost || null)
+  : Object.values(endpoints.value).map((e) => e?.cost || null)))
+const range = computed(() => searchCostRange(costs.value, limit.value, capFor(limit.value)))
 
 // a search field's name in the builder's words (seniority_exclude → "Seniority (is none of)")
 const fieldLabel = computed(() => {
@@ -69,7 +89,8 @@ const providerCards = computed(() => {
     const cost = c.type === 'free' ? 0 : c.type === 'per_result' ? (c.usd || 0) * n : (c.usd ?? row.usd ?? 0)
     const takes = (row.filters || []).filter((k) => fieldLabel.value[k])
     const missing = used.filter((k) => !(row.filters || []).includes(k))
-    const card = { slug, name: ep?.provider_display || slug, cost, overCap: cost > cap, works: row.works,
+    const card = { slug, name: ep?.provider_display || slug, cost, overCap: !chosen.value.size && cost > cap, works: row.works,
+      unit: c.type === 'free' ? 0 : c.usd ?? row.usd ?? 0, perResult: c.type === 'per_result',
       billing: c.type === 'free' ? 'free' : c.type === 'per_result' ? `${usd((c.usd || 0) * 1e6)} per result` : `${usd((c.usd || 0) * 1e6)} per search`,
       // the filters this search uses first, then the rest
       takes: [...new Set(takes.map((k) => fieldLabel.value[k]))].sort((x, y) => used.some((k) => fieldLabel.value[k] === y) - used.some((k) => fieldLabel.value[k] === x)), using: new Set(used.filter((k) => takes.includes(k)).map((k) => fieldLabel.value[k])),
@@ -129,7 +150,7 @@ async function search() {
     const bodies = multi ? seeds.map((v) => ({ ...b, [multi.name]: v, limit: perSeed })) : [b]
     const strict = usesStrict(props.source, b)
     const runs = await Promise.all(bodies.map((x) => api.run(props.source.tool,
-      { method: 'POST', body: x, maxCost: searchCap(x.limit), exclude: props.source.exclude, fresh: true, strict })))
+      { method: 'POST', body: x, maxCost: capFor(x.limit), exclude: [...(props.source.exclude || []), ...excluded.value], fresh: true, strict })))
     const answers = runs.map(readAnswer)
     const hits = answers.filter((a) => a.state === 'hit')
     if (hits.length) {
@@ -166,7 +187,7 @@ async function loadMore() {
     const page = res.page + 1
     const mine = res.servedBy.split('.')[0]
     const others = [...new Set((tool.value?.endpoint?.routed_children || []).map((id) => id.split('.')[0]))].filter((p) => p !== mine)
-    const r = await api.run(props.source.tool, { method: 'POST', body: { ...res.body, page }, maxCost: searchCap(res.body.limit),
+    const r = await api.run(props.source.tool, { method: 'POST', body: { ...res.body, page }, maxCost: capFor(res.body.limit),
       exclude: [...(props.source.exclude || []), ...others], fresh: true, strict: true })
     const a = readAnswer(r)
     res.cost += r.cost_micro || 0
@@ -272,9 +293,10 @@ function create() {
 
         <div class="fb-foot">
           <div v-if="providers.length" class="vendors-row">
-            <span class="fb-label">{{ providers.length }} providers behind this search</span>
+            <span class="fb-label">{{ chosen.size ? `${chosen.size} of ${providers.length} providers picked` : `${providers.length} providers behind this search` }}</span>
             <span class="vendors wide">
-              <span v-for="c in providerCards" :key="c.slug" :class="['vendor', { off: c.skipped.length || c.overCap }]" tabindex="0">
+              <span v-for="c in providerCards" :key="c.slug" :class="['vendor', { off: c.skipped.length || c.overCap, picked: chosen.has(c.slug) }]"
+                    tabindex="0" role="button" :aria-pressed="chosen.has(c.slug)" @click="toggleProvider(c.slug); $event.currentTarget.blur()" @keydown.enter="toggleProvider(c.slug)">
                 <img :src="`/logos/${c.slug}.svg`" :alt="c.name" @error="$event.target.style.visibility = 'hidden'" />
                 <span class="vcard">
                   <strong>{{ c.name }}</strong>
@@ -288,18 +310,21 @@ function create() {
                     <span v-if="c.takes.length > 8" class="more-n">+{{ c.takes.length - 8 }} more</span>
                   </span>
                   <span v-else class="muted">Applies no filters beyond its search fields</span>
+                  <span class="muted vhint">{{ chosen.has(c.slug) ? 'Click to stop using it' : 'Click to use only the providers you pick' }}</span>
                 </span>
               </span>
             </span>
-            <small class="muted">treg asks them in turn; the first with an answer fills the preview. A filter only some of them take narrows it to those.</small>
+            <small v-if="!chosen.size" class="muted">Auto: treg asks them in turn, cheapest first, and the first with an answer fills the preview. Click logos to use only the ones you pick.</small>
+            <small v-else class="muted picked-line">Using only {{ pickedCards.map((c) => c.name).join(', ') }} ·
+              <a href="#" @click.prevent="chosen = new Set()">back to auto</a></small>
           </div>
           <button class="primary wide" :disabled="busy || !canSearch">
             {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
           </button>
           <p v-if="Object.keys(body).length && !canSearch" class="muted small center">Add a title, department, industry, location, keyword or technology to search on.</p>
           <p class="muted small center">
-            <template v-if="range">{{ range.min === range.max ? money(range.min) : `${money(range.min)} – ${money(range.max)}` }} for {{ limit }} results, depending on the provider</template>
-            <template v-else>At most {{ usd(searchCap(limit) * 1e6) }} for {{ limit }} results</template><template v-if="filters.some((f) => f.split)">, shared by the domains (up to {{ MAX_SEEDS }})</template>.
+            <template v-if="range">{{ range.min === range.max ? money(range.min) : `${money(range.min)} – ${money(range.max)}` }} for {{ limit }} results{{ pickedCards.length === 1 ? ` from ${pickedCards[0].name}` : ', depending on the provider' }}</template>
+            <template v-else>At most {{ usd(capFor(limit) * 1e6) }} for {{ limit }} results</template><template v-if="filters.some((f) => f.split)">, shared by the domains (up to {{ MAX_SEEDS }})</template>.
           </p>
         </div>
       </form>

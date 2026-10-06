@@ -146,7 +146,12 @@
 .oe .vendors.wide { flex-wrap: wrap; gap: 5px; margin: 6px 0 4px; }
 .oe .vendors.wide img { margin-right: 0; }
 .oe .vendor { display: inline-flex; border-radius: 6px; outline: none; }
+.oe .vendor { cursor: pointer; }
 .oe .vendor.off img { opacity: .35; filter: grayscale(1); }
+.oe .vendor.picked img { opacity: 1; filter: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+.oe .vendors.wide:has(.picked) .vendor:not(.picked) img { opacity: .3; filter: grayscale(1); }
+.oe .vhint { font-size: 11px; margin-top: 2px; }
+.oe .picked-line a { color: var(--ink); text-decoration: underline; }
 .oe .vcard { display: none; position: absolute; z-index: 30; bottom: calc(100% + 6px); left: 0; right: 0;
   flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--surface); border-radius: var(--rb); box-shadow: var(--shadow-lg), 0 0 0 1px var(--line);
   font-size: 12px; line-height: 1.4; color: var(--text); text-align: left; }
