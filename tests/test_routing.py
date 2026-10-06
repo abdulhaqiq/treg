@@ -1893,3 +1893,35 @@ def test_search_pages_and_firmographic_filters_reach_the_providers_that_take_the
     assert sent("prospeo.people.search", "people.search", {"company_domain": "ramp.com"})[1]["page"] == 1
     assert "page" not in sent("quickenrich.companies.search", "companies.search", {"industry": "fintech"})[1]
     assert sent("thecompaniesapi.companies.search", "companies.search", {"industry": "fintech", "page": 3})[0]["page"] == "3"
+
+
+def test_rich_search_filters_and_their_exclusions_reach_the_providers_that_take_them():
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    cat = catalog_store.load()
+
+    def sent(adapter, contract, given):
+        ident, variant = canonical_identity(cat.contracts[contract], given)
+        assert variant, given
+        ad = cat.adapters[adapter]
+        return ad.to_upstream(ident, adapter_accepts(ad, ident))[1]
+
+    # people by firmographics alone, no company or title named; shared values in leadsforge's own ids
+    b = sent("leadsforge.people.search", "people.search", {
+        "department": ["sales"], "department_exclude": ["consulting"], "titles": ["Head of Growth", "VP Growth"],
+        "title_exclude": ["Intern"], "company_industry": ["Financial Services"], "company_type": ["private", "public"],
+        "funding_rounds": ["series_b", "venture"], "founded_min": 2015, "company_location_exclude": ["France"], "per_company": 2})
+    assert b["leadDepartments"] == {"include": ["sales"], "exclude": ["consulting"]}
+    assert b["leadJobTitles"] == {"include": ["Head of Growth", "VP Growth"], "exclude": ["Intern"]}
+    assert b["companyTypes"] == {"include": ["PRIVATELY_HELD", "PUBLIC_COMPANY"]}
+    assert b["companyFundingRounds"] == {"include": ["SERIES_B", "VENTURE_SERIES_UNKNOWN"]}
+    assert b["companyFoundedYearRange"] == {"min": 2015} and b["companyLocations"] == {"exclude": ["France"]}
+    assert b["maxContactsPerCompany"] == 2
+    # one title, as before
+    assert sent("leadsforge.people.search", "people.search", {"title": "CFO"})["leadJobTitles"] == {"include": ["CFO"]}
+    # companies by firmographics alone
+    b = sent("companyenrich.companies.search", "companies.search", {
+        "naics": [5112], "countries": ["US", "GB"], "employee_ranges": ["51-200"], "revenue_ranges": ["1m-10m"],
+        "category": ["saas"], "funding_rounds": ["series_a"], "founded_min": 2018})
+    assert b["naicsCode"] == [5112] and b["countries"] == ["US", "GB"] and b["employees"] == ["51-200"]
+    assert b["revenue"] == ["1m-10m"] and b["category"] == ["saas"] and b["fundingRounds"] == ["series_a"] and b["foundedYear"] == {"min": 2018}
+    assert sent("companyenrich.companies.search", "companies.search", {"technology": "stripe"})["technologies"] == ["stripe"]

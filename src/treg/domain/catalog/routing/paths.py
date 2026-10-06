@@ -102,10 +102,14 @@ def seranking_source(country: Any) -> str:
 
 
 def lower(v: Any) -> Any:
+    if isinstance(v, list):
+        return [lower(x) for x in v]
     return v.lower() if isinstance(v, str) else v
 
 
 def upper(v: Any) -> Any:
+    if isinstance(v, list):
+        return [upper(x) for x in v]
     return v.upper() if isinstance(v, str) else v
 
 
@@ -250,12 +254,13 @@ def null_if(value: Any, *sentinels: Any) -> Any:
     return None if key in sentinels else value
 
 
-def swap(v: Any, old: Any, new: Any) -> Any:
-    """`swap(list(seniority), 'c_suite', 'c-suite')`: one provider's spelling of one value, in a value
-    or a list of them; everything else passes through."""
+def swap(v: Any, *pairs: Any) -> Any:
+    """`swap(list(seniority), 'c_suite', 'c-suite')`: a provider's own spelling of some values, as
+    old/new pairs, in a value or a list of them; everything else passes through."""
+    table = {pairs[i]: pairs[i + 1] for i in range(0, len(pairs) - 1, 2)}
     if isinstance(v, list):
-        return [new if x == old else x for x in v]
-    return new if v == old else v
+        return [table.get(x, x) for x in v]
+    return table.get(v, v)
 
 
 def choose(condition: Any, when_true: Any, when_false: Any) -> Any:
