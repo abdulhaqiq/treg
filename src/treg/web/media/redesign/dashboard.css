@@ -56,6 +56,11 @@ body:has(.redesign)::before { display:none; }
 .rd-email { overflow:hidden; text-overflow:ellipsis; margin:4px 10px 10px; font-size:12px; color:var(--muted); }
 .rd-account-panel button,.rd-account-panel a { display:block; width:100%; border:0; border-radius:10px; padding:10px; background:none; text-align:left; color:var(--ink); font:13px var(--sans); text-decoration:none; }
 .rd-account-panel button:hover,.rd-account-panel a:hover { background:var(--hover); }
+.rd-more-panel { position:fixed; z-index:60; width:240px; padding:6px; border:1px solid var(--line); border-radius:16px; background:var(--surface); box-shadow:var(--shadow-lg); }
+.rd-more-panel button,.rd-more-panel a { display:flex; flex-direction:column; gap:2px; width:100%; border:0; border-radius:10px; padding:9px 10px; background:none; text-align:left; color:var(--ink); font:13px var(--sans); text-decoration:none; cursor:pointer; }
+.rd-more-panel button:hover,.rd-more-panel a:hover,.rd-more-panel .current { background:var(--hover); }
+.rd-more-panel b { font-weight:600; }
+.rd-more-panel span { color:var(--muted); font-size:12px; }
 .rd-referral { display:flex; align-items:center; flex:none; gap:7px; min-height:36px; padding:0 13px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--ink); font:500 12.5px/18px var(--sans); white-space:nowrap; text-decoration:none; }
 .rd-referral img { width:14px; height:14px; }
 .rd-referral:hover { border-color:var(--line2); background:var(--hover); }

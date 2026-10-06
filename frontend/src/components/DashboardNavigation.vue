@@ -1,7 +1,23 @@
 <script>
 import { useDashboard } from '../state/context'
 import BrandMark from './BrandMark.vue'
-export default { components: { BrandMark }, setup: useDashboard }
+// "More": the pages that are not daily work (openenrich and the hub in the app, the public arenas). Its menu sits on
+// the window, since the nav row scrolls sideways and would cut a dropdown off.
+export default {
+  components: { BrandMark },
+  setup: useDashboard,
+  data: () => ({ moreOpen: false, moreAt: {} }),
+  mounted() { window.addEventListener('click', this.closeMore) },
+  unmounted() { window.removeEventListener('click', this.closeMore) },
+  methods: {
+    toggleMore(e) {
+      const r = e.currentTarget.getBoundingClientRect()
+      this.moreAt = { top: `${Math.round(r.bottom + 8)}px`, left: `${Math.round(Math.min(r.left, window.innerWidth - 248))}px` }
+      this.moreOpen = !this.moreOpen
+    },
+    closeMore() { this.moreOpen = false },
+  },
+}
 </script>
 
 <template>
@@ -40,9 +56,14 @@ export default { components: { BrandMark }, setup: useDashboard }
 <button v-if="authed" class="rd-nav" :class="{active:view==='connections'||view==='provider'}" :aria-current="(view==='connections'||view==='provider')?'page':null" @click="go('connections')">Connections</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='tools'||view==='secrets'||view==='resources'}" :aria-current="(view==='tools'||view==='secrets'||view==='resources')?'page':null" @click="go('tools')">Your own tools</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='activity'}" :aria-current="(view==='activity')?'page':null" @click="go('activity')">Activity</button>
-<button v-if="authed && oeOn" class="rd-nav" :class="{active:view==='openenrich'}" :aria-current="(view==='openenrich')?'page':null" @click="go('openenrich')">openenrich</button>
-<button v-if="authed && hubOn" class="rd-nav" :class="{active:view==='hub'||view==='run'}" :aria-current="(view==='hub'||view==='run')?'page':null" @click="go('hub')">Hub</button>
-<button v-if="authed" class="rd-nav" :class="{active:view==='orgs'}" :aria-current="(view==='orgs')?'page':null" @click="go('orgs')">Team</button></nav>
+<button v-if="authed" class="rd-nav" :class="{active:view==='orgs'}" :aria-current="(view==='orgs')?'page':null" @click="go('orgs')">Team</button>
+<button v-if="authed" class="rd-nav" :class="{active:view==='openenrich'||view==='hub'||view==='run'||moreOpen}" aria-haspopup="true" :aria-expanded="moreOpen" @click.stop="toggleMore">More ▾</button></nav>
+      <div v-if="moreOpen" class="rd-more-panel" :style="moreAt" @click.stop>
+        <button v-if="oeOn" :class="{current:view==='openenrich'}" @click="go('openenrich'); moreOpen=false"><b>openenrich</b><span>Build a list and enrich every row</span></button>
+        <button v-if="hubOn" :class="{current:view==='hub'||view==='run'}" @click="go('hub'); moreOpen=false"><b>Hub</b><span>Tools made of tools, by makers</span></button>
+        <a href="/enrich-arena"><b>Enrich Arena</b><span>Compare enrichment answers, providers, cost and speed</span></a>
+        <a v-if="meta?.web_arena" href="/web-arena"><b>Web Arena</b><span>Compare search, fetch and other web tools on the same task</span></a>
+      </div>
       <div class="rd-account">
         <a v-if="authed" class="rd-referral" href="#referrals" @click.prevent="go('referrals')" :aria-current="view==='referrals'?'page':null" :title="refEntryTitle()" :aria-label="'Referral: '+refEntryTitle()"><img src="/media/redesign/referral-gift.svg" alt=""><span>Referral</span></a>
         <button v-if="billing" class="rd-balance" :title="'Balance: '+money(billing.balance_micro)" @click="orgTab='billing'; go('orgs')"><span>Balance</span><b>{{moneyGlance(billing.balance_micro)}}</b></button>

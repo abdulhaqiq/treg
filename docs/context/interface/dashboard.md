@@ -124,6 +124,7 @@ this page keeps what no single file shows. The look follows the root `design.md`
 - `tutorial.js` is the only interactive source of the CLI tutorial (its prose mirrors: AGENTS.md),
   rendered by the Help view and `/tutorial`, served `no-cache` and versioned by its own mtime.
   `tour/tour.js` drives the dashboard tour.
+- The top bar's daily tabs stand alone; More holds the rest: openenrich and the hub (each when it is on here) and the public Enrich Arena and Web Arena (Web Arena when `/meta.web_arena` says it is served).
 - The top bar is words only; GitHub, Discord and X sit in the account menu; the balance shows cents,
   never rounded up. Its sides never shrink below their content, so the nav scrolls rather than overlaps.
 - **Referral** leads to the friend credit and the invite-only affiliate tier. The link is never gated
