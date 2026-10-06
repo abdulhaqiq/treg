@@ -353,13 +353,26 @@ const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(
 
 // Every identity input a column can feed: {input: '{column id}'}. Routed jobs want everything you
 // know (treg derives the rest), so all matches are sent, not only one alternative.
-export function autoMap(identity, columns, tableKind) {
+// What an input's catalog example or note says it holds, when that narrows it: a `url` whose example
+// is linkedin.com/in/… is a person's profile, never the company's website.
+export function hintTypes(hint) {
+  const h = String(hint || '').toLowerCase()
+  if (/linkedin\.com\/in\b|linkedin (person|profile)|person'?s? linkedin|profile url/.test(h)) return ['linkedin_person']
+  if (/linkedin\.com\/company|company'?s? linkedin|linkedin company/.test(h)) return ['linkedin_company']
+  if (/linkedin/.test(h)) return ['linkedin_person', 'linkedin_company']
+  return null
+}
+
+// `hints`: input -> its catalog example and note (paramsOf), read by hintTypes
+export function autoMap(identity, columns, tableKind, hints = {}) {
   const byName = new Map(columns.map((c) => [norm(c.label || c.id), c.id]))
+  const byId = new Map(columns.map((c) => [c.id, c]))
   const mapping = {}
   const used = new Set()
   for (const input of new Set(identity.flat())) {
+    const only = hintTypes(hints[input])
     // by type: the first column whose type feeds this input, in the order TYPE_INPUTS ranks them
-    const typed = inputTypes(input)
+    const typed = (only || inputTypes(input))
       .flatMap((t) => columns.filter((c) => c.type === t && !used.has(c.id)))
       .find(Boolean)
     if (typed) { mapping[input] = `{${typed.id}}`; used.add(typed.id); continue }
@@ -367,7 +380,9 @@ export function autoMap(identity, columns, tableKind) {
     if (input === 'full_name' && tableKind === 'people') names = [...names, 'name']
     // in a people table a tool's `name` is the person's
     if (input === 'name' && tableKind === 'people') names = ['full_name', 'person', 'name']
-    const hit = names.find((n) => byName.has(n))
+    // by name, unless the column's type says it holds something else than the hint asks for
+    const fits = (id) => !only || !byId.get(id)?.type || only.includes(byId.get(id).type)
+    const hit = names.find((n) => byName.has(n) && fits(byName.get(n)))
     if (hit) mapping[input] = `{${byName.get(hit)}}`
   }
   return mapping
@@ -494,6 +509,13 @@ export function cellFrom(rows, field) {
   const values = rows.map((r) => r[field]).filter((v) => v != null && v !== '')
   if (values.length <= 1) return values[0] ?? null
   return [...new Set(values.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))))].join(', ')
+}
+
+// an endpoint's inputs as autoMap hints: each one's example, verified test value and note
+export const inputHints = (ep) => {
+  const t = ep?.test_request || {}
+  const tested = { ...t.pathParams, ...t.queryParams, ...(t.body && typeof t.body === 'object' ? t.body : {}) }
+  return Object.fromEntries(Object.entries(paramsOf(ep)).map(([k, v]) => [k, `${v?.example ?? ''} ${tested[k] ?? ''} ${v?.note ?? ''}`]))
 }
 
 export const usd = (micro) => `$${(micro / 1e6).toFixed(micro && micro < 10000 ? 4 : 2)}`

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { iconFor } from './icons.js'
-import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd, typeOfField, JEV_TOOL, COLUMN_TYPES } from './jobs.js'
+import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd, typeOfField, JEV_TOOL, COLUMN_TYPES, inputHints } from './jobs.js'
 
 // `edit`: a job column's group to change; the panel opens on its saved settings
 const props = defineProps({ table: Object, edit: String })
@@ -132,7 +132,7 @@ async function pick(j) {
       for (const k of identity.value.flat()) mapping[k] ||= ''
       // routed: the contract's identity; a single provider: every input it takes, optional ones too
       const mappable = t?.endpoint?.kind === 'routed' ? identity.value : [Object.keys(mapping).filter((k) => !custom[k])]
-      Object.assign(mapping, autoMap(mappable, props.table.columns, props.table.kind))
+      Object.assign(mapping, autoMap(mappable, props.table.columns, props.table.kind, inputHints(t?.endpoint)))
       // "Provide exactly one company identifier": keep only the first input a column filled
       if (/exactly one/i.test(t?.endpoint?.input?.note || '')) {
         const filled = Object.keys(mapping).filter((k) => mapping[k] && !custom[k])

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { fromStored, idempotencyKey } from '../src/openenrich/client.js'
-import { SOURCES, filterBody, lookupRetries, typoScore, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
+import { SOURCES, hintTypes, filterBody, lookupRetries, typoScore, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -258,4 +258,18 @@ test('typing to find a value forgives a typo, never a different word', () => {
   assert.equal(typoScore('hubspto', 'hubspot'), 1)
   assert.equal(typoScore('banking', 'Research & Development'), null)
   assert.deepEqual(lookupRetries('artifacial intelligence'), ['artifacial', 'intelligence', 'arti', 'inte'])
+})
+
+test('an input whose example is a LinkedIn URL takes only a LinkedIn column of that kind', () => {
+  const companies = [{ id: 'domain', label: 'domain', type: 'domain' }, { id: 'linkedin_url', label: 'linkedin_url', type: 'linkedin_company' }]
+  const people = [{ id: 'company_domain', label: 'company_domain', type: 'domain' }, { id: 'linkedin_url', label: 'linkedin_url', type: 'linkedin_person' }]
+  const person = { url: 'https://www.linkedin.com/in/example ' }
+  assert.deepEqual(autoMap([['url']], people, 'people', person), { url: '{linkedin_url}' })
+  // a person's profile is not on a company table: unfilled, never the company's page or website
+  assert.deepEqual(autoMap([['url']], companies, 'companies', person), {})
+  assert.deepEqual(autoMap([['profile_url']], companies, 'companies', { profile_url: 'https://www.linkedin.com/in/example' }), {})
+  assert.deepEqual(autoMap([['url']], companies, 'companies', { url: 'https://www.linkedin.com/company/example' }), { url: '{linkedin_url}' })
+  // no hint: as before
+  assert.deepEqual(autoMap([['url']], companies, 'companies'), { url: '{domain}' })
+  assert.deepEqual(hintTypes('website of the company'), null)
 })
