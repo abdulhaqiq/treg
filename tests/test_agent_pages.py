@@ -343,3 +343,69 @@ async def test_a_focused_page_keeps_every_category_anchor(clients: AsyncClient):
         page = (await clients.get(f"/agents/{agent}")).text
         for category, _jobs in agent_pages.USE_CASES:
             assert f'id="{_anchor(category)}"' in page, (agent, category)
+
+
+# ------------------------------------------------------------------ lead-list workflow, /jev, Monid
+
+LEAD_LIST = "/workflows/find-and-verify-a-lead-list"
+
+
+async def test_the_lead_list_page_names_claude_and_carries_its_tested_section(clients: AsyncClient):
+    """The page targets "ai lead generation" and the Claude phrasing, uses Claude Code as its example
+    agent (other workflows keep the default), and its hand-written description and "tested" section
+    reach both the HTML and the .md twin."""
+    import json
+    import re
+    spec = agent_pages.WORKFLOWS["find-and-verify-a-lead-list"]
+    page = (await clients.get(LEAD_LIST)).text
+    title = re.search(r"<title>(.*?)</title>", page).group(1)
+    assert "AI lead generation" in title and "Claude" in title and len(title) <= 65, title
+    desc = re.search(r'name="description" content="([^"]*)"', page).group(1)
+    assert desc.startswith("Claude builds a verified B2B lead list") and len(desc) <= 160, desc
+    assert "What Claude Code calls" in page and "What ChatGPT calls" not in page
+    other = next(s for s in agent_pages.WORKFLOWS if s != "find-and-verify-a-lead-list")
+    assert "What Claude Code calls" not in (await clients.get(f"/workflows/{other}")).text
+    assert 'id="tested"' in page and "$0.0056" in page
+    md = (await clients.get(LEAD_LIST + ".md")).text
+    assert "## What lead generation in Claude costs, tested" in md and "work-email-finding-bench)" in md
+    faqs = [q for q, _a in spec["faq"]]
+    assert "Can Claude do lead generation?" in faqs
+    ld = [json.loads(m) for m in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S)]
+    faq_ld = next(x for x in (y for b in ld for y in (b if isinstance(b, list) else [b])) if x.get("@type") == "FAQPage")
+    assert [q["name"] for q in faq_ld["mainEntity"]] == faqs
+
+
+async def test_jev_page_embeds_the_walkthrough_and_links_the_lead_list(clients: AsyncClient):
+    """/jev carries the walkthrough video as a click-to-load poster with VideoObject markup, links
+    the lead-list run from the buyer-signal recipe, and keeps its visible FAQ and FAQPage in step."""
+    import html as html_mod
+    import json
+    import re
+    page = (await clients.get("/jev")).text
+    assert 'data-yt="o4Vi5uBZYH0"' in page and "<iframe" not in page.split('id="walkthrough"')[1][:2000]
+    # the site sends no referrer and YouTube's player refuses to start without one (error 153)
+    assert "f.referrerPolicy = 'strict-origin-when-cross-origin'" in page
+    blocks = [json.loads(m) for m in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S)]
+    video = next(b for b in blocks if b.get("@type") == "VideoObject")
+    assert video["uploadDate"].startswith("2026-09-21") and video["duration"] == "PT14M29S"
+    assert all(c["startOffset"] < c["endOffset"] for c in video["hasPart"])
+    assert f'href="{LEAD_LIST}"' in page and (await clients.get(LEAD_LIST)).status_code == 200
+    faq = next(b for b in blocks if b.get("@type") == "FAQPage")
+    visible = [html_mod.unescape(q) for q in re.findall(r"<summary>(.*?)</summary>", page)]
+    assert [q["name"] for q in faq["mainEntity"]] == [q for q in visible if q in {x["name"] for x in faq["mainEntity"]}]
+    assert {"How do I use jev in Claude Code, Codex, Hermes or OpenClaw?",
+            "Can I use jev for lead generation?"} <= set(visible)
+
+
+async def test_no_served_page_mentions_monid(clients: AsyncClient):
+    """Monid is never named on a treg.to page: not in a comparison, a bench table or copy. The
+    overflow code that routes through it is backend and never rendered."""
+    from pathlib import Path
+    web = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
+    for f in [*web.glob("*.html"), *web.glob("*.md"), *web.glob("*.txt")]:
+        assert "monid" not in f.read_text(encoding="utf-8").lower(), f.name
+    for path in ["/gtm-engineering", "/gtm-engineering.md", "/blog/work-email-finding-bench",
+                 "/agents/claude-code", "/agents/claude-code.md", LEAD_LIST, LEAD_LIST + ".md", "/jev"]:
+        r = await clients.get(path)
+        assert r.status_code == 200, path
+        assert "monid" not in r.text.lower(), path

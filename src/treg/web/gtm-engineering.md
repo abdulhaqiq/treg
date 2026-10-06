@@ -84,8 +84,8 @@ Rule: search for the buyer's function; a "decision makers" list is a map of the 
 
 ## The cheapest way to run waterfall email enrichment from an AI agent
 
-Bench, 16 Sep 2026, 292 people: cost per correct work email $0.0056 treg.to, $0.0257 Monid, $0.0395 Clay, $0.0427
-Freckle, $0.0924 Deepline; exact match 90.4%, 79.8%, 89.7%, 90.1%, 86.6%. A routed finder tries providers cheapest
+Bench, 16 Sep 2026, 292 people: cost per correct work email $0.0056 treg.to, $0.0395 Clay, $0.0427
+Freckle, $0.0924 Deepline; exact match 90.4%, 89.7%, 90.1%, 86.6%. A routed finder tries providers cheapest
 first and does not bill misses on per-success providers. Method: {BASE}/blog/work-email-finding-bench
 
 Rule: pick providers per segment from a test on your own rows, and re-test when the segment changes.
