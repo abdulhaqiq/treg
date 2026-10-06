@@ -242,6 +242,16 @@ async function setType(col, type) {
   await flush()
 }
 
+// A job column some rows ran and others did not answer (a stop, a low balance, an error): the bar
+// offers those rows again
+const retry = computed(() => {
+  for (const c of t.value.columns) {
+    if (!c.job || !t.value.rows.some((r) => runOf(r, c))) continue
+    const n = remaining(c)
+    if (n) return { group: c.job.group, n }
+  }
+  return null
+})
 function remaining(col) {
   return t.value.rows.filter((r) => !DONE.has(runOf(r, col)?.state)).length
 }
@@ -299,6 +309,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
         <button class="ghost" :disabled="run.stopping" @click="run.stopping = true">{{ run.stopping ? 'Stopping…' : 'Stop' }}</button>
       </span>
       <span class="spacer" />
+      <button v-if="retry && !run" @click="runGroup(retry.group, 'all')">Retry {{ retry.n }} unfinished rows</button>
       <button @click="exportCsv">Export CSV</button>
       <button class="primary" :disabled="!!run" @click="adding = true; detail = null">+ Add column</button>
     </div>
@@ -331,6 +342,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                   <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
                 </div>
               </th>
+              <th class="add-col" title="Add a column" @click.stop="!run && (adding = true, detail = null)">+ Add column</th>
             </tr>
           </thead>
           <tbody>
@@ -344,6 +356,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                 <span v-else-if="pill(r, c)" :class="['pill', runOf(r, c).state]">{{ pill(r, c) }}</span>
                 <template v-else>{{ show(r.cells[c.id]) }}<span v-if="runOf(r, c)?.confidence != null" class="muted small"> · {{ Math.round(runOf(r, c).confidence * 100) }}%</span></template>
               </td>
+              <td class="add-col" />
             </tr>
           </tbody>
         </table>

@@ -106,6 +106,9 @@
 .oe .oe-grid th.jobcol .th-label::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); margin-right: 6px; }
 .oe .oe-grid td.num, .oe .oe-grid th.num { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 44px; width: 44px; text-align: right; cursor: default; }
 .oe .oe-grid tbody tr:hover td { background: var(--hover); }
+.oe .oe-grid th.add-col { color: var(--muted); font-weight: 400; min-width: 140px; }
+.oe .oe-grid th.add-col:hover { color: var(--accent); }
+.oe .oe-grid .add-col { border-left: 1px dashed var(--line); }
 .oe .oe-grid td.picked { outline: 2px solid var(--accent); outline-offset: -2px; }
 .oe .oe-grid .add-col { min-width: 140px; border-right: 0; }
 .oe .oe-grid th.add-col { cursor: default; }
