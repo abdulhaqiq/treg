@@ -24,7 +24,7 @@
     --warn: #f87171; --warn-soft: #2e1515; --gray-soft: #222227;
   }
 .oe, .oe * { box-sizing: border-box; }
-.oe h1 { font-size: 20px; margin: 8px 0 4px; letter-spacing: -.01em; }
+.oe h1 { font-family: inherit; font-weight: 600; font-size: 22px; margin: 8px 0 4px; letter-spacing: -.02em; }
 .oe h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 36px 0 10px; }
 .oe h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
 .oe a { color: var(--accent); text-decoration: none; }
@@ -52,14 +52,15 @@
 .oe .oe-banner { background: var(--warn-soft); color: var(--warn); padding: 8px 12px; border-radius: 8px; margin: 8px 0; }
 
 /* top bar */
-.oe { display: flex; flex-direction: column; height: calc(100vh - 32px); min-height: 520px; border-radius: 12px; }
+.oe { display: flex; flex-direction: column; height: calc(100vh - 32px); min-height: 520px; border-radius: 12px; padding: 16px 24px 24px; }
 .oe .oe-top { display: flex; align-items: center; gap: 8px; padding: 4px 0 12px; flex: none; }
 .oe .brand { font-weight: 700; color: var(--text); letter-spacing: -.02em; font-size: 14px; }
 .oe .crumb { color: var(--muted); }
 .oe .balance { font-variant-numeric: tabular-nums; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
 
 .oe .oe-main { flex: 1; min-height: 0; }
-.oe .oe-main.narrow { max-width: 760px; width: 100%; padding-top: 8px; overflow: auto; }
+.oe .oe-main.narrow { max-width: 760px; width: 100%; margin: 0 auto; padding-top: 8px; overflow: auto; }
+.oe .oe-top.narrow { max-width: 760px; width: 100%; margin: 0 auto; }
 .oe .oe-main.full { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 
 /* start */
@@ -93,7 +94,7 @@
 .oe .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite alternate; }
 @keyframes pulse { from { opacity: .3; } to { opacity: 1; } }
 .oe .oe-layout { display: flex; flex: 1; min-height: 0; gap: 0; padding-bottom: 16px; }
-.oe .oe-grid-wrap { flex: 1; min-width: 0; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.oe .oe-grid-wrap { flex: 1; min-width: 0; align-self: flex-start; max-height: 100%; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
 .oe .oe-grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
 .oe .oe-grid th, .oe .oe-grid td {
   border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0 10px; height: 34px;

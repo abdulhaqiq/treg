@@ -108,7 +108,7 @@ onUnmounted(() => window.removeEventListener('popstate', fromPath))
 
 <template>
   <div class="oe">
-    <header class="oe-top">
+    <header :class="['oe-top', { narrow: !table && !source }]">
       <a class="brand" href="/openenrich" @click.prevent="home()">openenrich</a>
       <span v-if="table" class="crumb">/ {{ table.name }}</span>
     </header>
