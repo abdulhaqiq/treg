@@ -6,6 +6,7 @@ import { useDashboard } from '../state/context'
 import { loadTable, makeClient } from './client.js'
 import { JEV_TOOL, SOURCES, applyTypeAnswers, detectColumns, parseCsv, readAnswer, rowId, typeQuestion, uniqueColumnId } from './jobs.js'
 import SourceForm from './SourceForm.vue'
+import { icon } from './icons.js'
 import TableView from './TableView.vue'
 import './style.css'
 
@@ -91,6 +92,10 @@ function fromPath() {
   else home(true)
 }
 
+// each way to start, as an icon on a tint
+const LOOK = { companies: ['building', '#2563eb'], people: ['users', '#7c3aed'], similar: ['copy', '#d97706'], csv: ['upload', '#059669'] }
+const look = (id) => LOOK[id] || ['table', '#64748b']
+
 const ago = (iso) => {
   const s = (Date.now() - new Date(`${iso}Z`).getTime()) / 1000
   if (s < 90) return 'just now'
@@ -108,9 +113,8 @@ onUnmounted(() => window.removeEventListener('popstate', fromPath))
 
 <template>
   <div class="oe">
-    <header :class="['oe-top', { narrow: !table && !source }]">
-      <a class="brand" href="/openenrich" @click.prevent="home()">openenrich</a>
-      <span v-if="table" class="crumb">/ {{ table.name }}</span>
+    <header v-if="table" class="oe-top">
+      <a href="/openenrich" @click.prevent="home()">← All tables</a>
     </header>
 
     <p v-if="error" class="oe-banner">{{ error }}</p>
@@ -125,28 +129,37 @@ onUnmounted(() => window.removeEventListener('popstate', fromPath))
     </section>
 
     <section v-else class="oe-main narrow">
-      <h1>What list do you want?</h1>
+      <div class="hero">
+        <h1>Build a list, enrich every row</h1>
+        <p>Start from a search or a CSV, then add columns for emails, phones, company data, signals and AI judgments. Each row is one call, charged only when it finds something.</p>
+      </div>
       <div class="sources">
-        <button v-for="s in SOURCES" :key="s.id" class="source" @click="source = s">
-          <strong>{{ s.label }}</strong><span>{{ s.hint }}</span>
+        <button v-for="s in SOURCES" :key="s.id" class="card source" @click="source = s">
+          <span class="tile" :style="{ '--tint': look(s.id)[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(look(s.id)[0])" /></svg></span>
+          <span><strong>{{ s.label }}</strong><small>{{ s.hint }}</small></span>
         </button>
-        <button class="source" @click="csvInput.click()">
-          <strong>Import CSV</strong><span>Start from a list you already have</span>
+        <button class="card source" @click="csvInput.click()">
+          <span class="tile" :style="{ '--tint': look('csv')[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon('upload')" /></svg></span>
+          <span><strong>Import CSV</strong><small>Start from a list you already have</small></span>
         </button>
         <input ref="csvInput" type="file" accept=".csv,text/csv" hidden @change="importCsv" />
       </div>
-      <template v-if="tables.length">
-        <h2>Your team's tables</h2>
-        <ul class="recent">
-          <li v-for="t in tables" :key="t.name">
-            <a :href="`/openenrich/${t.name}`" @click.prevent="open(t.name)">
-              <strong>{{ t.name }}</strong>
-              <span class="muted small">{{ t.rows }} rows · {{ t.columns }} columns<template v-if="t.parent"> · from {{ t.parent.table }}</template> · {{ ago(t.updated_at) }}</span>
-            </a>
-            <button class="icon" title="Delete table" @click="removeTable(t)">✕</button>
-          </li>
-        </ul>
-      </template>
+
+      <div class="section-head"><h2>Your tables</h2><span class="count">{{ tables.length }}</span></div>
+      <div v-if="tables.length" class="recent">
+        <a v-for="t in tables" :key="t.name" class="card" :href="`/openenrich/${t.name}`" @click.prevent="open(t.name)">
+          <span class="tile" :style="{ '--tint': look(t.kind === 'people' ? 'people' : 'companies')[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(t.kind === 'people' ? 'users' : 'building')" /></svg></span>
+          <span>
+            <strong>{{ t.name }}</strong>
+            <span class="meta">{{ t.rows }} rows · {{ t.columns }} cols · {{ ago(t.updated_at) }}</span>
+            <small v-if="t.parent">from {{ t.parent.table }}</small>
+          </span>
+          <button class="icon del" title="Delete table" @click.prevent.stop="removeTable(t)">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon('trash')" /></svg>
+          </button>
+        </a>
+      </div>
+      <p v-else class="empty">No tables yet. Pick a way to start above.</p>
     </section>
   </div>
 </template>
