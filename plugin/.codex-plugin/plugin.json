@@ -23,7 +23,7 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "treg",
+    "displayName": "Treg",
     "shortDescription": "Live data for AI agents",
     "longDescription": "People and company enrichment, AEO and SEO, ads and social data, plus UGC video and images - all in one place, with no provider API keys to manage.",
     "developerName": "superdesign",
