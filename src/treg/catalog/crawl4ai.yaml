@@ -72,7 +72,7 @@ endpoints:
     path: /scrape
     body_allowlist: true
     name: Scrape or crawl a web page to clean Markdown for LLMs
-    summary: "Scrape one URL into clean, LLM-ready Markdown and/or HTML. Crawl4AI picks the cheapest engine that works (archive, plain fetch, real browser that renders JavaScript), with optional links, media, metadata and tables; proxies for sites that block datacenters."
+    summary: "Scrape one URL, a web page or a PDF, into clean, LLM-ready Markdown text and/or HTML. Crawl4AI picks the cheapest engine that works (archive, plain fetch, real browser that renders JavaScript), with optional links, media, metadata and tables; proxies for sites that block datacenters."
     input:
       bodyType: json
       body:
@@ -81,19 +81,19 @@ endpoints:
         proxy: {type: string, required: false, enum: [none, isp, residential], default: none, note: "exit network for sites that block datacenters"}
         country: {type: string, required: false, note: "two-letter exit country for isp/residential, e.g. us"}
         parse: {type: object, required: false, note: "true for all, or pick {links, media, metadata, tables}"}
-      note: "Most pages answer in 1-2 s; a page that needs a real browser takes 10-60 s, up to 90 s. Blocked (403), unreachable (502) and fleet-busy (503) answers are free; retry a 503 after a few seconds."
+      note: "Most pages answer in 1-2 s; a page that needs a real browser takes 10-30 s, and a failed page ends within about 55 s. A PDF URL returns the PDF's text as Markdown. Images and other binary files answer 422 binary-body within about a second, free. Blocked (403), unreachable (502) and fleet-busy (503) answers are free; retry a 503 after a few seconds."
     test_request: {body: {url: "https://example.com", format: md}}
     cost:
       type: per_success
-      value: 2
+      value: 1
       currency: credit
       per: 1
       unit: page
       source: observed
       source_url: https://api.crawl4ai.com/v1/prices
-      checked: '2026-10-05'
+      checked: '2026-10-06'
       confidence: verified
-      note: "0.5 credit base times the page's effort (x0.5 archived, x1, x2 browser, x4 hard). The 2-credit hold is the hardest page; the x-c4-cost header settles the actual charge (an archived example.com cost 0.25 live)."
+      note: "treg's account price: 0.075 archived repeat, 0.15 plain page or PDF, 0.5 browser page, 1 hard page; failures free. The 1-credit hold is the hardest page; the x-c4-cost header settles the actual charge (0.15 plain, 0.075 archived and 0.15 PDF observed live 2026-10-06)."
     verified: '2026-10-05'
     docs_url: https://crawl4ai.com/llms.txt
     example_response: examples/crawl4ai.web.scrape.json
@@ -251,8 +251,8 @@ endpoints:
     test_request: {body: {urls: ["https://example.com"], format: md}}
     cost:
       type: per_success
-      value: 50
-      fallback: {value: 50, note: "25 URLs at the hardest effort, when the stream ends without its summary line."}
+      value: 25
+      fallback: {value: 25, note: "25 URLs at the hardest page price, when the stream ends without its summary line."}
       currency: credit
       unit: call
       settle: usage
@@ -261,7 +261,7 @@ endpoints:
       source_url: https://api.crawl4ai.com/v1/prices
       checked: '2026-10-05'
       confidence: verified
-      note: "Each URL costs like a scrape (0.25 to 2 credits) and its line carries that cost; the closing summary line carries the total, which settles the call. The 50-credit hold is 25 URLs at the hardest effort. A live two-URL batch cost 0.25 per archived URL."
+      note: "Each URL costs like a scrape (0.075 to 1 credit on treg's account) and its line carries that cost; the closing summary line carries the total, which settles the call. The 25-credit hold is 25 URLs at the hardest page price."
     verified: '2026-10-05'
     docs_url: https://crawl4ai.com/llms.txt
     example_response: examples/crawl4ai.web.extract.batch.json
@@ -287,8 +287,8 @@ endpoints:
     test_request: {body: {urls: ["https://example.com"]}}
     cost:
       type: per_success
-      value: 1000
-      fallback: {value: 1000, note: "500 URLs at the hardest effort, when the finished job reports no usage.cost."}
+      value: 250
+      fallback: {value: 250, note: "500 URLs at the job's flat 0.5 credits per URL, when the finished job reports no usage.cost."}
       currency: credit
       unit: call
       settle: usage
@@ -297,7 +297,7 @@ endpoints:
       source_url: https://api.crawl4ai.com/v1/prices
       checked: '2026-10-05'
       confidence: verified
-      note: "Each URL costs like a scrape; the finished job's usage.cost (credits, after refunds for failed URLs) settles the call. The 1,000-credit hold is 500 URLs at the hardest effort."
+      note: "A job costs a flat 0.5 credits per URL (usage.unit_cost, observed 2026-10-06); the finished job's usage.cost (after refunds for failed URLs) settles the call. The 250-credit hold is 500 URLs. Job ids may name their region (j_sin-…) and can be read from any region."
     verified: '2026-10-05'
     docs_url: https://crawl4ai.com/llms.txt
     example_response: examples/crawl4ai.web.scrape.job.start.json
