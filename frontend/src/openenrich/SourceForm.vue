@@ -157,13 +157,6 @@ function create() {
         <span class="tile" :style="{ '--tint': look[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(look[0])" /></svg></span>
         <div><h1>{{ source.label }}</h1><p class="muted small">{{ source.hint }}</p></div>
       </div>
-      <div v-if="providers.length" class="vendors-row">
-        <span class="fb-label">{{ providers.length }} providers behind this search</span>
-        <span class="vendors wide">
-          <img v-for="p in providers" :key="p" :src="`/logos/${p}.svg`" :alt="p" :title="p" @error="$event.target.remove()" />
-        </span>
-        <small class="muted">treg asks them in turn; the first with an answer fills the preview. A filter only some of them take narrows it to those.</small>
-      </div>
 
       <form class="fb" @submit.prevent="search">
         <div v-if="suggested.length" class="sugg">
@@ -227,6 +220,13 @@ function create() {
         </label>
 
         <div class="fb-foot">
+          <div v-if="providers.length" class="vendors-row">
+            <span class="fb-label">{{ providers.length }} providers behind this search</span>
+            <span class="vendors wide">
+              <img v-for="p in providers" :key="p" :src="`/logos/${p}.svg`" :alt="p" :title="p" @error="$event.target.remove()" />
+            </span>
+            <small class="muted">treg asks them in turn; the first with an answer fills the preview. A filter only some of them take narrows it to those.</small>
+          </div>
           <button class="primary wide" :disabled="busy || !canSearch">
             {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
           </button>
