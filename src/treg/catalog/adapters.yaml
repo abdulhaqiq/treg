@@ -675,8 +675,8 @@ adapters:
   companyenrich.companies.similar:
     accepts: [[domain]]
     in: {domain: body.domains}
-    in_expr: {body.domains: "list(domain)"}
-    const: {body.page: 1, body.pageSize: 10}
+    in_expr: {body.domains: "list(domain)", body.pageSize: "at_most(limit, 100)"}
+    const: {body.page: 1}
     out: {companies: items, count: totalItems}
     miss: "items == []"
   oceanio.companies.lookalike:
@@ -691,14 +691,14 @@ adapters:
   findymail.lookalike.search:
     accepts: [[domain]]
     in: {domain: body.seed}
-    const: {body.limit: 10}
+    in_expr: {body.limit: limit}
     out: {companies: companies, count: total}
     miss: "companies == []"
   leadsforge.companies.lookalike.search:
     accepts: [[domain]]
     in: {domain: body.domains}
-    in_expr: {body.domains: "list(domain)"}
-    const: {body.page: 1, body.pageSize: 10}
+    in_expr: {body.domains: "list(domain)", body.pageSize: "at_most(limit, 100)"}
+    const: {body.page: 1}
     out: {companies: companies, count: totalCount}
     miss: "companies == []"
 

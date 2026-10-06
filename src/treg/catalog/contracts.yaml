@@ -321,7 +321,8 @@ contracts:
     summary: "Find companies similar to a seed domain"
     identity:
       - {domain: str}
-    filters: {}
+    filters:
+      limit: {type: int, default: 10, note: "companies to return — the price dial: each provider bills per result (up to its own maximum)"}
     output:
       companies: {type: list, required: true}
       count: {type: int}
