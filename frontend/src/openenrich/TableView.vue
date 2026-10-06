@@ -358,7 +358,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                 </a>
                 <span v-else-if="pill(r, c)" :class="['pill', runOf(r, c).state]">{{ pill(r, c) }}</span>
                 <template v-else>{{ show(r.cells[c.id]) }}<span v-if="runOf(r, c)?.confidence != null" class="muted small"> · {{ Math.round(runOf(r, c).confidence * 100) }}%</span></template>
-                <button v-if="c.job && !run" class="rerun" title="Run this row again" @click.stop="runGroup(c.job.group, 1, false, [r])">↻</button>
+                <button v-if="c.job && !run" class="rerun" title="Run this row" @click.stop="runGroup(c.job.group, 1, false, [r])">▶</button>
               </td>
               <td class="add-col" />
             </tr>
