@@ -3,7 +3,7 @@
 // "Add filter" with every filter the search takes), the preview on the right. "Create table" keeps
 // the previewed rows; it does not search again.
 import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { FIXED, MAX_SEEDS, ROUTE_CAP_USD, filterBody, listRecords, priceOf, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
+import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, filterBody, searchCap, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
 import { icon } from './icons.js'
 import ValuePicker from './ValuePicker.vue'
 
@@ -20,7 +20,7 @@ const active = ref(filters.filter((f) => f.open).map((f) => f.name))
 const conditions = reactive(Object.fromEntries(filters.filter((f) => f.ops).map((f) => [f.name, f.ops[0].id])))  // filter -> its condition (ops)
 const picker = ref(false)
 const pickQuery = ref('')
-const limit = ref(25)
+const limit = ref(SEARCH_DEFAULT_ROWS)
 const tool = ref(null)
 const result = ref(null)           // {rows, ids, body, cost, servedBy, page, pageCost, done} of the last search
 const stale = ref(false)
@@ -62,10 +62,6 @@ function removeFilter(name) {
 }
 const body = computed(() => filterBody(filters.filter((f) => active.value.includes(f.name)), values, conditions))
 const canSearch = computed(() => Object.keys(body.value).some((k) => (props.source.identity || []).includes(k)))
-const price = computed(() => {
-  const p = priceOf(tool.value, Object.keys(body.value))
-  return p.known ? `${usd(p.min * 1e6)}–${usd(p.max * 1e6)}` : ''
-})
 const columns = computed(() => result.value?.ids || FIXED[props.source.kind])
 watch([values, limit, active, conditions], () => { if (result.value) stale.value = true }, { deep: true })
 
@@ -73,14 +69,16 @@ async function search() {
   busy.value = true
   error.value = ''
   try {
-    const b = { ...body.value, ...(props.source.noLimit ? {} : { limit: Number(limit.value) || 25 }) }
+    const b = { ...body.value, ...(props.source.noLimit ? {} : { limit: Number(limit.value) || SEARCH_DEFAULT_ROWS }) }
     // a `split` filter (lookalikes): one search per value, merged, the seeds themselves left out
     const multi = filters.find((f) => f.split && b[f.name])
     const seeds = multi ? b[multi.name].slice(0, MAX_SEEDS) : []
-    const bodies = multi ? seeds.map((v) => ({ ...b, [multi.name]: v })) : [b]
+    // several seeds share the rows asked for, so ten seeds do not ask for ten times as many
+    const perSeed = multi ? Math.max(1, Math.ceil((b.limit || SEARCH_DEFAULT_ROWS) / seeds.length)) : b.limit
+    const bodies = multi ? seeds.map((v) => ({ ...b, [multi.name]: v, limit: perSeed })) : [b]
     const strict = usesStrict(props.source, b)
     const runs = await Promise.all(bodies.map((x) => api.run(props.source.tool,
-      { method: 'POST', body: x, maxCost: ROUTE_CAP_USD, exclude: props.source.exclude, fresh: true, strict })))
+      { method: 'POST', body: x, maxCost: searchCap(x.limit), exclude: props.source.exclude, fresh: true, strict })))
     const answers = runs.map(readAnswer)
     const hits = answers.filter((a) => a.state === 'hit')
     if (hits.length) {
@@ -117,7 +115,7 @@ async function loadMore() {
     const page = res.page + 1
     const mine = res.servedBy.split('.')[0]
     const others = [...new Set((tool.value?.endpoint?.routed_children || []).map((id) => id.split('.')[0]))].filter((p) => p !== mine)
-    const r = await api.run(props.source.tool, { method: 'POST', body: { ...res.body, page }, maxCost: ROUTE_CAP_USD,
+    const r = await api.run(props.source.tool, { method: 'POST', body: { ...res.body, page }, maxCost: searchCap(res.body.limit),
       exclude: [...(props.source.exclude || []), ...others], fresh: true, strict: true })
     const a = readAnswer(r)
     res.cost += r.cost_micro || 0
@@ -233,8 +231,9 @@ function create() {
             {{ busy ? 'Searching…' : result && !stale ? 'Search again' : 'Search' }}
           </button>
           <p v-if="Object.keys(body).length && !canSearch" class="muted small center">Add a title, department, industry, location, keyword or technology to search on.</p>
-          <p v-if="price" class="muted small center">
-            One search<template v-if="filters.some((f) => f.split)"> per domain (up to {{ MAX_SEEDS }})</template> costs {{ price }}. No results, no charge.
+          <p class="muted small center">
+            At most {{ usd(searchCap(limit) * 1e6) }} for {{ limit }} results<template v-if="filters.some((f) => f.split)">, shared by the domains (up to {{ MAX_SEEDS }})</template>.
+            Providers bill per result returned.
           </p>
         </div>
       </form>

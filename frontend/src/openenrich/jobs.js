@@ -149,7 +149,7 @@ export const SOURCES = [
   },
   {
     id: 'similar', label: 'Lookalikes of…', kind: 'companies', tool: 'treg.companies.similar',
-    hint: 'Companies like ones you already know', noLimit: true, identity: ['domain'],
+    hint: 'Companies like ones you already know', identity: ['domain'],
     filters: [{ name: 'domain', label: 'Company domains', icon: 'link', group: 'Company', type: 'tags', placeholder: 'ramp.com', split: true, open: true }],
   },
 ]
@@ -447,6 +447,10 @@ export function readAnswer(r) {
 // The most one routed call may spend (sent as X-Treg-Route-Max-Cost): the waterfall stops before a
 // provider that would pass it, so a row never reaches the few dollar-a-call providers.
 export const ROUTE_CAP_USD = 0.25
+// A search's cap grows with the rows it asks for (providers bill per row), never below a row's cap
+export const SEARCH_ROW_CAP_USD = 0.03
+export const searchCap = (rows) => Math.max(ROUTE_CAP_USD, (Number(rows) || 0) * SEARCH_ROW_CAP_USD)
+export const SEARCH_DEFAULT_ROWS = 50
 
 // A call's price range for the inputs a row will send. Routed: from the cheapest provider that
 // accepts those inputs, up to the cap. Anything else: its listed price.
