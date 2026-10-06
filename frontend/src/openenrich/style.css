@@ -145,7 +145,20 @@
 .oe .vendors small { margin-left: 12px; color: var(--muted); font-size: 12px; }
 .oe .vendors.wide { flex-wrap: wrap; gap: 5px; margin: 6px 0 4px; }
 .oe .vendors.wide img { margin-right: 0; }
-.oe .vendors-row { margin: 0 0 12px; }
+.oe .vendor { display: inline-flex; border-radius: 6px; outline: none; }
+.oe .vendor.off img { opacity: .35; filter: grayscale(1); }
+.oe .vcard { display: none; position: absolute; z-index: 30; bottom: calc(100% + 6px); left: 0; right: 0;
+  flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--surface); border-radius: var(--rb); box-shadow: var(--shadow-lg), 0 0 0 1px var(--line);
+  font-size: 12px; line-height: 1.4; color: var(--text); text-align: left; }
+.oe .vendor:hover .vcard, .oe .vendor:focus .vcard { display: flex; }
+.oe .vcard strong { font-size: 13px; }
+.oe .vcard .warn { color: var(--warn); }
+.oe .vfilters { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.oe .vfilters span { padding: 1px 7px; border-radius: 999px; background: var(--panel2); color: var(--muted); font-size: 11px; }
+.oe .vlabel { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: 4px; }
+.oe .vfilters span.more-n { background: none; padding-left: 2px; }
+.oe .vfilters span.on { background: var(--inverse); color: var(--inverse-ink); }
+.oe .vendors-row { position: relative; margin: 0 0 12px; }
 .oe .vendors-row small { display: block; font-size: 11.5px; line-height: 1.4; }
 .oe .served { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); }
 .oe .served img { width: 16px; height: 16px; border-radius: 4px; }

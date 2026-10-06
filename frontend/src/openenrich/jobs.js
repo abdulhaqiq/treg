@@ -468,6 +468,17 @@ export const SEARCH_ROW_CAP_USD = 0.03
 export const searchCap = (rows) => Math.max(ROUTE_CAP_USD, (Number(rows) || 0) * SEARCH_ROW_CAP_USD)
 export const SEARCH_DEFAULT_ROWS = 50
 
+// What N results cost at each provider behind a search: a per-result price times N, a per-call or
+// per-page price once, free nothing. Providers past the search's cap are left out (the cap keeps
+// them from being asked), so the range is what this search can actually cost.
+export function searchCostRange(costs, rows, cap) {
+  const n = Number(rows) || 0
+  const each = costs.filter(Boolean).map((c) => (c.type === 'free' ? 0 : c.type === 'per_result' ? (c.usd || 0) * n : c.usd || 0))
+  const usable = each.filter((x) => x <= cap)
+  if (!usable.length) return null
+  return { min: Math.min(...usable), max: Math.max(...usable) }
+}
+
 // A call's price range for the inputs a row will send. Routed: from the cheapest provider that
 // accepts those inputs, up to the cap. Anything else: its listed price.
 export function priceOf(tool, keys = null) {

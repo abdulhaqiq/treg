@@ -3,7 +3,7 @@
 // "Add filter" with every filter the search takes), the preview on the right. "Create table" keeps
 // the previewed rows; it does not search again.
 import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, filterBody, searchCap, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
+import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, filterBody, searchCap, searchCostRange, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
 import { icon } from './icons.js'
 import ValuePicker from './ValuePicker.vue'
 
@@ -27,7 +27,54 @@ const stale = ref(false)
 const busy = ref(false)
 const error = ref('')
 
-onMounted(() => api.tool(props.source.tool).then((t) => (tool.value = t)).catch(() => {}))
+// each provider's endpoint (billing, name), read once, for the price range and the hover cards
+const endpoints = ref({})
+onMounted(async () => {
+  try { tool.value = await api.tool(props.source.tool) } catch { return }
+  const ids = [...new Set((tool.value?.routing?.plan || []).map((c) => c.endpoint_id))]
+  const got = await Promise.all(ids.map((id) => api.tool(id).then((t) => [id, t?.endpoint || null]).catch(() => [id, null])))
+  endpoints.value = Object.fromEntries(got)
+})
+const costs = computed(() => Object.values(endpoints.value).map((e) => e?.cost || null))
+const range = computed(() => searchCostRange(costs.value, limit.value, searchCap(limit.value)))
+
+// a search field's name in the builder's words (seniority_exclude → "Seniority (is none of)")
+const fieldLabel = computed(() => {
+  const out = {}
+  for (const f of filters) {
+    if (f.type === 'range') { out[`${f.key}_min`] = f.label; out[`${f.key}_max`] = f.label }
+    for (const o of f.ops || []) {
+      out[o.key] = o.id === 'none' ? `${f.label} (is none of)` : f.label
+      if (o.single) out[o.single] = f.label
+    }
+    if (!f.ops && f.type !== 'range') out[f.key || f.name] = f.label
+  }
+  return out
+})
+// One card per provider (its cheapest endpoint): the cost of this search there, how it bills, the
+// filters it applies, and whether this search's filters skip it.
+const providerCards = computed(() => {
+  const n = Number(limit.value) || 0
+  const cap = searchCap(n)
+  const used = Object.keys(body.value).filter((k) => !(props.source.identity || []).includes(k))
+  const cards = {}
+  for (const row of tool.value?.routing?.plan || []) {
+    const slug = row.endpoint_id.split('.')[0]
+    const ep = endpoints.value[row.endpoint_id]
+    const c = ep?.cost || {}
+    const cost = c.type === 'free' ? 0 : c.type === 'per_result' ? (c.usd || 0) * n : (c.usd ?? row.usd ?? 0)
+    const takes = (row.filters || []).filter((k) => fieldLabel.value[k])
+    const missing = used.filter((k) => !(row.filters || []).includes(k))
+    const card = { slug, name: ep?.provider_display || slug, cost, overCap: cost > cap, works: row.works,
+      billing: c.type === 'free' ? 'free' : c.type === 'per_result' ? `${usd((c.usd || 0) * 1e6)} per result` : `${usd((c.usd || 0) * 1e6)} per search`,
+      // the filters this search uses first, then the rest
+      takes: [...new Set(takes.map((k) => fieldLabel.value[k]))].sort((x, y) => used.some((k) => fieldLabel.value[k] === y) - used.some((k) => fieldLabel.value[k] === x)), using: new Set(used.filter((k) => takes.includes(k)).map((k) => fieldLabel.value[k])),
+      skipped: [...new Set(missing.map((k) => fieldLabel.value[k] || k))] }
+    if (!cards[slug] || card.cost < cards[slug].cost) cards[slug] = card
+  }
+  return Object.values(cards)
+})
+const money = (x) => (x === 0 ? 'free' : usd(x * 1e6))
 
 const look = { companies: ['building', '#2563eb'], people: ['users', '#7c3aed'], similar: ['copy', '#d97706'] }[props.source.id] || ['search', '#64748b']
 const suggested = computed(() => filters.filter((f) => f.suggested && !active.value.includes(f.name)))
@@ -223,7 +270,22 @@ function create() {
           <div v-if="providers.length" class="vendors-row">
             <span class="fb-label">{{ providers.length }} providers behind this search</span>
             <span class="vendors wide">
-              <img v-for="p in providers" :key="p" :src="`/logos/${p}.svg`" :alt="p" :title="p" @error="$event.target.remove()" />
+              <span v-for="c in providerCards" :key="c.slug" :class="['vendor', { off: c.skipped.length || c.overCap }]" tabindex="0">
+                <img :src="`/logos/${c.slug}.svg`" :alt="c.name" @error="$event.target.style.visibility = 'hidden'" />
+                <span class="vcard">
+                  <strong>{{ c.name }}</strong>
+                  <span>{{ c.cost === 0 ? `Free for ${limit} results` : `~${usd(c.cost * 1e6)} for ${limit} results · ${c.billing}` }}</span>
+                  <span v-if="c.works != null" class="muted">Works on {{ Math.round(c.works * 100) }}% of calls</span>
+                  <span v-if="c.overCap" class="warn">Over this search's {{ usd(searchCap(limit) * 1e6) }} cap: not asked</span>
+                  <span v-if="c.skipped.length" class="warn">Skipped: does not apply {{ c.skipped.join(', ') }}</span>
+                  <span v-if="c.takes.length" class="vlabel">Applies</span>
+                  <span v-if="c.takes.length" class="vfilters">
+                    <span v-for="t in c.takes.slice(0, 8)" :key="t" :class="{ on: c.using.has(t) }">{{ t }}</span>
+                    <span v-if="c.takes.length > 8" class="more-n">+{{ c.takes.length - 8 }} more</span>
+                  </span>
+                  <span v-else class="muted">Applies no filters beyond its search fields</span>
+                </span>
+              </span>
             </span>
             <small class="muted">treg asks them in turn; the first with an answer fills the preview. A filter only some of them take narrows it to those.</small>
           </div>
@@ -232,8 +294,8 @@ function create() {
           </button>
           <p v-if="Object.keys(body).length && !canSearch" class="muted small center">Add a title, department, industry, location, keyword or technology to search on.</p>
           <p class="muted small center">
-            At most {{ usd(searchCap(limit) * 1e6) }} for {{ limit }} results<template v-if="filters.some((f) => f.split)">, shared by the domains (up to {{ MAX_SEEDS }})</template>.
-            Providers bill per result returned.
+            <template v-if="range">{{ range.min === range.max ? money(range.min) : `${money(range.min)} – ${money(range.max)}` }} for {{ limit }} results, depending on the provider</template>
+            <template v-else>At most {{ usd(searchCap(limit) * 1e6) }} for {{ limit }} results</template><template v-if="filters.some((f) => f.split)">, shared by the domains (up to {{ MAX_SEEDS }})</template>.
           </p>
         </div>
       </form>

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { fromStored, idempotencyKey } from '../src/openenrich/client.js'
-import { SOURCES, hintTypes, filterBody, lookupRetries, typoScore, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
+import { SOURCES, searchCostRange, hintTypes, filterBody, lookupRetries, typoScore, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -272,4 +272,12 @@ test('an input whose example is a LinkedIn URL takes only a LinkedIn column of t
   // no hint: as before
   assert.deepEqual(autoMap([['url']], companies, 'companies'), { url: '{domain}' })
   assert.deepEqual(hintTypes('website of the company'), null)
+})
+
+test('a search price range: per-result times rows, per call once, free nothing, past the cap left out', () => {
+  const costs = [{ type: 'free', usd: 0 }, { type: 'per_result', usd: 0.0098 }, { type: 'per_success', usd: 0.0245 }, { type: 'per_result', usd: 0.38 }]
+  const r = searchCostRange(costs, 50, 1.5)
+  assert.equal(r.min, 0)
+  assert.ok(Math.abs(r.max - 0.49) < 1e-9)
+  assert.equal(searchCostRange([{ type: 'per_result', usd: 1 }], 50, 1.5), null)
 })
