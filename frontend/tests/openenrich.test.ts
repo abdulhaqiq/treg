@@ -1,7 +1,7 @@
 // @ts-nocheck — exercises the plain-JS openenrich modules
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
-import { idempotencyKey } from '../src/openenrich/client.js'
+import { fromStored, idempotencyKey } from '../src/openenrich/client.js'
 import { MAX_SEEDS, splitList, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
@@ -230,4 +230,9 @@ test('a pasted list of domains splits into one seed each, deduped and capped', (
   assert.deepEqual(splitList('https://superdesign.dev/, https://www.magicpath.ai/\nramp.com;ramp.com'),
     ['https://superdesign.dev/', 'https://www.magicpath.ai/', 'ramp.com'])
   assert.equal(splitList(Array.from({ length: 15 }, (_, i) => `d${i}.com`).join(',')).length, MAX_SEEDS)
+})
+
+test('a stored queued or running run reads as not run yet', () => {
+  const t = fromStored({ name: 't', items: [{ id: 'r1', cells: {}, runs: { a: { state: 'running' }, b: { state: 'hit' }, c: { state: 'queued' } } }] })
+  assert.deepEqual(t.rows[0].runs, { b: { state: 'hit' } })
 })

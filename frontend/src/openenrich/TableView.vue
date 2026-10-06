@@ -29,10 +29,9 @@ let saveTimer = null
 const synced = new Map()       // table name -> {columns: json, rows: Map(row id -> json)}
 const children = new Map()     // linked tables written by "Find people at company": name -> {table, replaced}
 const rowJson = (r) => JSON.stringify(r.cells) + '|' + JSON.stringify(r.runs || {}) + '|' + (r._parent || '')
-function remember(table) {
-  synced.set(table.name, { columns: JSON.stringify(table.columns),
-    rows: new Map(table.rows.map((r) => [r.id, { json: rowJson(r), groups: Object.keys(r.runs || {}) }])) })
-}
+const snapshot = (table) => ({ columns: JSON.stringify(table.columns),
+  rows: new Map(table.rows.map((r) => [r.id, { json: rowJson(r), groups: Object.keys(r.runs || {}) }])) })
+function remember(table) { synced.set(table.name, snapshot(table)) }
 remember(t.value)
 
 function save() {
@@ -44,22 +43,25 @@ function flush() {
   clearTimeout(saveTimer)
   flushing = flushing.then(async () => {
     await flushTable(t.value, null)
-    for (const c of children.values()) { await flushTable(c.table, c.replaced); c.replaced = new Set() }
+    for (const c of children.values()) { const replaced = c.replaced; c.replaced = new Set(); await flushTable(c.table, replaced) }
   }).catch((e) => { banner.value = `Could not save: ${e.message}` })
   return flushing
 }
 async function flushTable(table, replaced) {
   const last = synced.get(table.name) || { columns: '', rows: new Map() }
-  if (JSON.stringify(table.columns) !== last.columns) await api.update(table.name, { columns: table.columns })
+  // what is sent is what counts as saved: rows keep changing while the request is out (other rows
+  // finishing), and those changes must stay unsaved for the next flush
+  const sent = snapshot(table)
+  const stored = JSON.parse(JSON.stringify(toStoredRows(table.rows.filter((r) => (replaced?.size && replaced.has(r._parent)) || last.rows.get(r.id)?.json !== sent.rows.get(r.id).json))
+    .map((r) => {
+      // a group whose run was removed locally is sent as null so the server drops it too
+      const gone = (last.rows.get(r.id)?.groups || []).filter((g) => !(g in (r.runs || {})))
+      return gone.length ? { ...r, runs: { ...r.runs, ...Object.fromEntries(gone.map((g) => [g, null])) } } : r
+    })))
   const parents = replaced && replaced.size ? [...replaced] : null
-  const changed = table.rows.filter((r) => (parents && parents.includes(r._parent)) || last.rows.get(r.id)?.json !== rowJson(r))
-  // a group whose run was removed locally is sent as null so the server drops it too
-  const stored = toStoredRows(changed).map((r) => {
-    const gone = (last.rows.get(r.id)?.groups || []).filter((g) => !(g in (r.runs || {})))
-    return gone.length ? { ...r, runs: { ...r.runs, ...Object.fromEntries(gone.map((g) => [g, null])) } } : r
-  })
-  if (changed.length || parents) await api.upsertRows(table.name, stored, parents)
-  remember(table)
+  if (sent.columns !== last.columns) await api.update(table.name, { columns: table.columns })
+  if (stored.length || parents) await api.upsertRows(table.name, stored, parents)
+  synced.set(table.name, sent)
 }
 
 // --- running a column -----------------------------------------------------------------------------

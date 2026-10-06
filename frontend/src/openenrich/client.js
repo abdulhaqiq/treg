@@ -94,10 +94,14 @@ export async function loadTable(api, name) {
 }
 
 // A stored table (GET /tables/<name>) as the page works on it.
+// A stored `queued` or `running` is a run that never finished where it was saved (a tab closed, or
+// a save lost mid-run): nothing runs a loaded table, so it reads as not run yet
+const settled = (runs) => Object.fromEntries(Object.entries(runs || {}).filter(([, v]) => !['queued', 'running'].includes(v?.state)))
+
 export function fromStored(t) {
   return {
     name: t.name, kind: t.kind, parent: t.parent, source: t.source, columns: t.columns || [],
-    rows: (t.items || []).map((i) => ({ id: i.id, _parent: i.parent_row || null, cells: i.cells || {}, runs: i.runs || {} })),
+    rows: (t.items || []).map((i) => ({ id: i.id, _parent: i.parent_row || null, cells: i.cells || {}, runs: settled(i.runs) })),
   }
 }
 
