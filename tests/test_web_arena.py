@@ -680,3 +680,39 @@ async def test_tinyfish_news_rate_limit_explains_retry(clients, monkeypatch):
         assert attempt["detail"] == "Try again in about 20 seconds."
     finally:
         get_settings.cache_clear()
+
+
+async def test_waterfall_stops_at_first_result_even_with_low_quality_score(clients, monkeypatch):
+    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "TEST-FIRECRAWL")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LINKUP", "TEST-LINKUP")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl,linkup")
+    get_settings.cache_clear()
+    async def weak_match(*args, **kwargs):
+        return {"state": "checked", "estimated_match": 10}
+    monkeypatch.setattr(web_arena_quality, "search", weak_match)
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider({"firecrawl": [(200, {
+        "data": {"web": [{"url": "https://example.com/a", "title": "A"}]}, "creditsUsed": 1})],
+        "*": []}, seen))
+    try:
+        response = await clients.post("/web-arena/api/quotes", json={
+            "task": "search", "value": "example query", "mode": "waterfall",
+            "providers": ["firecrawl", "linkup"], "jev": True})
+        assert response.status_code == 200, response.text
+        quote = response.json()
+        assert [p["provider"] for p in quote["providers"]] == ["firecrawl", "linkup"]
+        started = await clients.post(f"/web-arena/api/runs/{quote['id']}/start")
+        assert started.status_code == 200, started.text
+        worker = app._owners.get(quote["id"])
+        if worker:
+            await asyncio.wait_for(asyncio.shield(worker), 15)
+        run = (await clients.get(f"/web-arena/api/runs/{quote['id']}")).json()
+        first, second = run["attempts"]
+        assert first["provider"] == "firecrawl" and first["state"] == "hit"
+        assert first["quality"]["estimated_match"] == 10
+        assert second["state"] == "not_attempted" and second["charged_micro"] == 0
+        assert run["stop_reason"] == "Stopped at the first useful result."
+        assert [s[0] for s in seen] == ["firecrawl"]
+    finally:
+        get_settings.cache_clear()

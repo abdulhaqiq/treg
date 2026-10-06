@@ -137,10 +137,11 @@ TinyFish News 429s show the provider's retry time when it sends a numeric `Retry
 No database session stays open
 during the provider request. Own credentials still take priority in the call runtime. Web
 Arena requests disable overflow for a direct provider comparison. A Battle runs at most four
-legs at once. Waterfall runs one leg at a time. With Jev off, Search stops at the first valid
-result list. With Jev on, Search stops only after a checked estimated match of at least 60%; an
-unknown check does not become a score of zero. Fetch stops at the first useful text. Sitemap
-stops at the first valid same-host URL list and does not claim full site coverage.
+legs at once. Waterfall runs one leg at a time, cheapest first, and stops at the first provider
+that returns a result: a valid result list for the search tasks, useful text for Fetch, and a
+valid same-host URL list for Sitemap, which does not claim full site coverage. With Jev on, the
+check still scores that result for its card and the live totals; it never decides when a
+Waterfall stops.
 
 `WebArenaRun` holds an encrypted input, quote, attempt state, quality data, and results. Only the
 creator in the same team can read it. It expires after 30 days. A process interruption does not
