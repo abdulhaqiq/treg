@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { COLUMN_TYPES, cellFrom, cellValue, fillInputs, host, judgeBody, judgeValue, listRecords, readAnswer, rowId, satisfies, toCsv, typeOfField, usd } from './jobs.js'
 import ColumnPanel from './ColumnPanel.vue'
 import { loadTable, toStoredRows } from './client.js'
@@ -11,11 +11,11 @@ const api = inject('oeApi')
 const t = ref(props.table)
 const adding = ref(false)
 const detail = ref(null)       // {row, column} shown in the side panel
-const run = ref(null)          // {done, total, spent, stopping}
+const runs = reactive({})      // column group -> {label, queue, fresh, done, total, spent, stopping}: one per running column
 const banner = ref('')
 const menu = ref(null)         // the column whose header menu is open
 
-const CONCURRENCY = 10   // a waterfall row takes 5-15 s, so rows run side by side
+const CONCURRENCY = 10   // calls in flight across the whole table: a waterfall row takes 5-15 s, so rows run side by side
 const DONE = new Set(['hit', 'miss'])
 
 const groups = computed(() => {
@@ -73,49 +73,72 @@ const setRun = (row, group, value) => {
   else delete row.runs[group]
 }
 
-// `only`: re-run just these rows (a cell's ↻), asking the provider again instead of replaying
+// Calls in flight, across every running column: a run takes a slot per call
+let active = 0
+const waiting = []
+async function slot() {
+  while (active >= CONCURRENCY) await new Promise((ok) => waiting.push(ok))
+  active++
+}
+function free() {
+  active--
+  waiting.shift()?.()
+}
+const busy = (row, group) => ['queued', 'running'].includes(row.runs?.[group]?.state)
+const running = computed(() => Object.keys(runs).length > 0)
+
+// Columns run side by side. Asking a running column for more rows adds them to its run.
+// `only`: run just these rows (a cell's ▶), asking the provider again instead of replaying.
 async function runGroup(group, howMany, again = false, only = null) {
-  if (run.value) return
   const cols = t.value.columns.filter((c) => c.job?.group === group)
-  // re-running replays each answered row from treg for nothing (same Idempotency-Key)
-  if (again) for (const r of t.value.rows) { setRun(r, group, null); for (const c of cols) r.cells[c.id] = null }
   const job = cols[0].job
-  if (only) for (const r of only) { setRun(r, group, null); for (const c of cols) r.cells[c.id] = null }
-  const todo = only || t.value.rows.filter((r) => !DONE.has(r.runs?.[group]?.state))
-  const queue = howMany === 'all' ? todo : todo.slice(0, howMany)
-  if (!queue.length) return
+  // re-running replays each answered row from treg for nothing (same Idempotency-Key)
+  if (again && !runs[group]) for (const r of t.value.rows) { setRun(r, group, null); for (const c of cols) r.cells[c.id] = null }
+  if (only) for (const r of only) if (!busy(r, group)) { setRun(r, group, null); for (const c of cols) r.cells[c.id] = null }
+  const todo = (only || t.value.rows.filter((r) => !DONE.has(r.runs?.[group]?.state))).filter((r) => !busy(r, group))
+  const add = howMany === 'all' ? todo : todo.slice(0, howMany)
+  if (!add.length) return
+  for (const r of add) setRun(r, group, { state: 'queued' })
+  const fresh = only ? add.map((r) => r.id) : []
+  if (runs[group]) {
+    runs[group].queue.push(...add)
+    runs[group].total += add.length
+    fresh.forEach((id) => runs[group].fresh.add(id))
+    return
+  }
   banner.value = ''
-  run.value = { done: 0, total: queue.length, spent: 0, stopping: false }
+  runs[group] = { label: cols.length > 1 ? `${cols[0].label} +${cols.length - 1}` : cols[0].label, queue: [...add], fresh: new Set(fresh), done: 0, total: add.length, spent: 0, stopping: false }
+  const run = runs[group]
   const child = job.linked ? await childTable(cols[0]) : null
-  for (const r of queue) setRun(r, group, { state: 'queued' })
 
   // Each call holds up to its cap until it settles, so a low balance can refuse a hold while
-  // other rows still run: that row waits for them instead of stopping the run.
-  let inFlight = 0
+  // other calls still run: that row waits for them instead of stopping the run.
   const shared = new Map()      // rows with the same inputs share one call (one Idempotency-Key)
   const worker = async () => {
-    while (queue.length && !run.value.stopping) {
-      const row = queue.shift()
-      inFlight++
-      const out = await runRow(row, cols, job, child, () => inFlight > 1, shared, !!only)
-      inFlight--
+    while (run.queue.length && !run.stopping) {
+      await slot()
+      const row = run.queue.shift()
+      if (!row || run.stopping) { if (row) run.queue.unshift(row); free(); break }
+      let out
+      try { out = await runRow(run, row, cols, job, child, () => active > 1, shared, run.fresh.has(row.id)) } finally { free() }
       if (out === 'wait') {
-        queue.unshift(row)
+        run.queue.unshift(row)
         await new Promise((ok) => setTimeout(ok, 1500))
         continue
       }
-      run.value.done++
+      run.done++
       save()
     }
   }
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker))
-  for (const r of queue) if (r.runs?.[group]?.state === 'queued') setRun(r, group, null)
+  // rows added while the last workers were finishing still run
+  do { await Promise.all(Array.from({ length: CONCURRENCY }, worker)) } while (run.queue.length && !run.stopping)
+  for (const r of run.queue) if (r.runs?.[group]?.state === 'queued') setRun(r, group, null)
+  delete runs[group]
   await flush()
-  run.value = null
   emit('balance')
 }
 
-async function runRow(row, cols, job, child, othersRunning, shared, fresh = false) {
+async function runRow(run, row, cols, job, child, othersRunning, shared, fresh = false) {
   const group = job.group
   let inputs, req
   if (job.judge) {
@@ -143,13 +166,14 @@ async function runRow(row, cols, job, child, othersRunning, shared, fresh = fals
   const res = readAnswer(r)
   const meta = { call_id: r.call_id || undefined, served_by: r.served_by || undefined, cost_micro: r.cost_micro || 0,
     replay: r.replay || undefined, inputs }
-  run.value.spent += r.cost_micro || 0
+  run.spent += r.cost_micro || 0
   if (res.state === 'stop' && res.low && othersRunning()) {
     setRun(row, group, { state: 'queued' })
     return 'wait'
   }
   if (res.state === 'stop') {
-    run.value.stopping = true
+    // a short balance or a rejected token stops every running column, not just this one
+    for (const x of Object.values(runs)) x.stopping = true
     banner.value = res.error
     setRun(row, group, null)
     return
@@ -270,12 +294,12 @@ const retry = computed(() => {
   for (const c of t.value.columns) {
     if (!c.job || !t.value.rows.some((r) => runOf(r, c))) continue
     const n = remaining(c)
-    if (n) return { group: c.job.group, n }
+    if (n && !runs[c.job.group]) return { group: c.job.group, n }
   }
   return null
 })
 function remaining(col) {
-  return t.value.rows.filter((r) => !DONE.has(runOf(r, col)?.state)).length
+  return t.value.rows.filter((r) => !DONE.has(runOf(r, col)?.state) && !busy(r, col.job?.group)).length
 }
 
 // --- cells ----------------------------------------------------------------------------------------
@@ -312,7 +336,7 @@ function exportCsv() {
 
 // A teammate (or later an agent) may change the table while the page is open: reload it on focus.
 async function reload() {
-  if (run.value || adding.value) return
+  if (running.value || adding.value) return
   await flushing
   try { t.value = await loadTable(api, t.value.name); remember(t.value) } catch {}
 }
@@ -326,14 +350,14 @@ onUnmounted(() => window.removeEventListener('focus', reload))
       <a v-if="t.parent" class="crumb-link" href="#" @click.prevent="emit('open', t.parent.table)">← {{ t.parent.table }}</a>
       <strong class="title">{{ t.name }}</strong>
       <span class="muted small">{{ t.rows.length }} rows · {{ t.columns.length }} columns</span>
-      <span v-if="run" class="run-status">
-        <span class="dot" /> Running {{ run.done }} / {{ run.total }} · {{ usd(run.spent) }}
-        <button class="ghost" :disabled="run.stopping" @click="run.stopping = true">{{ run.stopping ? 'Stopping…' : 'Stop' }}</button>
+      <span v-for="(x, g) in runs" :key="g" class="run-status">
+        <span class="dot" /> {{ x.label }} {{ x.done }} / {{ x.total }} · {{ usd(x.spent) }}
+        <button class="ghost" :disabled="x.stopping" @click="x.stopping = true">{{ x.stopping ? 'Stopping…' : 'Stop' }}</button>
       </span>
       <span class="spacer" />
-      <button v-if="retry && !run" @click="runGroup(retry.group, 'all')">Retry {{ retry.n }} unfinished rows</button>
+      <button v-if="retry" @click="runGroup(retry.group, 'all')">Retry {{ retry.n }} unfinished rows</button>
       <button @click="exportCsv">Export CSV</button>
-      <button class="primary" :disabled="!!run" @click="editGroup = null; adding = true; detail = null">+ Add column</button>
+      <button class="primary" @click="editGroup = null; adding = true; detail = null">+ Add column</button>
     </div>
     <p v-if="banner" class="oe-banner">{{ banner }}</p>
 
@@ -349,10 +373,10 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                 <span class="caret">▾</span>
                 <div v-if="menu === c.id" class="menu" @click.stop>
                   <template v-if="c.job">
-                    <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
-                    <button :disabled="!!run || !remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
-                    <button :disabled="!!run" @click="menu = null; runGroup(c.job.group, 'all', true)">Re-run all rows</button>
-                    <button :disabled="!!run" @click="menu = null; editColumn(c)">Edit settings</button>
+                    <button :disabled="!remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
+                    <button :disabled="!remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
+                    <button :disabled="!!runs[c.job.group]" @click="menu = null; runGroup(c.job.group, 'all', true)">Re-run all rows</button>
+                    <button :disabled="!!runs[c.job.group]" @click="menu = null; editColumn(c)">Edit settings</button>
                     <hr />
                   </template>
                   <label class="menu-type">Type
@@ -362,10 +386,10 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                     </select>
                   </label>
                   <hr />
-                  <button class="danger" @click="menu = null; removeColumn(c)">Delete column</button>
+                  <button class="danger" :disabled="!!(c.job && runs[c.job.group])" @click="menu = null; removeColumn(c)">Delete column</button>
                 </div>
               </th>
-              <th class="add-col" title="Add a column" @click.stop="!run && (editGroup = null, adding = true, detail = null)">+ Add column</th>
+              <th class="add-col" title="Add a column" @click.stop="editGroup = null; adding = true; detail = null">+ Add column</th>
             </tr>
           </thead>
           <tbody>
@@ -378,7 +402,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                 </a>
                 <span v-else-if="pill(r, c)" :class="['pill', runOf(r, c).state]">{{ pill(r, c) }}</span>
                 <template v-else>{{ show(r.cells[c.id]) }}<span v-if="runOf(r, c)?.confidence != null" class="muted small"> · {{ Math.round(runOf(r, c).confidence * 100) }}%</span></template>
-                <button v-if="c.job && !run" class="rerun" title="Run this row" @click.stop="runGroup(c.job.group, 1, false, [r])">▶</button>
+                <button v-if="c.job && !busy(r, c.job.group)" class="rerun" title="Run this row" @click.stop="runGroup(c.job.group, 1, false, [r])">▶</button>
               </td>
               <td class="add-col" />
             </tr>
