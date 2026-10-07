@@ -186,7 +186,8 @@ _RATE_LIMITS: dict[str, dict] = {
     "leadsforge": {"limit": 120, "window_s": 60, "source": "headers"},
     "leadmagic": {"limit": 300, "window_s": 60, "source": "docs"},
     "crustdata": {"limit": 30, "window_s": 60, "source": "headers"},
-    "tikhub": {"limit": 30, "window_s": 1, "source": "docs"},
+    # The shared account's upgraded level: 100 RPS, honored only on the enterprise node (base_url).
+    "tikhub": {"limit": 100, "window_s": 1, "source": "policy"},
     "getleadsio": {"limit": 100, "window_s": 60, "source": "docs"},
 }
 

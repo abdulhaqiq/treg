@@ -105,6 +105,9 @@ class OAuthProvider:
     # perfectly well-scoped token.
     token_scopes_header: str = ""
     base_url: str = ""  # upstream API root, so a successful connect can auto-provision the tool
+    # Earlier base_urls. A team tool registered on one still wins a catalog call (tier 1) and
+    # relays to its own base_url; only treg's routing moved.
+    legacy_base_urls: tuple[str, ...] = ()
     # A provider's catalog can span additional API roots. These roots are executable policy, not
     # catalog data: a YAML `host` only selects an exact entry from this allow-list, so a catalog
     # edit cannot redirect an injected team or platform credential to an arbitrary host.
@@ -415,6 +418,13 @@ class OAuthProvider:
             if value := getattr(target, field):
                 overrides[field] = value
         return replace(self, **overrides)
+
+    def tool_lookup_urls(self, url: str) -> list[str]:
+        """`url`, then the same path on each legacy base: where a team's own tool may be registered."""
+        base = self.base_url.rstrip("/")
+        if not url.startswith(base + "/"):
+            return [url]
+        return [url] + [old.rstrip("/") + url[len(base):] for old in self.legacy_base_urls]
 
     def authorization_method_name(self, stored: str) -> str:
         return connection_authorization.method_name(self, stored)
@@ -1973,7 +1983,10 @@ TIKHUB = OAuthProvider(
     client_id_setting="", client_secret_setting="",
     category="Social media",
     summary="Read TikTok, Instagram, YouTube, X and more social platforms through one unified API.",
-    base_url="https://api.tikhub.io",
+    # The enterprise node serves the same API and keys; only there does an account's higher RPS
+    # level take effect (api.tikhub.io caps every key lower).
+    base_url="https://api-node-enterprise.tikhub.io",
+    legacy_base_urls=("https://api.tikhub.io",),
     docs_url="https://docs.tikhub.io/",
     probe_path="/api/v1/tikhub/user/get_user_info",  # account info — the natural key check
 )
@@ -3903,6 +3916,16 @@ CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrich
 
 def get(service: str) -> OAuthProvider | None:
     return REGISTRY.get(service)
+
+
+def legacy_aliases(url: str) -> list[str]:
+    """The same call on each legacy base of the provider that serves `url` (empty for most). A
+    deny rule a team wrote against the old host still covers calls on the new one."""
+    for provider in REGISTRY.values():
+        if provider.legacy_base_urls:
+            if len(urls := provider.tool_lookup_urls(url)) > 1:
+                return urls[1:]
+    return []
 
 
 def credentials(provider: OAuthProvider) -> tuple[str, str]:

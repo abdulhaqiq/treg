@@ -2198,13 +2198,14 @@ async def _resolve_marketplace_call(
         return MarketplaceCall(tool=chosen_tool, tier="tool", **common)
 
     if not methods:
-        try:  # tier 1 - the org registered this provider: their tool, their bindings, their ACLs
-            target = await resolve_call(upstream, caller, db)
-            return MarketplaceCall(
-                tool=target.tool, tier="tool", **{**common, "upstream": target.upstream})
-        except ResolutionFailed as exc:
-            if exc.status_code != 404:  # 403 (ACL) / 409 (ambiguous) are real answers, not fall-through
-                raise
+        for candidate in provider.tool_lookup_urls(upstream):
+            try:  # tier 1 - the org registered this provider: their tool, their bindings, their ACLs
+                target = await resolve_call(candidate, caller, db)
+                return MarketplaceCall(
+                    tool=target.tool, tier="tool", **{**common, "upstream": target.upstream})
+            except ResolutionFailed as exc:
+                if exc.status_code != 404:  # 403 (ACL) / 409 (ambiguous) are real answers, not fall-through
+                    raise
 
     secret = chosen_secret or await _marketplace_secret(service, caller.org_id, db)  # tier 2
     if secret is not None:
