@@ -405,6 +405,7 @@
 .web-results-table-wrap{overflow-x:auto}
 .web-results-table{min-width:760px;font-size:12px}
 .web-results-table th,.web-results-table td{vertical-align:top;padding:14px 10px}
+.web-results-table tbody tr:last-child>th,.web-results-table tbody tr:last-child>td{border-bottom:0}
 .web-results-table thead th{color:var(--muted);font:11px var(--mono)}
 .web-results-table tbody th{min-width:130px;white-space:normal}
 .web-table-provider{display:flex;align-items:center;gap:8px;white-space:nowrap}
