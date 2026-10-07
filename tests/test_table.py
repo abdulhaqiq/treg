@@ -333,7 +333,7 @@ def test_job_and_searched_post_lists_land_in_the_same_columns_whoever_answers():
     anyapi = _example("anyapi.linkedin.search.jobs")["output"]["data"]["items"]
     for items in (harvest, anyapi):
         t = to_table({"output": {"jobs": items}}, contract_output=["jobs"], list_field="jobs", capability="linkedin.search.jobs")
-        assert t["columns"][:6] == ["title", "company", "location", "posted_at", "url", "company_url"]
+        assert t["columns"][:7] == ["title", "company", "location", "posted_at", "url", "company_url", "company_website"]
         row = dict(zip(t["columns"], t["rows"][0]))
         assert row["title"] and row["company"] and str(row["posted_at"]).startswith("20")   # an epoch became ISO time
     posts = _example("anyapi.linkedin.search.posts.full")["output"]["data"]["posts"]

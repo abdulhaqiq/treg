@@ -77,9 +77,10 @@ _JOBS_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("company", ("company.name", "company_name", "companyName", "organization.name", "company")),
     ("location", ("location.linkedinText", "location.name", "job_location", "location.city", "location")),
     ("posted_at", ("postedDate", "posted_at", "listed_at", "date_posted", "published_at", "list_date",
-                   "created_at", "first_seen_at", "createdUtc")),
-    ("url", ("url", "job_url", "linkedinUrl", "linkedin_url", "applyUrl")),
+                   "created_at", "first_seen_at", "createdUtc", "detected_extensions.posted_at")),
+    ("url", ("url", "job_url", "linkedinUrl", "linkedin_url", "applyUrl", "share_link")),
     ("company_url", ("companyUrl", "company.linkedinUrl", "company.linkedin_url", "company.url", "company_url")),
+    ("company_website", ("company.website_url", "company.website", "company_website", "company.domain")),
 )
 # Posts found by a keyword search: who, what, when, where, and how it landed.
 _SEARCHED_POSTS_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
