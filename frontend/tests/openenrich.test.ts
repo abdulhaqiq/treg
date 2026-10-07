@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { fromStored, idempotencyKey } from '../src/openenrich/client.js'
-import { SOURCES, cellText, parseEdited, linkOf, searchCostRange, hintTypes, filterBody, lookupRetries, typoScore, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
+import { SOURCES, judgeBody, judgeValue, cellText, parseEdited, linkOf, searchCostRange, hintTypes, filterBody, lookupRetries, typoScore, usesStrict, autoMap, cellFrom, enrichmentJobs, signalShelf, fillInputs, keptColumns, listRecords, parseCsv, readAnswer, satisfies, toCsv } from '../src/openenrich/jobs.js'
 
 const EMAIL_FIND = [['domain', 'full_name'], ['domain', 'first_name', 'last_name'], ['linkedin_url'], ['linkedin_handle']]
 
@@ -216,7 +216,7 @@ test('a judgment column asks one question over the evidence and reads the answer
   assert.equal(judgeValue({ type: 'choice', labels: ['SMB'] }, { 'answers.q.choice': 'Other' }).value, null)
   assert.equal(judgeValue({ type: 'score', levels: 5 }, { 'answers.q.score': 3 }).value, 4)
   const score = judgeBody({ type: 'score', levels: 3, instructions: 'Fit?', evidence: ['name'] }, row, cols)
-  assert.deepEqual(Object.keys(score.questions.q.criteria), ['1', '2', '3'])
+  assert.deepEqual(score.questions.q.criteria, ['1: lowest', '2', '3: highest'])
 })
 
 test("a result column no row fills is left out, a row's name and domain stay", async () => {
@@ -293,4 +293,11 @@ test('a cell reads in full and an edit keeps the kind of value it held', () => {
   assert.equal(linkOf('ada@ramp.com'), 'mailto:ada@ramp.com')
   assert.equal(linkOf('https://ramp.com'), 'https://ramp.com')
   assert.equal(linkOf('javascript:alert(1)'), null)
+})
+
+test('a score judgment sends its levels as a list and reads the 0-based answer 1-based', () => {
+  const judge = { type: 'score', levels: 5, instructions: 'Fit?', labels: [], evidence: ['name'] }
+  const body = judgeBody(judge, { cells: { name: 'Brex' } }, [{ id: 'name', label: 'name' }])
+  assert.deepEqual(body.questions.q.criteria, ['1: lowest', '2', '3', '4', '5: highest'])
+  assert.equal(judgeValue(judge, { 'answers.q.score': 2.39, 'answers.q.confidence': 0 }).value, 3.4)
 })
