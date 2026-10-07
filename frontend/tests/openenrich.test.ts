@@ -316,6 +316,7 @@ test('load more asks the next page from who answered, then providers not asked y
   const old = moreRowsPlans({ body: { limit: 10 } }, kids)
   assert.deepEqual(old.map((p) => [p.bodies[0].page, p.exclude]), [[2, []]])
   assert.equal(rowKey({ domain: 'https://www.Ramp.com/' }), 'ramp.com')
+  assert.equal(rowKey({ title: 'VP Growth', url: 'https://www.linkedin.com/jobs/view/1/' }), 'linkedin.com/jobs/view/1')
 })
 
 test('keyword-search signals name the company and price from the catalog', async () => {
@@ -326,11 +327,11 @@ test('keyword-search signals name the company and price from the catalog', async
 test('a signal search keeps its own columns, dates readable, one value per single-choice filter', async () => {
   const { SIGNAL_SOURCES, listRecords, filterBody } = await import('../src/openenrich/jobs.js')
   const jobs = SIGNAL_SOURCES.find((s) => s.id === 'jobs')
-  const { records, ids } = listRecords('jobs', [{ title: 'VP Growth', company: 'Pendo', id: '9', createdUtc: 1790899200, url: 'u1' }],
-    ['title', 'company', 'id', 'createdUtc', 'url'], Infinity, jobs.keep)
-  assert.deepEqual(ids, ['title', 'company', 'createdUtc', 'url'])
-  assert.equal(records[0].createdUtc, '2026-10-02 00:00')
+  const { records, ids } = listRecords('jobs', [{ title: 'VP Growth', company: 'Pendo', id: '9', posted_at: '2026-10-02T00:00:00Z', url: 'u1' }],
+    ['title', 'company', 'id', 'posted_at', 'url'], Infinity, jobs.keep)
+  assert.deepEqual(ids, ['title', 'company', 'posted_at', 'url'])
+  assert.equal(listRecords('posts', [{ createdUtc: 1790899200 }], ['createdUtc'], Infinity, ['createdUtc']).records[0].createdUtc, '2026-10-02 00:00')
   const posted = jobs.filters.find((f) => f.name === 'posted')
-  assert.deepEqual(filterBody([posted], { posted: [{ value: 'week', label: 'Last week' }] }), { postedLimit: 'week' })
+  assert.deepEqual(filterBody([posted], { posted: [{ value: 'week', label: 'Last week' }] }), { posted: 'week' })
   for (const s of SIGNAL_SOURCES) assert.ok(s.keep?.length && s.filters.length, s.id)
 })

@@ -166,16 +166,16 @@ export const SOURCE_LOOK = {
   linkedin_posts: ['message', '#0a66c2'], x_posts: ['message', '#111827'], reddit_posts: ['message', '#ff4500'],
 }
 export const SIGNAL_SOURCES = [
-  { id: 'jobs', label: 'Job postings', kind: 'jobs', tool: 'anyapi.linkedin.search.jobs', hint: 'Companies hiring for a role, from LinkedIn jobs',
-    identity: ['query'], limitMax: 25, noPage: true, keep: ['title', 'company', 'location', 'createdUtc', 'url', 'companyUrl'],
+  { id: 'jobs', label: 'Job postings', kind: 'jobs', tool: 'treg.linkedin.search.jobs', hint: 'Companies hiring for a role, from LinkedIn jobs',
+    identity: ['q'], noLimit: true, keep: ['title', 'company', 'location', 'posted_at', 'url', 'company_url'],
     filters: [
-      { name: 'query', label: 'Job title or keywords', icon: 'briefcase', group: 'Job', type: 'text', placeholder: 'Head of Growth', open: true },
+      { name: 'q', label: 'Job title or keywords', icon: 'briefcase', group: 'Job', type: 'text', placeholder: 'Head of Growth', open: true },
       { name: 'location', label: 'Location', icon: 'pin', group: 'Job', type: 'text', placeholder: 'United States', suggested: true },
-      { name: 'posted', label: 'Posted', icon: 'hash', group: 'Job', type: 'pick', one: true, suggested: true, ops: ONE('postedLimit'),
-        options: opts([['24h', 'Last 24 hours'], ['week', 'Last week'], ['month', 'Last month']]) },
-      { name: 'workplace', label: 'Workplace', icon: 'building', group: 'Job', type: 'pick', one: true, ops: ONE('workplaceType'),
+      { name: 'posted', label: 'Posted', icon: 'hash', group: 'Job', type: 'pick', one: true, suggested: true, ops: ONE('posted'),
+        options: opts([['day', 'Last 24 hours'], ['week', 'Last week'], ['month', 'Last month']]) },
+      { name: 'workplace', label: 'Workplace', icon: 'building', group: 'Job', type: 'pick', one: true, ops: ONE('workplace'),
         options: opts([['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']]) },
-      { name: 'level', label: 'Experience level', icon: 'trend', group: 'Job', type: 'pick', one: true, ops: ONE('experienceLevel'),
+      { name: 'level', label: 'Experience level', icon: 'trend', group: 'Job', type: 'pick', one: true, ops: ONE('level'),
         options: opts([['entry', 'Entry'], ['associate', 'Associate'], ['mid-senior', 'Mid-senior'], ['director', 'Director'], ['executive', 'Executive']]) },
     ] },
   { id: 'funding', label: 'Funding rounds', kind: 'funding', tool: 'getleadsio.companies.funding.feed', method: 'GET',
@@ -192,17 +192,17 @@ export const SIGNAL_SOURCES = [
       { name: 'q', label: 'Topic', icon: 'news', group: 'News', type: 'text', placeholder: 'raises Series A fintech', open: true },
       { name: 'country', label: 'Country code', icon: 'pin', group: 'News', type: 'text', placeholder: 'us' },
     ] },
-  { id: 'linkedin_posts', label: 'LinkedIn post mentions', kind: 'posts', tool: 'anyapi.linkedin.search.posts', logo: 'linkedin',
-    hint: 'Posts that name a brand, a competitor or a problem', identity: ['query'], noLimit: true, noPage: true,
-    keep: ['authorName', 'text', 'createdUtc', 'reactionCount', 'commentCount', 'url', 'authorUrl'],
+  { id: 'linkedin_posts', label: 'LinkedIn post mentions', kind: 'posts', tool: 'treg.linkedin.search.posts', logo: 'linkedin',
+    hint: 'Posts that name a brand, a competitor or a problem', identity: ['q'], noLimit: true,
+    keep: ['author', 'text', 'posted_at', 'reactions', 'comments', 'url', 'author_url'],
     filters: [
-      { name: 'query', label: 'Words in the post', icon: 'search', group: 'Post', type: 'text', placeholder: '"your competitor"', open: true },
-      { name: 'posted', label: 'Posted', icon: 'hash', group: 'Post', type: 'pick', one: true, suggested: true, ops: ONE('datePosted'),
-        options: opts([['last-day', 'Last day'], ['last-week', 'Last week'], ['last-month', 'Last month']]) },
+      { name: 'q', label: 'Words in the post', icon: 'search', group: 'Post', type: 'text', placeholder: '"your competitor"', open: true },
+      { name: 'posted', label: 'Posted', icon: 'hash', group: 'Post', type: 'pick', one: true, suggested: true, ops: ONE('posted'),
+        options: opts([['day', 'Last day'], ['week', 'Last week'], ['month', 'Last month']]) },
     ] },
   { id: 'x_posts', label: 'X post mentions', kind: 'posts', tool: 'treg.x.search.posts', logo: 'x',
     hint: 'Recent X posts that name a brand or a problem', identity: ['q'], noLimit: true, noPage: true,
-    keep: ['authorName', 'authorUsername', 'text', 'createdUtc', 'likeCount', 'url'],
+    keep: ['author', 'text', 'posted_at', 'likes', 'replies', 'url'],
     filters: [{ name: 'q', label: 'Words in the post', icon: 'search', group: 'Post', type: 'text', placeholder: '"your competitor"', open: true }] },
   { id: 'reddit_posts', label: 'Reddit mentions', kind: 'posts', tool: 'scrapecreators.reddit.search.posts', method: 'GET',
     hint: 'Reddit threads about a brand or a problem', identity: ['query'], noLimit: true, noPage: true,
@@ -290,11 +290,11 @@ export const SIGNAL_SEARCHES = [
   { id: 'news_mentions', label: 'Search news mentions', tool: 'treg.google.serp.news', about: 'Recent news articles that name the company',
     inputs: { q: '"{name}"', limit: '10' }, keep: ['title', 'url', 'source'], logos: ['serper', 'serpapi', 'dataforseo', 'anyapi'] },
   { id: 'x_mentions', label: 'Find X mentions', tool: 'treg.x.search.posts', about: 'Recent X posts that name the company',
-    inputs: { q: '"{name}"' }, keep: ['text', 'url', 'createdUtc'], logos: ['anyapi', 'tikhub', 'justoneapi'] },
+    inputs: { q: '"{name}"' }, keep: ['text', 'url', 'posted_at'], logos: ['anyapi', 'justoneapi'] },
   { id: 'reddit_mentions', label: 'Find Reddit mentions', tool: 'scrapecreators.reddit.search.posts', about: 'Reddit posts from the last month that name the company',
     inputs: { query: '"{name}"', sort: 'relevance', timeframe: 'month' }, keep: ['title', 'url', 'created_at_iso'], logos: ['scrapecreators'] },
-  { id: 'linkedin_mentions', label: 'Find LinkedIn mentions', tool: 'anyapi.linkedin.search.posts', about: 'LinkedIn posts from the last month that name the company',
-    inputs: { query: '"{name}"', datePosted: 'last-month' }, keep: ['text', 'url', 'createdUtc'], logos: ['anyapi'] },
+  { id: 'linkedin_mentions', label: 'Find LinkedIn mentions', tool: 'treg.linkedin.search.posts', about: 'LinkedIn posts from the last month that name the company',
+    inputs: { q: '"{name}"', posted: 'month' }, keep: ['text', 'url', 'posted_at'], logos: ['anyapi', 'harvestapi', 'scrapecreators'] },
 ].map((j) => ({ ...j, group: 'Signals', cap: j.id }))
 
 // a platform shelf for the extras: only those capabilities, and only their per-company endpoints
@@ -901,9 +901,9 @@ export function moreRowsPlans(source, children) {
   if (used.length && all.some((p) => !used.includes(p))) plans.push({ bodies: bodies({}), exclude: used, next: 'providers' })
   return plans.map((p) => ({ ...p, exclude: [...new Set([...(source.exclude || []), ...p.exclude])], strict: true, limit }))
 }
-// a row's identity for dropping repeats: its domain, LinkedIn page or name
+// a row's identity for dropping repeats: its domain, LinkedIn page or name, else its link (a job, a post)
 export const rowKey = (cells) => String(cellValue(cells.domain) || cellValue(cells.linkedin_url) || cellValue(cells.full_name)
-  || cellValue(cells.name) || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
+  || cellValue(cells.name) || cellValue(cells.url) || cellValue(cells.link) || cellValue(cells.sourceUrl) || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
 
 // ---- a cell, read in full and edited ------------------------------------------------------------
 // The whole value as text: an object or list as indented JSON, nothing as ''.
