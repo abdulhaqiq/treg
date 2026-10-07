@@ -3,7 +3,7 @@
 // "Add filter" with every filter the search takes), the preview on the right. "Create table" keeps
 // the previewed rows; it does not search again.
 import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, SOURCE_LOOK, filterBody, searchCap, searchCostRange, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
+import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, SOURCE_LOOK, cellText, linkOf, filterBody, searchCap, searchCostRange, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
 import { icon } from './icons.js'
 import ValuePicker from './ValuePicker.vue'
 import ProviderPicker from './ProviderPicker.vue'
@@ -29,6 +29,12 @@ const result = ref(null)           // {rows, ids, body, cost, servedBy, page, pa
 const stale = ref(false)
 const busy = ref(false)
 const error = ref('')
+const detail = ref(null)           // the preview cell open in the side panel: {i: row, c: column}
+watch(result, () => { detail.value = null })
+const copied = ref(false)
+async function copy(value) {
+  try { await navigator.clipboard.writeText(cellText(value)); copied.value = true; setTimeout(() => (copied.value = false), 1200) } catch {}
+}
 
 onMounted(async () => {
   // a filter's whole value list (industries) is fetched now, so it is ready when the filter opens
@@ -309,7 +315,7 @@ function create() {
           <tbody v-if="result">
             <tr v-for="(r, i) in result.rows" :key="i">
               <td class="num">{{ i + 1 }}</td>
-              <td v-for="c in columns" :key="c">{{ r[c] ?? '' }}</td>
+              <td v-for="c in columns" :key="c" :class="['cell', { picked: detail?.i === i && detail?.c === c }]" @click="detail = { i, c }">{{ cellText(r[c]) }}</td>
             </tr>
           </tbody>
           <tbody v-else>
@@ -324,5 +330,31 @@ function create() {
         </button>
       </div>
     </section>
+
+    <!-- a preview cell, read in full: its whole value, and the rest of its row -->
+    <aside v-if="detail && result?.rows[detail.i]" class="oe-side">
+      <header class="side-head">
+        <strong>{{ detail.c }} · row {{ detail.i + 1 }}</strong>
+        <button class="icon" title="Close" @click="detail = null">✕</button>
+      </header>
+      <div class="side-body">
+        <div class="cell-head">
+          <h4>Value</h4>
+          <span class="spacer" />
+          <button class="ghost small-btn" :disabled="!cellText(result.rows[detail.i][detail.c])" @click="copy(result.rows[detail.i][detail.c])">{{ copied ? 'Copied' : 'Copy' }}</button>
+        </div>
+        <a v-if="linkOf(result.rows[detail.i][detail.c])" class="cell-full" :href="linkOf(result.rows[detail.i][detail.c])" target="_blank" rel="noopener noreferrer">{{ cellText(result.rows[detail.i][detail.c]) }}</a>
+        <pre v-else-if="cellText(result.rows[detail.i][detail.c])" class="cell-full">{{ cellText(result.rows[detail.i][detail.c]) }}</pre>
+        <p v-else class="muted small">Empty.</p>
+        <h4>Row</h4>
+        <dl class="detail">
+          <template v-for="c in columns.filter((x) => x !== detail.c && cellText(result.rows[detail.i][x]))" :key="c">
+            <dt>{{ c }}</dt>
+            <dd><a v-if="linkOf(result.rows[detail.i][c])" :href="linkOf(result.rows[detail.i][c])" target="_blank" rel="noopener noreferrer">{{ cellText(result.rows[detail.i][c]) }}</a>
+              <template v-else>{{ cellText(result.rows[detail.i][c]) }}</template></dd>
+          </template>
+        </dl>
+      </div>
+    </aside>
   </div>
 </template>

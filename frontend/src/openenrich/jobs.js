@@ -206,7 +206,7 @@ export const SIGNAL_SOURCES = [
     filters: [{ name: 'q', label: 'Words in the post', icon: 'search', group: 'Post', type: 'text', placeholder: '"your competitor"', open: true }] },
   { id: 'reddit_posts', label: 'Reddit mentions', kind: 'posts', tool: 'scrapecreators.reddit.search.posts', method: 'GET',
     hint: 'Reddit threads about a brand or a problem', identity: ['query'], noLimit: true, noPage: true,
-    keep: ['subreddit', 'title', 'author', 'created_at_iso', 'num_comments', 'url'],
+    keep: ['subreddit', 'title', 'selftext', 'author', 'created_at_iso', 'num_comments', 'url'],
     filters: [
       { name: 'query', label: 'Words in the thread', icon: 'search', group: 'Thread', type: 'text', placeholder: '"your competitor" alternative', open: true },
       { name: 'timeframe', label: 'Posted', icon: 'hash', group: 'Thread', type: 'pick', one: true, suggested: true, ops: ONE('timeframe'),
