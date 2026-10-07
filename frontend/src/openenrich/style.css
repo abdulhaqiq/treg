@@ -74,7 +74,7 @@
 .oe .hero-actions .gh-btn { height: 40px; min-height: 0; margin: 0; padding: 0 14px; font: 500 12.5px/1 "Google Sans Flex", var(--sans); }
 .oe .powered { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
 .oe .powered b { color: var(--text); font-weight: 600; }
-.oe .powered svg { width: 16px; height: 16px; }
+.oe .powered svg { width: 16px; height: 16px; color: var(--text); }
 /* Enrich Arena's faint dotted ground, behind the start page */
 .oe:has(.oe-main.narrow) { position: relative; isolation: isolate; }
 .oe:has(.oe-main.narrow)::before { content: ""; position: fixed; inset: 64px 0 0; pointer-events: none; z-index: -1;
