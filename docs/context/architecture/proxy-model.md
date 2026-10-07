@@ -276,7 +276,10 @@ the caller supplied, never an inaccessible tool.
 upstream is matched against the org's `DenyRule` rows (org-wide + the ones aimed at this caller) →
 `403` naming the rule. Evaluating the **resolved** upstream is what makes both call shapes equally
 gated - a caller cannot dodge a rule by switching to URL-passthrough - and the relay does not follow
-redirects, so a blocked host is not reachable via a 3xx bounce. The path match is anchored at a
+redirects, so a blocked host is not reachable via a 3xx bounce. When a provider moves its
+`base_url`, the old one stays in `legacy_base_urls`: the call is also checked as if sent there, so a
+rule written against the old host keeps blocking, and catalog tier 1 still finds a team tool
+registered on it. The path match is anchored at a
 segment boundary (`/v1/charges` must not match `/v1/chargesX`), the same trap `_resolve_call` guards.
 It applies to **every role including owner** (a guardrail, not a permission tier) and to both run
 tiers, where the tool's own `base_url` host stands in for the request path. `_deny_match` is pure, so
