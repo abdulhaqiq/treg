@@ -67,9 +67,6 @@
 .oe .setup-logos img { width: 20px; height: 20px; object-fit: contain; }
 .oe .setup-logos > span { color: var(--muted); font-size: 11px; }
 .oe .hero-title { display: flex; align-items: center; gap: 14px; }
-.oe .hero-mark { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 14px;
-  background: var(--inverse); color: var(--inverse-ink); box-shadow: var(--shadow-sm); }
-.oe .hero-mark svg { width: 26px; height: 26px; }
 .oe .hero-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .oe .hero-actions .gh-btn { height: 40px; min-height: 0; margin: 0; padding: 0 14px; font: 500 12.5px/1 "Google Sans Flex", var(--sans); }
 .oe .powered { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
