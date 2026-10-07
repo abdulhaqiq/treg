@@ -120,7 +120,7 @@ ignore it is skipped. "Load more" asks for the next `page` with every other prov
 list continues from the provider that served it; one that cannot page answers no_route_candidate,
 uncharged, and the list ends there.
 
-**First visit.** A team that opens Open Enrich with no tables gets three real tables (`seeds.js`, about
+**First visit.** A team's first visit adds three real tables beside its own (those it lacks by name) (`seeds.js`, about
 50 company rows each, built through treg's searches and column runs; people columns left to run),
 once per team in that browser; the seed data loads only then.
 
