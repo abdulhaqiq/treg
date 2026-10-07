@@ -58,10 +58,10 @@ request remains unbounded. Context.dev Map sends the selected limit upstream. Th
 also permits Tavily Map on the shared key.
 Brand.dev's fixed ten-result search can join a Search quote because it enforces that limit in
 its adapter. The Web Arena quote checks this after planning the scoped provider candidates.
-TinyFish is the one exception without a count request field. A Search quote can include its
-first page; Web Arena compares at most the first ten returned links. Every other Search provider
-must send the ten-result limit upstream. Spider Search uses listing-only mode so its search
-does not fetch the result pages.
+TinyFish and Crawl4AI have no count request field. A Search quote can include their
+first page; Web Arena compares at most the first ten returned links. Other Search providers
+must send the ten-result limit upstream or enforce a fixed ten-result page. Spider Search uses
+listing-only mode so its search does not fetch the result pages.
 News Search combines verified news endpoints from TinyFish, Search1API, Exa, AnyAPI, Serper,
 Cloro, SerpAPI, DataForSEO, LiteScrape, and Tavily. TinyFish, Search1API, Exa, and Tavily use
 the `web.search.news` catalog contract; the others use `google.serp.news`. LiteScrape fixes
