@@ -128,7 +128,8 @@ links (three in a Battle card, four in a Waterfall lane, two on narrow screens) 
 dots with the rank kept for screen readers, a bounded Fetch text preview, View all, View
 provider response, and thumbs at the bottom right. Sitemap states its count once: "N valid site
 URLs", or "N site URLs · M valid" when they differ. Failed cards stay one line with a plain reason
-and their thumbs. After a run, providers that were never called fold into one short line that
+and their thumbs. Show fewer returns the viewport to that provider card in card view.
+After a run, providers that were never called fold into one short line that
 says why in plain words: an earlier provider returned results, the $10 run limit, an unknown
 fee, or a stopped run. Above the cards, one strip shows a small working orb, progress as a thin bar, the amount charged
 so far, elapsed time, and Stop and
@@ -143,7 +144,8 @@ and Jev's bounded search input read those fields. Earlier runs keep their saved 
 The strip has an icon toggle for card and compact table views with tooltips. The table
 keeps Fastest, Cheapest, Most Relevant, and Token Efficient badges below the provider name. Its
 plus action expands the full links
-or provider output; thumbs, cost, time, and quality stay in the row.
+or provider output; thumbs, cost, time, and quality stay in the row. The final visible row has
+no bottom divider inside the table's rounded border.
 Stop sits in the strip. A transient status-poll failure
 keeps the run active in the browser and retries the poll; the saved run state controls Stop's visibility.
 Completed Battle runs mark the fastest and cheapest successful results when all compared values

@@ -360,6 +360,13 @@
       // Badge winners of a finished Battle take the pixel fighter's victory pose instead of an orb.
       laneBody(a){return a.state==='hit'||!!(a.output&&Object.keys(a.output).length)||(!!a.detail&&a.state!=='hit');},
       canRate(a){return ['hit','miss','error','timeout'].includes(a.state)&&!this.running;},
+      async toggleCardResults(id,event){
+        const collapse=!!this.expandedResults[id],card=event.currentTarget.closest('.wa-lane');
+        this.expandedResults[id]=!collapse;
+        if(!collapse||!card)return;
+        await this.$nextTick();
+        requestAnimationFrame(()=>{if(card.isConnected)window.scrollTo(0,Math.max(0,window.scrollY+card.getBoundingClientRect().top-16));});
+      },
       updateTaskOverflow(){const bar=this.$refs.taskTabs;if(!bar)return;this.taskLeft=bar.scrollLeft>1;this.taskRight=bar.scrollWidth-bar.clientWidth-bar.scrollLeft>1;},
       scrollTasks(direction){const bar=this.$refs.taskTabs;if(!bar)return;bar.scrollBy({left:direction*Math.max(160,bar.clientWidth*.6),behavior:this.reduceMotion()?'auto':'smooth'});},
       async openTopic(){this.topicOpen=true;await this.$nextTick();this.$refs.topicInput?.focus();},
