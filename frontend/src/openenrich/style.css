@@ -247,6 +247,11 @@
 .oe .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--gray-soft); color: var(--muted); }
 .oe .pill.running, .oe .pill.queued { background: var(--live-soft); color: var(--live); }
 .oe .pill.error { background: var(--warn-soft); color: var(--warn); }
+.oe .pill.running { display: inline-flex; align-items: center; gap: 5px; }
+.oe .pill.running::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid currentColor;
+  border-right-color: transparent; animation: oe-spin .7s linear infinite; }
+@keyframes oe-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .oe .pill.running::before { animation: none; } }
 .oe .pill.link { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
 
 /* right side panel */
