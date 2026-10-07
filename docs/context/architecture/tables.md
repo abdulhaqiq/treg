@@ -98,7 +98,8 @@ replacing that parent's rows, and makes the child table on first use. Rows with 
 one batch share one call. The request is byte for byte the page's (compact JSON body, the same
 headers), because an `Idempotency-Key` fingerprints the request it was first used with.
 
-**Limits:** five calls in flight per run, three active runs per team, and the run stops when its
+**Limits:** five rows in flight per run, as a pool (a row added mid-run starts when a slot frees,
+not behind a slow waterfall), three active runs per team, and the run stops when its
 spend reaches `max_usd` or the team's balance runs short (a 402 `insufficient_balance` stops it; any
 other refusal fails that row only; while other calls of the run still hold their caps, the row
 waits for them first, as the page did). A row's `queued` counts as busy only inside a run still

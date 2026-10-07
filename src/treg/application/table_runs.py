@@ -180,6 +180,12 @@ def read_answer(status: int, a: dict) -> dict:
         return {"state": "error", "error": "Every provider left would cost more than the row cap. Nothing was charged."}
     if status == 404 and "upstream_error" in (a.get("error"), d.get("error")):
         return {"state": "miss"}
+    if status == 502 and d.get("error") == "route_failed" and isinstance(d.get("tried"), list):
+        tried = d["tried"]
+        failed = sorted({t.get("provider") for t in tried if t.get("outcome") not in ("miss", "skipped", "weak", "rejected")})
+        nothing = sum(1 for t in tried if t.get("outcome") == "miss")
+        return {"state": "error", "error": f"No provider found it: {nothing} had nothing, "
+                f"{len(failed)} could not answer ({', '.join(failed)}). Run it again later."[:2000]}
     if status >= 400 or a.get("error"):
         why = (f"provider answered {a.get('upstream_status')}" if a.get("error") == "upstream_error"
                else d.get("message") or (a["detail"] if isinstance(a.get("detail"), str) else "")
@@ -518,41 +524,52 @@ class _Driver:
         return snapshot
 
     async def _loop(self) -> None:
-        while True:
-            async with session_maker() as db:
-                run = (await db.execute(select(TableRun).where(self._mine()))).scalars().first()
-                if run is None:
-                    raise _LostLease()
-                ids, fresh, total, membership_id = list(run.row_ids), set(run.fresh_ids), run.total, run.membership_id
-                spent, max_usd = run.spent_micro, run.max_usd
-                self.stop = self.stop or run.stop_requested
-                todo = [r for r in (await db.execute(select(TableRow).where(
-                    TableRow.table_id == self.table_id, TableRow.row_key.in_(ids)))).scalars().all()
-                    if ((r.runs or {}).get(self.group) or {}).get("state") in ACTIVE]
-                await db.commit()
-            if self.stop:
-                return await self._finish("stopped", None)
-            if self.low:
-                return await self._finish("stopped", LOW_BALANCE)
-            if max_usd and spent >= max_usd * 1e6:
-                return await self._finish("stopped", f"Stopped at the run's ${max_usd:g} limit.")
-            if not todo:
-                if await self._finish("done", None, total=total):
-                    return
-                continue
-            caller = await self._caller(membership_id)
-            if caller is None:
-                return await self._finish("failed", "The member who started this run no longer has access.")
-            order = {k: i for i, k in enumerate(ids)}
-            batch = sorted(todo, key=lambda r: order[r.row_key])[:CALLS_PER_RUN * 2]
-            gate = asyncio.Semaphore(CALLS_PER_RUN)
-            shared: dict[str, asyncio.Task] = {}
-
-            async def one(row: TableRow) -> None:
-                async with gate:
-                    if not self.stop and not self.low:
-                        await self._row(row, caller, shared, f"run-{self.run_id}" if row.row_key in fresh else None)
-            await asyncio.gather(*(one(r) for r in batch))
+        """A pool of CALLS_PER_RUN rows in flight: a row added to the run starts as soon as a slot
+        frees, never behind a slow row (a long waterfall)."""
+        flying: dict[str, asyncio.Task] = {}
+        shared: dict[str, asyncio.Future] = {}
+        try:
+            while True:
+                async with session_maker() as db:
+                    run = (await db.execute(select(TableRun).where(self._mine()))).scalars().first()
+                    if run is None:
+                        raise _LostLease()
+                    ids, fresh, total, membership_id = list(run.row_ids), set(run.fresh_ids), run.total, run.membership_id
+                    spent, max_usd = run.spent_micro, run.max_usd
+                    self.stop = self.stop or run.stop_requested
+                    todo = [r for r in (await db.execute(select(TableRow).where(
+                        TableRow.table_id == self.table_id, TableRow.row_key.in_(ids)))).scalars().all()
+                        if ((r.runs or {}).get(self.group) or {}).get("state") in ACTIVE and r.row_key not in flying]
+                    await db.commit()
+                ending = ((None, None) if not (self.stop or self.low or (max_usd and spent >= max_usd * 1e6))
+                          else ("stopped", None) if self.stop else ("stopped", LOW_BALANCE) if self.low
+                          else ("stopped", f"Stopped at the run's ${max_usd:g} limit."))
+                if ending[0]:
+                    # the calls in flight finish and settle as usual; no new row starts
+                    await asyncio.gather(*flying.values())
+                    return await self._finish(*ending)
+                if not todo and not flying:
+                    if await self._finish("done", None, total=total):
+                        return
+                    continue
+                if todo and len(flying) < CALLS_PER_RUN:
+                    caller = await self._caller(membership_id)
+                    if caller is None:
+                        await asyncio.gather(*flying.values())
+                        return await self._finish("failed", "The member who started this run no longer has access.")
+                    order = {k: i for i, k in enumerate(ids)}
+                    for row in sorted(todo, key=lambda r: order[r.row_key])[:CALLS_PER_RUN - len(flying)]:
+                        flying[row.row_key] = asyncio.create_task(
+                            self._row(row, caller, shared, f"run-{self.run_id}" if row.row_key in fresh else None))
+                if flying:
+                    done, _ = await asyncio.wait(flying.values(), timeout=POLL_S, return_when=asyncio.FIRST_COMPLETED)
+                    for key in [k for k, t in flying.items() if t in done]:
+                        flying.pop(key).result()      # a row's fault ends the run, as before
+                else:
+                    await asyncio.sleep(POLL_S)
+        finally:
+            for task in flying.values():
+                task.cancel()
 
     async def _call(self, caller, req: dict) -> dict:
         """One `/table/<tool>` call in process: (status, answer, receipts). 429 and a same-key call

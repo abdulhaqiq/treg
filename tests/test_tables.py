@@ -246,3 +246,11 @@ async def test_a_run_that_lost_its_claim_writes_nothing(clients: AsyncClient, ta
         await db.commit()
     await table_runs._Driver(run_id, token, None).drive()
     assert (await clients.get("/tables/lease")).json()["items"][0]["runs"]["g"]["state"] == "queued"
+
+
+def test_a_waterfall_where_nobody_found_it_says_who_could_not_answer():
+    from treg.application.table_runs import read_answer
+    tried = [{"provider": "hunter", "outcome": "miss"}, {"provider": "tomba", "outcome": "miss"},
+             {"provider": "moltsets", "outcome": "error", "status": 429}]
+    r = read_answer(502, {"detail": {"error": "route_failed", "tried": tried}})
+    assert r["state"] == "error" and r["error"].startswith("No provider found it: 2 had nothing, 1 could not answer (moltsets)")
