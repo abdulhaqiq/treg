@@ -40,6 +40,7 @@ from .evidence import (
     _error_response_evidence,
     _redact_snippet,
     _safe_secret_renderings,
+    redact_error_response,
 )
 from .idempotency import IDEMPOTENCY_HEADER, _hold_claim_lease, _store_idempotent
 from .intake import META_HEADER, _parse_call_meta, _tag_telemetry, prepare_call_intake
@@ -321,6 +322,29 @@ async def _drain(response: UpstreamResponse) -> bytes:
     body = b"".join(chunks)
     response.body_stream = _one_chunk(body)
     return body
+
+
+def _redact_error_body(
+    response: UpstreamResponse, body: bytes, tool, secrets: dict, provider: str,
+) -> tuple[UpstreamResponse, bytes]:
+    """Redact credentials from an error response body before returning to the caller.
+
+    Returns (new_response, redacted_body). The response is rebuilt with the redacted body
+    if redaction occurred. This prevents platform keys or org secrets from leaking to
+    callers when upstream providers echo request headers in error bodies (e.g. TikHub's
+    402 "Insufficient balance" which echoes the Authorization header).
+    """
+    redacted_body, was_redacted = redact_error_response(body, tool, secrets, provider=provider)
+    if not was_redacted:
+        return response, body
+    # Rebuild the response with the redacted body
+    new_headers = tuple(
+        (k, v) if k.lower() != b"content-length" else (k, str(len(redacted_body)).encode())
+        for k, v in response.raw_headers
+    )
+    return UpstreamResponse(
+        response.status, new_headers, _one_chunk(redacted_body), response.close,
+    ), redacted_body
 
 
 async def _verify_public_managed_resources(
@@ -1351,6 +1375,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # Preserve streaming for own-key and own-tool calls while retaining only the small
                 # diagnostic head. The replacement response replays every consumed byte verbatim.
                 response, body = await _peek_stream_head(response, _ERROR_BODY_SLICE)
+                # Redact credentials from error responses before returning to caller. This prevents
+                # platform keys or org secrets from leaking when upstream providers echo request
+                # headers in error bodies (e.g. TikHub's 402 "Insufficient balance").
+                response, body = _redact_error_body(
+                    response, body, tool, secrets, mk.provider if mk else "")
         except GatewayFailed:
             raise
         except httpx.RequestError as exc:  # upstream down/timeout is a gateway fault, not treg's 500
@@ -1577,6 +1606,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 _capture(_overflow_event(pending, outcome, charged))
             else:
                 _capture(pending)  # the vendor's own answer stands
+        # Redact credentials from error response bodies before returning to caller or storing
+        # in idempotency. This prevents platform keys or org secrets from leaking when upstream
+        # providers echo request headers in error bodies (e.g. TikHub's 402 "Insufficient balance").
+        # Applied after settlement/capacity processing (which need the original body) but before
+        # the body reaches the caller or is persisted for replay.
+        if response.status >= 400 and spooled_bytes is None:
+            response, body = _redact_error_body(response, body, tool, secrets, mk.provider)
         if idem_key:
             # Here, and not earlier: this is the first point where BOTH the response and what it
             # actually cost are known, and a replay has to hand back the real charge rather than the

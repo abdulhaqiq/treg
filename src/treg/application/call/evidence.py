@@ -279,3 +279,119 @@ def _error_response_evidence(
                            headers.get("content-type", "")),
         secrets, _ERROR_RESPONSE_MAX)
     return evidence or "<no response body or headers>"
+
+
+# ---- caller-facing response redaction --------------------------------------------------------
+# Masks credentials from response bodies BEFORE they reach the caller. The admin evidence
+# redaction above is for stored, admin-only logs; this protects the live response.
+
+
+def _strip_tikhub_headers_echo(body: bytes) -> bytes:
+    """Strip TikHub's `detail.headers` echo from error bodies as a belt-and-braces measure.
+
+    TikHub's 402 "Insufficient balance" reply echoes the full request headers (including
+    Authorization) in `detail.headers`. Remove that entire field before the generic redaction
+    so the credential never reaches the caller even if exact-match masking somehow misses.
+    """
+    if b'"headers"' not in body:
+        return body
+    try:
+        doc = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return body
+    if not isinstance(doc, dict):
+        return body
+    detail = doc.get("detail")
+    if isinstance(detail, dict) and "headers" in detail:
+        detail["headers"] = {}
+        return json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return body
+
+
+def _redact_caller_response(body: bytes, secrets: list[str]) -> tuple[bytes, bool]:
+    """Mask credentials from a response body before it reaches the caller.
+
+    Returns (redacted_body, was_redacted). The caller receives `redacted_body`; `was_redacted`
+    is True when any masking occurred. Falls back to an empty body when redaction cannot be
+    proven safe — fail closed rather than leak.
+
+    Unlike the admin evidence redaction, this:
+    - Operates on the FULL body (no slice), because this is what the caller receives
+    - Preserves the body's encoding and structure as much as possible
+    - Fails closed: when exact masking cannot be verified, returns a safe placeholder
+    """
+    if not body or not secrets:
+        return body, False
+
+    # Decode body as text for redaction. Most API error responses are UTF-8 JSON.
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = body.decode("latin-1")
+        except UnicodeDecodeError:
+            # Binary body we cannot safely scan: fail closed with a placeholder.
+            return b'{"error":"response_redacted","message":"response contained binary data that could not be safely scanned"}', True
+
+    original_text = text
+    redacted = False
+
+    # Exact credential masking — primary defence. Longest first so `Bearer abc` masks as a
+    # unit before the bare `abc` inside it turns the line into `Bearer ***`.
+    for secret in secrets:
+        if secret in text:
+            text = text.replace(secret, "***")
+            redacted = True
+
+    # Pattern-based masking as a secondary net — same patterns as admin evidence.
+    text, url_redacted = _URL_USERINFO_RE.subn("://***:***@", text)
+    text, query_redacted = _QUERY_CRED_RE.subn(r"\1***", text)
+    text, pattern_redacted = _EVIDENCE_SECRET_RE.subn("***", text)
+    if url_redacted or query_redacted or pattern_redacted:
+        redacted = True
+
+    # Fail-closed verification: after all masking, check if ANY secret survives in a
+    # normalized form. If so, something slipped through — return a safe placeholder.
+    probe = unquote(text.replace("\\/", "/")).lower()
+    if any(s.lower() in probe for s in secrets):
+        return (b'{"error":"response_redacted",'
+                b'"message":"upstream response may have contained credentials and was redacted"}'), True
+
+    if not redacted:
+        return body, False
+
+    # Re-encode with the original encoding
+    try:
+        return text.encode("utf-8"), True
+    except UnicodeEncodeError:
+        return text.encode("latin-1", "replace"), True
+
+
+def redact_error_response(
+    body: bytes, tool: Tool, secrets: dict[int, Secret], *, provider: str = "",
+) -> tuple[bytes, bool]:
+    """Redact credentials from an error response body before returning to the caller.
+
+    This is the public entry point for caller-facing redaction. Returns (redacted_body, was_redacted).
+    Applies provider-specific stripping (TikHub headers echo) before generic redaction.
+
+    When credentials cannot be safely rendered for masking, fails closed with a placeholder body.
+    """
+    original_body = body
+    provider_stripped = False
+
+    # Provider-specific stripping first (belt-and-braces)
+    if provider == "tikhub":
+        body = _strip_tikhub_headers_echo(body)
+        provider_stripped = body != original_body
+
+    # Render all credential spellings for exact masking
+    renderings = _safe_secret_renderings(tool, secrets)
+    if renderings is None:
+        # Cannot render credentials for masking — fail closed
+        return (b'{"error":"response_redacted",'
+                b'"message":"upstream response could not be safely scanned for credentials"}'), True
+
+    redacted_body, credential_redacted = _redact_caller_response(body, renderings)
+    # Return True if EITHER provider stripping OR credential redaction occurred
+    return redacted_body, provider_stripped or credential_redacted
