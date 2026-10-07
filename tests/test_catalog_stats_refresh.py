@@ -311,9 +311,15 @@ async def test_observed_from_drops_the_days_before_a_replaced_service(clients, m
 VERIFY = "millionverifier.people.email.verify"
 
 
-async def test_verdict_buckets_publish_exactly_what_the_live_aggregate_publishes(clients):
-    """The words are counted by the fold and by the SQL alike, under the same refusal rule, and
-    published only from the hit floor up. `unknown` is its own word, never folded into a miss."""
+async def _bucket(endpoint_id: str) -> EndpointDayStat:
+    async with session_maker() as db:
+        return (await db.execute(select(EndpointDayStat).where(
+            EndpointDayStat.endpoint_id == endpoint_id))).scalar_one()
+
+
+async def test_the_fold_counts_verdict_words_per_day(clients):
+    """Each word is counted under the same refusal rule as every other count. `unknown` is its
+    own word, never folded into a miss, and a call without a word adds none."""
     old = timedelta(days=2)
     for word, count in (("valid", 12), ("invalid", 5), ("catch_all", 3), ("unknown", 2)):
         for _ in range(count):
@@ -321,23 +327,20 @@ async def test_verdict_buckets_publish_exactly_what_the_live_aggregate_publishes
     await _record(VERIFY, 200, 100, ago=old, hit=True)                        # no word: not counted
     await _record(VERIFY, 402, None, ago=old, refused_by="balance", verdict="valid")  # a refusal is no evidence
     assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
-    live = await _live([VERIFY])
-    folded = await PostgresEndpointObservationReader(session_maker).get_many([VERIFY])
-    assert folded[VERIFY]["verdicts"] == live[VERIFY]["verdicts"] == {
-        "catch_all": 3, "invalid": 5, "unknown": 2, "valid": 12}
-    assert folded[VERIFY] == live[VERIFY]
+    assert (await _bucket(VERIFY)).verdicts == {"valid": 12, "invalid": 5, "catch_all": 3, "unknown": 2}
 
 
-async def test_verdicts_below_the_floor_are_not_published(clients):
-    for _ in range(stats.MIN_HIT_SAMPLES - 1):
+async def test_verdict_counts_are_not_published_yet(clients):
+    """Stored, not shown: the catalog observation an agent reads carries no verdict counts on
+    either read path until the word mappings are proven."""
+    for _ in range(stats.MIN_HIT_SAMPLES + 5):
         await _record(VERIFY, 200, 100, ago=timedelta(days=1), hit=True, verdict="valid")
+    live = await _live([VERIFY])
     assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
     folded = await PostgresEndpointObservationReader(session_maker).get_many([VERIFY])
-    assert folded[VERIFY]["verdicts"] is None
-    async with session_maker() as db:
-        bucket = (await db.execute(select(EndpointDayStat).where(
-            EndpointDayStat.endpoint_id == VERIFY))).scalar_one()
-    assert bucket.verdicts == {"valid": stats.MIN_HIT_SAMPLES - 1}   # stored all the same
+    assert "verdicts" not in live[VERIFY] and "verdicts" not in folded[VERIFY]
+    assert folded[VERIFY] == live[VERIFY]
+    assert (await _bucket(VERIFY)).verdicts == {"valid": stats.MIN_HIT_SAMPLES + 5}
 
 
 async def test_a_bucket_folded_before_verdicts_existed_reads_as_empty(clients):
@@ -352,22 +355,3 @@ async def test_a_bucket_folded_before_verdicts_existed_reads_as_empty(clients):
     async with session_maker() as db:
         bucket = await db.get(EndpointDayStat, (VERIFY, day))
     assert bucket.n == 4 and bucket.verdicts == {"valid": 1}
-
-
-async def test_async_verdicts_are_read_after_the_fold_cursor_passes_submission(clients):
-    """Like `hit`, an async word lands after the cursor has consumed its submission; the reader
-    counts async endpoints live, so the word is still seen."""
-    endpoint = "wiza.people.email.find"
-    row_ids = [await _record(endpoint, 200, 100, ago=timedelta(hours=1), cost=0)
-               for _ in range(stats.MIN_HIT_SAMPLES)]
-    assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
-    reader = PostgresEndpointObservationReader(session_maker)
-    assert (await reader.get_many([endpoint]))[endpoint]["verdicts"] is None
-    async with session_maker() as db:
-        rows = (await db.execute(select(CallRecord).where(CallRecord.id.in_(row_ids)))).scalars().all()
-        for n, row in enumerate(rows):
-            row.hit, row.verdict = True, "verified" if n < 15 else "unverified"
-            db.add(row)
-        await db.commit()
-    final = (await reader.get_many([endpoint]))[endpoint]
-    assert final["verdicts"] == {"unverified": 5, "verified": 15}
