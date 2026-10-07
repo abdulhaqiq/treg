@@ -179,6 +179,19 @@ async def _free_name(db: AsyncSession, org_id: int, wanted: str) -> str:
     return name
 
 
+MAX_SOURCE_BYTES = 16 * 1024
+
+
+def _source(source: Any) -> dict | None:
+    """The search a table came from (`{tool, body, served_by?, page?, ...}`): what "Load more rows"
+    asks again. Kept as the page sends it, bounded."""
+    if source is None:
+        return None
+    if not isinstance(source, dict) or _size(source) > MAX_SOURCE_BYTES:
+        raise TableError(422, "bad_source", f"source is an object of at most {MAX_SOURCE_BYTES} bytes")
+    return source
+
+
 async def create_table(db: AsyncSession, *, org_id: int, email: str, body: dict) -> dict:
     """A new table, its name made unique in the team (`fintech`, `fintech-2`). With `parent`, a
     linked table: the rows another table's column produced (people at each company)."""
@@ -196,7 +209,7 @@ async def create_table(db: AsyncSession, *, org_id: int, email: str, body: dict)
     name = await _free_name(db, org_id, body.get("name") or "table")
     doc = TableDoc(org_id=org_id, name=name, kind=str(body.get("kind") or "")[:20], parent_id=parent_id,
                    parent_column=(parent or {}).get("column") if parent_id else None,
-                   source=body.get("source") if isinstance(body.get("source"), dict) else None,
+                   source=_source(body.get("source")),
                    columns=columns, created_by=email)
     db.add(doc)
     await db.flush()
@@ -255,10 +268,13 @@ async def get_table(db: AsyncSession, *, org_id: int, name: str, offset: int = 0
 
 
 async def update_table(db: AsyncSession, *, org_id: int, name: str, body: dict) -> dict:
-    """Rename a table and/or replace its column list (the page owns the columns' order and jobs)."""
+    """Rename a table, replace its column list (the page owns the columns' order and jobs) and/or
+    its source (the search "Load more rows" continues)."""
     doc = await _doc(db, org_id, name)
     if "columns" in body:
         doc.columns = _columns(body["columns"])
+    if "source" in body:
+        doc.source = _source(body["source"])
     if body.get("name") and slug(body["name"]) != doc.name:
         old = doc.name
         doc.name = await _free_name(db, org_id, body["name"])

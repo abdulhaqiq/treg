@@ -14425,7 +14425,7 @@
         "summary": "Get Table"
       },
       "patch": {
-        "description": "{name?, columns?}: rename, or replace the column list.",
+        "description": "{name?, columns?, source?}: rename, replace the column list, or the search it came from.",
         "operationId": "update_table_tables__name__patch",
         "parameters": [
           {

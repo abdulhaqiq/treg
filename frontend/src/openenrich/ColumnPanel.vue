@@ -2,7 +2,7 @@
 import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { iconFor } from './icons.js'
 import ProviderPicker from './ProviderPicker.vue'
-import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd, typeOfField, JEV_TOOL, COLUMN_TYPES, inputHints } from './jobs.js'
+import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PARAMS, SIGNAL_EXTRAS, SIGNAL_SEARCHES, autoMap, enrichmentJobs, paramsOf, settingDefault, pickColumns, readAnswer, signalShelf, fillInputs, identityOf, outputsOf, priceOf, satisfies, uniqueColumnId, usd, typeOfField, JEV_TOOL, COLUMN_TYPES, inputHints } from './jobs.js'
 
 // `edit`: a job column's group to change; the panel opens on its saved settings
 const props = defineProps({ table: Object, edit: String })
@@ -38,6 +38,10 @@ onMounted(async () => {
     const byId = new Map((best.results || []).filter((r) => r.id.startsWith('treg.')).map((r) => [r.id, r]))
     const own = ENRICH_SHELVES.map(([, group], i) => [group, shelves[i]])
     routed.value = enrichmentJobs([...own, ['Signals', signalShelf(shelves.slice(ENRICH_SHELVES.length))]], byId)
+    // keyword-search signals: priced from the catalog, left out when the tool is not there
+    const searches = await Promise.all(SIGNAL_SEARCHES.map((j) => api.tool(j.tool)
+      .then((t) => (t?.endpoint ? { ...j, price: t.endpoint.cost?.usd } : null)).catch(() => null)))
+    routed.value = [...routed.value, ...searches.filter(Boolean)]
   } catch {}
 })
 
@@ -142,6 +146,11 @@ async function pick(j) {
       // routed: the contract's identity; a single provider: every input it takes, optional ones too
       const mappable = t?.endpoint?.kind === 'routed' ? identity.value : [Object.keys(mapping).filter((k) => !custom[k])]
       Object.assign(mapping, autoMap(mappable, props.table.columns, props.table.kind, inputHints(t?.endpoint)))
+      // a keyword-search signal: its query names the row's company, the rest are fixed settings
+      if (j.inputs) {
+        const name = autoMap([['company_name']], props.table.columns, props.table.kind).company_name || ''
+        for (const [k, v] of Object.entries(j.inputs)) { mapping[k] = name ? v.replace('{name}', name) : ''; custom[k] = true }
+      }
       // "Provide exactly one company identifier": keep only the first input a column filled
       if (/exactly one/i.test(t?.endpoint?.input?.note || '')) {
         const filled = Object.keys(mapping).filter((k) => mapping[k] && !custom[k])

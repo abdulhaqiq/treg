@@ -184,7 +184,11 @@ function create() {
   const first = Object.values(result.value.body).flat().find((v) => typeof v === 'string') || props.source.label
   const name = first.replace(/[a-z]+:\/\/(www\.)?/gi, '').replace(/\/(?=[\s,]|$)/g, '')
   emit('created', tableFromRows(name, props.source.kind, result.value.rows, columns.value,
-    { source: { tool: props.source.tool, body: result.value.body } }))
+    { source: { tool: props.source.tool, body: result.value.body,
+      // what "Load more rows" on the table continues from: who answered, how far, with which filters
+      served_by: [...new Set(result.value.servedBy.split(',').map((x) => x.trim().split('.')[0]).filter(Boolean))],
+      page: result.value.page, exclude: [...(props.source.exclude || []), ...excluded.value],
+      strict: usesStrict(props.source, result.value.body), split: filters.find((f) => f.split)?.name || null } }))
 }
 </script>
 

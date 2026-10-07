@@ -58,6 +58,11 @@ async def test_create_read_merge_and_export(clients: AsyncClient, table_on):
     await clients.post("/tables/fintech-q4/rows", json={"rows": [{"id": "r1", "cells": {"email": "eric@ramp.com"}}]})
     assert [i["id"] for i in t["items"]][-1] == "r9"
 
+    # the search a table came from moves on as more rows are loaded
+    src = {"tool": "treg.companies.search", "body": {"keywords": ["fintech"], "limit": 50}, "served_by": "prospeo", "page": 2}
+    assert (await clients.patch("/tables/fintech-q4", json={"source": src})).json()["source"] == src
+    assert (await clients.patch("/tables/fintech-q4", json={"source": "x"})).status_code == 422
+
     csv = (await clients.get("/tables/fintech-q4?format=csv")).text.splitlines()
     assert csv[0] == "name,domain,email" and csv[1] == "Ramp,ramp.com,eric@ramp.com"
 

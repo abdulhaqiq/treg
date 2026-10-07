@@ -173,6 +173,17 @@ ignore it is skipped. "Load more" asks for the next `page` with every other prov
 list continues from the provider that served it; one that cannot page answers no_route_candidate,
 uncharged, and the list ends there.
 
+**More rows later.** A table made from a search keeps it as `source` (`tool`, `body`, `served_by`,
+`page`, `exclude`, `strict`, and `split` for a lookalike table's seeds); `PATCH /tables/{name}`
+replaces it. "Load more rows" on the table asks the next page from the providers that answered
+(every other one excluded), then the first page from providers not asked yet (`moreRowsPlans`),
+drops rows the table already has (by domain, LinkedIn page or name) and saves how far it got. A table
+saved before `served_by` was kept asks the next page from whichever provider answers it.
+
+**Mentions as signals.** Besides the people and company signal capabilities, four keyword searches
+run per row with the company's name as the query (`SIGNAL_SEARCHES`): news (routed Google News), X
+(routed), Reddit and LinkedIn posts from the last month. The query is an ordinary editable input.
+
 **First visit.** A team's first visit adds three real tables beside its own (those it lacks by name) (`seeds.js`, about
 50 company rows each, built through treg's searches and column runs; people columns left to run),
 once per team in that browser; the seed data loads only then.

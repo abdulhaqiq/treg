@@ -1,6 +1,6 @@
 <script setup>
-import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { COLUMN_TYPES, cellText, linkOf as hrefOf, parseEdited, toCsv, usd } from './jobs.js'
+import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { COLUMN_TYPES, cellText, linkOf as hrefOf, listRecords, moreRowsPlans, parseEdited, readAnswer, rowKey, searchCap, tableFromRows, toCsv, usd } from './jobs.js'
 import ColumnPanel from './ColumnPanel.vue'
 import { loadTable } from './client.js'
 
@@ -169,6 +169,47 @@ async function refresh() {
 onMounted(poll)
 onUnmounted(() => clearTimeout(pollTimer))
 
+// --- more rows from the search the table came from ---------------------------------------------
+const loadingMore = ref(false)
+async function loadMore() {
+  const src = t.value.source
+  loadingMore.value = true
+  banner.value = ''
+  try {
+    const tool = await api.tool(src.tool)
+    const kind = t.value.kind || 'companies'
+    const have = new Set(t.value.rows.map((r) => rowKey(r.cells)).filter(Boolean))
+    // a lookalike search never brings back its own seeds
+    if (src.split) for (const v of [src.body?.[src.split]].flat()) if (v) have.add(rowKey({ domain: v }))
+    let spent = 0
+    for (const plan of moreRowsPlans(src, tool?.endpoint?.routed_children || [])) {
+      const answers = await Promise.all(plan.bodies.map((body) => api.run(src.tool,
+        { method: 'POST', body, maxCost: searchCap(body.limit), exclude: plan.exclude, fresh: true, strict: plan.strict })))
+      spent += answers.reduce((n, r) => n + (r.cost_micro || 0), 0)
+      const hits = answers.map(readAnswer).filter((a) => a.state === 'hit')
+      const { records, ids } = listRecords(kind, hits.flatMap((a) => a.rows), [...new Set(hits.flatMap((a) => a.columns))])
+      const made = tableFromRows(t.value.name, kind, records, ids)
+      const fresh = made.rows.filter((r) => { const k = rowKey(r.cells); return k && !have.has(k) && have.add(k) })
+      if (!fresh.length) continue
+      for (const c of made.columns) if (!t.value.columns.some((x) => x.id === c.id)) t.value.columns.push(c)
+      t.value.rows.push(...fresh)
+      const servedBy = [...new Set(answers.map((r) => r.served_by).filter(Boolean).map((x) => x.split('.')[0]))]
+      t.value.source = plan.next === 'page' ? { ...src, page: (src.page || 1) + 1, served_by: src.served_by?.length ? src.served_by : servedBy }
+        : { ...src, page: 1, served_by: [...new Set([...(src.served_by || []), ...servedBy])] }
+      await flush()
+      await api.update(t.value.name, { source: t.value.source })
+      banner.value = `Added ${fresh.length} ${kind} · ${usd(spent)}`
+      nextTick(() => { const g = document.querySelector('.oe .oe-grid-wrap'); g?.scrollTo({ top: g.scrollHeight, behavior: 'smooth' }) })
+      return
+    }
+    banner.value = `No new ${kind}: the providers behind this search have nothing more for these filters${spent ? ` (${usd(spent)} spent)` : ''}.`
+  } catch (e) {
+    banner.value = e.message
+  } finally {
+    loadingMore.value = false
+  }
+}
+
 // --- columns --------------------------------------------------------------------------------------
 async function addColumns({ columns, rows }) {
   adding.value = false
@@ -326,6 +367,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
       </span>
       <span class="spacer" />
       <button v-if="retry" @click="runGroup(retry.group, 'all')">Retry {{ retry.n }} unfinished rows</button>
+      <button v-if="t.source?.tool && !t.parent" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? 'Loading…' : 'Load more rows' }}</button>
       <button @click="exportCsv">Export CSV</button>
       <button class="primary" @click="editGroup = null; adding = true; detail = null">+ Add column</button>
     </div>

@@ -96,7 +96,7 @@ def _csv(table: dict, name: str) -> Response:
 @app.patch("/tables/{name}")
 async def update_table(name: str, body: dict = Body(...), caller: Caller = Depends(require_member),
                        db: AsyncSession = Depends(get_session)) -> Any:
-    """{name?, columns?}: rename, or replace the column list."""
+    """{name?, columns?, source?}: rename, replace the column list, or the search it came from."""
     _require_tables(caller)
     try:
         return await tables_app.update_table(db, org_id=caller.org_id, name=name, body=body)

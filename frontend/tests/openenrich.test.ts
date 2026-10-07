@@ -301,3 +301,24 @@ test('a score judgment sends its levels as a list and reads the 0-based answer 1
   assert.deepEqual(body.questions.q.criteria, ['1: lowest', '2', '3', '4', '5: highest'])
   assert.equal(judgeValue(judge, { 'answers.q.score': 2.39, 'answers.q.confidence': 0 }).value, 3.4)
 })
+
+test('load more asks the next page from who answered, then providers not asked yet', async () => {
+  const { moreRowsPlans, rowKey } = await import('../src/openenrich/jobs.js')
+  const kids = ['prospeo.companies.search', 'exa.companies.search', 'leadsforge.companies.search']
+  const [next, others] = moreRowsPlans({ body: { keywords: ['ai'], limit: 50 }, served_by: ['prospeo'], page: 2, exclude: ['tomba'] }, kids)
+  assert.deepEqual(next.bodies, [{ keywords: ['ai'], limit: 50, page: 3 }])
+  assert.deepEqual(next.exclude.sort(), ['exa', 'leadsforge', 'tomba'])
+  assert.deepEqual(others.bodies, [{ keywords: ['ai'], limit: 50 }])
+  assert.deepEqual(others.exclude.sort(), ['prospeo', 'tomba'])
+  // a lookalike table asks once per seed, the rows shared out
+  const [seeded] = moreRowsPlans({ body: { domain: ['ramp.com', 'brex.com'], limit: 50 }, split: 'domain', served_by: ['exa'] }, kids)
+  assert.deepEqual(seeded.bodies.map((b) => [b.domain, b.limit, b.page]), [['ramp.com', 25, 2], ['brex.com', 25, 2]])
+  const old = moreRowsPlans({ body: { limit: 10 } }, kids)
+  assert.deepEqual(old.map((p) => [p.bodies[0].page, p.exclude]), [[2, []]])
+  assert.equal(rowKey({ domain: 'https://www.Ramp.com/' }), 'ramp.com')
+})
+
+test('keyword-search signals name the company and price from the catalog', async () => {
+  const { SIGNAL_SEARCHES } = await import('../src/openenrich/jobs.js')
+  for (const j of SIGNAL_SEARCHES) assert.ok(Object.values(j.inputs).some((v) => v.includes('{name}')) && j.group === 'Signals', j.id)
+})

@@ -222,6 +222,19 @@ export const SIGNAL_EXTRAS = [
   'linkedin.company.posts', 'linkedin.user.posts', 'x.user.posts', 'meta-ads.library.advertiser',
   'google.ads.transparency', 'linkedin.search.ads', 'tiktok-ads.library.search', 'trustpilot.business.reviews',
 ]
+// Signals a keyword search answers: what is being said about the company now, searched by its name.
+// `{name}` becomes the table's company-name column; the query stays editable in the panel.
+export const SIGNAL_SEARCHES = [
+  { id: 'news_mentions', label: 'Search news mentions', tool: 'treg.google.serp.news', about: 'Recent news articles that name the company',
+    inputs: { q: '"{name}"', limit: '10' }, keep: ['title', 'url', 'source'], logos: ['serper', 'serpapi', 'dataforseo', 'anyapi'] },
+  { id: 'x_mentions', label: 'Find X mentions', tool: 'treg.x.search.posts', about: 'Recent X posts that name the company',
+    inputs: { q: '"{name}"' }, keep: ['text', 'url', 'createdUtc'], logos: ['anyapi', 'tikhub', 'justoneapi'] },
+  { id: 'reddit_mentions', label: 'Find Reddit mentions', tool: 'scrapecreators.reddit.search.posts', about: 'Reddit posts from the last month that name the company',
+    inputs: { query: '"{name}"', sort: 'relevance', timeframe: 'month' }, keep: ['title', 'url', 'created_at_iso'], logos: ['scrapecreators'] },
+  { id: 'linkedin_mentions', label: 'Find LinkedIn mentions', tool: 'anyapi.linkedin.search.posts', about: 'LinkedIn posts from the last month that name the company',
+    inputs: { query: '"{name}"', datePosted: 'last-month' }, keep: ['text', 'url', 'createdUtc'], logos: ['anyapi'] },
+].map((j) => ({ ...j, group: 'Signals', cap: j.id }))
+
 // a platform shelf for the extras: only those capabilities, and only their per-company endpoints
 export function signalShelf(platforms) {
   const capabilities = []
@@ -802,6 +815,29 @@ export function tableFromRows(name, kind, records, ids, extra = {}) {
     rows: records.map((r) => ({ id: rowId(), cells: Object.fromEntries(ids.map((id) => [id, id === 'domain' && r[id] ? host(r[id]) : r[id] ?? null])) })),
   }
 }
+
+// ---- more rows for a table made from a search --------------------------------------------------
+// The searches "Load more rows" makes, in order: the next page from the providers that answered
+// before (every other one excluded), then the first page from providers not asked yet. A lookalike
+// table asks once per seed.
+export function moreRowsPlans(source, children) {
+  const body = source.body || {}
+  const seeds = source.split && Array.isArray(body[source.split]) ? body[source.split] : null
+  const limit = Number(body.limit) || SEARCH_DEFAULT_ROWS
+  const bodies = (extra) => (seeds
+    ? seeds.map((v) => ({ ...body, [source.split]: v, limit: Math.max(1, Math.ceil(limit / seeds.length)), ...extra }))
+    : [{ ...body, ...extra }])
+  const used = [...new Set(source.served_by || [])]
+  const all = [...new Set(children.map((id) => id.split('.')[0]))]
+  const plans = []
+  // a table saved before sources kept who answered: the next page from whoever answers it
+  plans.push({ bodies: bodies({ page: (source.page || 1) + 1 }), exclude: all.filter((p) => used.length && !used.includes(p)), next: 'page' })
+  if (used.length && all.some((p) => !used.includes(p))) plans.push({ bodies: bodies({}), exclude: used, next: 'providers' })
+  return plans.map((p) => ({ ...p, exclude: [...new Set([...(source.exclude || []), ...p.exclude])], strict: true, limit }))
+}
+// a row's identity for dropping repeats: its domain, LinkedIn page or name
+export const rowKey = (cells) => String(cellValue(cells.domain) || cellValue(cells.linkedin_url) || cellValue(cells.full_name)
+  || cellValue(cells.name) || '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
 
 // ---- a cell, read in full and edited ------------------------------------------------------------
 // The whole value as text: an object or list as indented JSON, nothing as ''.
