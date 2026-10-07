@@ -206,6 +206,8 @@ endpoints:
     scope: any_account
     method: GET
     path: /answer
+    # The answer service was rebuilt on 2026-10-07; calls before that measured the old one.
+    observed_from: '2026-10-08'
     name: "Answer a question from the web, prose or JSON"
     summary: "Answers a question or a whole agent prompt (up to 4,000 characters) from the web's current top results, with the pages it drew on. Ask for JSON in the question, or pass a JSON Schema, and the answer is JSON of that shape. answer.source says whether the text is Google's own answer (google_ai_mode, google_ai_overview) or written from the pages (crawl4ai). answered is false, and free, when the pages hold no answer. Experimental: fields may be added."
     input:

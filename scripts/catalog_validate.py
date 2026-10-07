@@ -1269,6 +1269,8 @@ def main(argv: list[str]) -> int:
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
             check_strict_query(ep, where, errors)
+            if "observed_from" in ep and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(ep["observed_from"])):
+                fail(errors, where, "observed_from must be a YYYY-MM-DD date")
             check_strict_body(ep, where, errors)
             check_body_allowlist(ep, where, errors)
             check_platform_auth(ep, where, errors)
