@@ -3118,6 +3118,10 @@ endpoints:
         - GB
         - DE
         - FR
+      cursor:
+        type: string
+        required: false
+        note: Pagination cursor from a previous response's nextCursor.
       includeQuotePosts:
         type: boolean
         required: false
@@ -3131,7 +3135,7 @@ endpoints:
       limit:
         type: integer
         required: false
-        note: Maximum number of posts to return (1-100, default 10).
+        note: 'Most posts to return (1-100, default 10). Ignored on sources that page: each call returns one full page of 50 posts; follow nextCursor for more. Sources that cannot page return up to `limit` posts in one call with no nextCursor.'
         default: 10
         min: 1
         max: 100
@@ -3190,10 +3194,14 @@ endpoints:
   summary: Fetch recent public LinkedIn profile posts with portable identity, author, engagement, article, image, video, and repost fields.
   input:
     body:
+      cursor:
+        type: string
+        required: false
+        note: Pagination cursor from a previous response's nextCursor.
       limit:
         type: integer
         required: false
-        note: Maximum number of posts to return (10-100, default 10).
+        note: 'Most posts to return (10-100, default 10). Ignored on sources that page: each call returns one full page of 50 posts; follow nextCursor for more. Sources that cannot page return up to `limit` posts in one call with no nextCursor.'
         default: 10
         min: 10
         max: 100
@@ -3586,6 +3594,10 @@ endpoints:
   summary: 'Cheap people search: name/handle, headline, VANITY profile URL, location. No full profile or email - for full profiles per hit use linkedin.search_profiles, add emails with linkedin.search_profiles_email.'
   input:
     body:
+      cursor:
+        type: string
+        required: false
+        note: Opaque pagination cursor from a previous response's nextCursor. Omit for the first page; a page holds 10 profiles.
       query:
         type: string
         required: true
@@ -4217,7 +4229,7 @@ endpoints:
       cursor:
         type: string
         required: false
-        note: Page number for pagination (defaults to 1).
+        note: Opaque cursor from a previous response's nextCursor. Omit it for the first page.
       duration:
         type: string
         required: false
@@ -4589,6 +4601,10 @@ endpoints:
   summary: List recent TikTok videos for a hashtag (creator, caption, views, likes, shares).
   input:
     body:
+      cursor:
+        type: string
+        required: false
+        note: Opaque pagination cursor from a previous response's nextCursor. Omit for the first page; pass it to fetch the next page of videos.
       hashtag:
         type: string
         required: true
