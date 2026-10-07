@@ -558,7 +558,9 @@ class _Driver:
                         await asyncio.gather(*flying.values())
                         return await self._finish("failed", "The member who started this run no longer has access.")
                     order = {k: i for i, k in enumerate(ids)}
-                    for row in sorted(todo, key=lambda r: order[r.row_key])[:CALLS_PER_RUN - len(flying)]:
+                    starting = sorted(todo, key=lambda r: order[r.row_key])[:CALLS_PER_RUN - len(flying)]
+                    await self._mark_running([r.row_key for r in starting])
+                    for row in starting:
                         flying[row.row_key] = asyncio.create_task(
                             self._row(row, caller, shared, f"run-{self.run_id}" if row.row_key in fresh else None))
                 if flying:
@@ -570,6 +572,21 @@ class _Driver:
         finally:
             for task in flying.values():
                 task.cancel()
+
+    async def _mark_running(self, keys: list[str]) -> None:
+        """The rows about to be asked show `running`, not `queued`. Fenced like every write."""
+        now = utcnow_naive()
+        async with session_maker() as db:
+            if (await db.execute(update(TableRun).where(self._mine()).values(updated_at=now))).rowcount != 1:
+                await db.rollback()
+                raise _LostLease()
+            doc = await db.get(TableDoc, self.table_id)
+            alive = set((await db.execute(select(TableRow.row_key).where(
+                TableRow.table_id == self.table_id, TableRow.row_key.in_(keys)))).scalars().all())
+            if doc is not None and alive:
+                await tables.merge_rows(db, doc, [{"id": k, "runs": {self.group: {"state": "running", "at": now.isoformat()}}}
+                                                  for k in keys if k in alive])
+            await db.commit()
 
     async def _call(self, caller, req: dict) -> dict:
         """One `/table/<tool>` call in process: (status, answer, receipts). 429 and a same-key call

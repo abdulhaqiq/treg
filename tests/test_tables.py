@@ -196,7 +196,16 @@ async def test_a_run_fills_the_column_on_the_server_and_replays_when_asked_again
     # asking again while it is queued adds nothing: the rows are already in the run
     assert (await clients.post("/tables/vids/runs", json={"group": "g1"})).json()["added"] == 0
 
+    # a row the worker has picked up shows running while its call is out
+    from treg.application import table_runs
+    seen = []
+    real = table_runs._Driver._call
+    async def spy(self, caller, req):
+        seen.append({i["id"]: i["runs"]["g1"]["state"] for i in (await clients.get("/tables/vids")).json()["items"]})
+        return await real(self, caller, req)
+    monkeypatch.setattr(table_runs._Driver, "_call", spy)
     await _drive_all()
+    assert seen and all(s["r1"] in ("running", "hit") and s["r2"] in ("running", "hit") for s in seen)
     rows = {i["id"]: i for i in (await clients.get("/tables/vids")).json()["items"]}
     assert rows["r1"]["cells"]["a"] == "1, 2" and rows["r1"]["runs"]["g1"]["state"] == "hit"
     assert rows["r1"]["runs"]["g1"]["cost_micro"] > 0 and rows["r1"]["runs"]["g1"]["call_id"]
