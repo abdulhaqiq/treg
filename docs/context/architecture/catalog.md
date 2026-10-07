@@ -160,6 +160,7 @@ sources:
   - src/treg/infra/catalog_observations.py
   - src/treg/application/catalog_stats.py
   - src/treg/alembic/versions/0038_endpoint_day_stats.py
+  - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
   - src/treg/routers/catalog.py
   - tests/test_aigc_pr_b.py
   - tests/test_catalog_api.py
@@ -1599,8 +1600,9 @@ expired, and again from cold after each deploy: on a large audit table that is t
 pass, each pass evicting the pages the money path needs. The worker instead
 walks the audit table by primary key from a persisted cursor (`EndpointStatCursor`) and folds each
 row into one `EndpointDayStat` bucket per endpoint per UTC day: counts, the newest success, the
-`hit`/per-success tallies, and a uniform reservoir of at most `stats.LATENCY_SAMPLE` successful
-durations. Rows younger than sixty seconds wait for the next run so an audit insert that commits
+`hit`/per-success tallies, the count of each verdict word (`verdicts`, a JSON object; NULL on a
+bucket folded before revision `0066`, read as empty), and a uniform reservoir of at most
+`stats.LATENCY_SAMPLE` successful durations. Rows younger than sixty seconds wait for the next run so an audit insert that commits
 late is never skipped; a plain tool call (no `endpoint_id`) and a treg refusal (`refused_by`) are
 not evidence and are not folded, exactly as the live query excludes them. An entry may declare
 `observed_from: YYYY-MM-DD` when its provider replaced the service behind it: the folded reader
@@ -2002,7 +2004,11 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   routed child. The poll response does not wait for that best-effort write. A
   confirmed terminal failure counts as a miss; pending and timed-out jobs remain undecided. Its
   `AsyncTaskRecord.hit` keeps the verdict if polling beats the background audit insert.
-  `CallRecord.verdict` (the contract's verdict word, above) travels the same path beside it.
+  `CallRecord.verdict` (the contract's verdict word, above) travels the same path beside it, and
+  its counts follow the same read rule: folded per day for a synchronous endpoint, read live for
+  an async one. `stats.publish` adds `verdicts` (calls per word, e.g. `{"valid": 31,
+  "catch_all": 4, "unknown": 2}`) to the observation once the words reach the hit floor (20), and
+  None below it; `unknown` is a word like the others, never folded into a miss.
   Async endpoints read their `CallRecord` observations live: the daily fold may consume a
   submission before its terminal poll changes the hit, and its one-way cursor cannot revise it.
   `stats.observed` publishes `hit_rate`/`hit_samples` (floor 20) and, for synchronous

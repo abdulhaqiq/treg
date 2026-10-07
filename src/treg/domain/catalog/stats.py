@@ -47,7 +47,7 @@ _MAX_ROWS = 20_000       # bound the latency fetch; percentiles do not get truer
 # does not get truer, it only gets dearer to store and read.
 LATENCY_SAMPLE = 400
 
-EndpointObservation: TypeAlias = dict[str, int | float | None]
+EndpointObservation: TypeAlias = dict[str, int | float | dict[str, int] | None]
 ObservationSnapshot: TypeAlias = dict[str, EndpointObservation]
 
 
@@ -70,6 +70,8 @@ class Tally:
     hit_decided: int = 0
     paid_hits: int = 0
     free_misses: int = 0
+    # Calls per contract verdict word (`CallRecord.verdict`): `{"valid": 31, "catch_all": 4}`.
+    verdicts: dict[str, int] = field(default_factory=dict)
     # Successful durations. `latency_seen` counts every one folded in; `latencies` keeps at most
     # `LATENCY_SAMPLE` of them, a uniform reservoir (Vitter's algorithm R) so a busy day's
     # percentiles are as honest as a quiet day's exact list. `latency_weights`, parallel to
@@ -89,7 +91,7 @@ class Tally:
 
     def fold(self, *, status_code: int, created_at: datetime, duration_ms: int | None,
              hit: bool | None, cost_observed_micro: int | None, refused_by: str | None,
-             rng: random.Random | None = None) -> bool:
+             verdict: str | None = None, rng: random.Random | None = None) -> bool:
         """Fold one audit row in. Returns False when the row is not evidence about the endpoint.
 
         Mirrors the predicates in `observed()` exactly; see its docstring for why each one is
@@ -114,6 +116,8 @@ class Tally:
                 self.paid_hits += 1
             elif cost_observed_micro == 0:
                 self.free_misses += 1
+        if verdict is not None:
+            self.verdicts[verdict] = self.verdicts.get(verdict, 0) + 1
         if success and duration_ms is not None:
             self.latency_seen += 1
             ms = int(duration_ms)
@@ -140,6 +144,8 @@ class Tally:
         self.hit_decided += other.hit_decided
         self.paid_hits += other.paid_hits
         self.free_misses += other.free_misses
+        for word, count in other.verdicts.items():
+            self.verdicts[word] = self.verdicts.get(word, 0) + count
         self.latency_seen += other.latency_seen
         self.latencies = self.latencies + other.latencies
         self.latency_weights = weights
@@ -176,6 +182,9 @@ def publish(endpoint_ids: Iterable[str], tallies: dict[str, Tally], *,
             hits += t.paid_hits
             hit_decided += t.paid_hits + t.free_misses
         hit_rate = round(hits / hit_decided, 4) if hit_decided >= MIN_HIT_SAMPLES else None
+        # Counts, not rates, under the hit floor: a word on two calls says nothing yet.
+        verdicts = (dict(sorted(t.verdicts.items()))
+                    if sum(t.verdicts.values()) >= MIN_HIT_SAMPLES else None)
         decided = t.ok + t.bad          # 4xx excluded — the caller's fault, not the provider's
         if decided < MIN_SAMPLES:
             # Honest emptiness: say how thin the evidence is, claim nothing from it. An earlier
@@ -193,7 +202,7 @@ def publish(endpoint_ids: Iterable[str], tallies: dict[str, Tally], *,
             # and privacy reasons for having the floor.
             out[ep_id] = {"samples": t.n, "decided": decided, "ok_rate": None,
                           "p50_ms": None, "p95_ms": None, "last_ok_days": None,
-                          "hit_rate": hit_rate, "hit_samples": hit_decided}
+                          "hit_rate": hit_rate, "hit_samples": hit_decided, "verdicts": verdicts}
             continue
         enough_latency = len(t.latencies) >= MIN_SAMPLES
         out[ep_id] = {
@@ -208,12 +217,12 @@ def publish(endpoint_ids: Iterable[str], tallies: dict[str, Tally], *,
             "p50_ms": t.percentile(0.50) if enough_latency else None,
             "p95_ms": t.percentile(0.95) if enough_latency else None,
             "last_ok_days": (at - t.last_ok).days if t.last_ok else None,
-            "hit_rate": hit_rate, "hit_samples": hit_decided,
+            "hit_rate": hit_rate, "hit_samples": hit_decided, "verdicts": verdicts,
         }
     for ep_id in endpoint_ids:       # an endpoint nobody has called says so, rather than vanishing
         out.setdefault(ep_id, {"samples": 0, "decided": 0, "ok_rate": None,
                                "p50_ms": None, "p95_ms": None, "last_ok_days": None,
-                               "hit_rate": None, "hit_samples": 0})
+                               "hit_rate": None, "hit_samples": 0, "verdicts": None})
     return out
 
 
@@ -281,7 +290,7 @@ async def observed(
     implementations of one number is how they start disagreeing.
 
     `endpoint_ids` is expected to be small — one endpoint and its capability siblings — so this is
-    two bounded queries, not a scan of the audit table.
+    three bounded queries, not a scan of the audit table.
 
     A 4xx counts as a **failure of the call**, not of the endpoint: it usually means the caller sent
     the wrong parameters. It is excluded from `ok_rate` entirely rather than counted against the
@@ -347,6 +356,16 @@ async def observed(
     for ep_id, ms in lat:
         by_id.setdefault(ep_id, []).append(int(ms))
 
+    # The verdict words, under the same refusal rule as the counts above.
+    words: dict[str, dict[str, int]] = {}
+    for ep_id, word, count in (await db.execute(
+        select(CallRecord.endpoint_id, CallRecord.verdict, func.count())
+        .where(CallRecord.endpoint_id.in_(ids), CallRecord.created_at >= since,
+               CallRecord.refused_by.is_(None), CallRecord.verdict.is_not(None))
+        .group_by(CallRecord.endpoint_id, CallRecord.verdict)
+    )).all():
+        words.setdefault(ep_id, {})[word] = int(count)
+
     tallies: dict[str, Tally] = {}
     for ep_id, n, ok, bad, last_ok, hits, hit_decided, paid_hits, free_misses in rows:
         tallies[ep_id] = Tally(
@@ -354,5 +373,6 @@ async def observed(
             hits=int(hits or 0), hit_decided=int(hit_decided or 0),
             paid_hits=int(paid_hits or 0), free_misses=int(free_misses or 0),
             latency_seen=len(by_id.get(ep_id, [])), latencies=by_id.get(ep_id, []),
+            verdicts=words.get(ep_id, {}),
         )
     return publish(ids, tallies, per_success=per_success)

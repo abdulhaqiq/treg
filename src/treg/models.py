@@ -2020,6 +2020,9 @@ class EndpointDayStat(SQLModel, table=True):
     latency_seen: int = Field(default=0)   # successful rows with a duration, for the reservoir
     latency_sample: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     updated_at: NaiveUTC = Field(default_factory=_now)
+    # Calls per contract verdict word (`CallRecord.verdict`), `{"valid": 31, "catch_all": 4}`.
+    # NULL on a bucket folded before the column existed; read as empty.
+    verdicts: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
 class EndpointStatCursor(SQLModel, table=True):

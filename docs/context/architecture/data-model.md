@@ -50,6 +50,7 @@ sources:
   - src/treg/alembic/versions/0055_find_v2_log.py
   - src/treg/alembic/versions/0056_searchlog_verdict.py
   - src/treg/alembic/versions/0065_call_verdict.py
+  - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
   - src/treg/timeutil.py
   - src/treg/infra/db.py
   - src/treg/domain/referrals.py
@@ -273,7 +274,8 @@ uses this metadata, never the encrypted token's shape.
   observed reliability and the Arena's rolling insights, are scheduled `treg-worker` commands
   that walk it incrementally by primary key. Revision 0038 adds their catalog half:
   `EndpointDayStat` (one row per endpoint per UTC day: counts, newest success, hit tallies and a
-  bounded latency sample; primary key `(endpoint_id, day)`, indexed by `day` for the window prune)
+  bounded latency sample, plus `verdicts`, calls per verdict word, added nullable by `0066`;
+  primary key `(endpoint_id, day)`, indexed by `day` for the window prune)
   and the single-row `EndpointStatCursor` (`cursor_id`, the `created_at` watermark and
   `caught_up_at`, which is what lets the reader fall back to the live aggregate until the worker
   has caught up). `application/catalog_stats.py` is the only writer of both; see

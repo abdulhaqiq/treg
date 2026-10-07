@@ -31,11 +31,12 @@ def _now() -> datetime:
 
 
 async def _record(endpoint_id: str | None, status: int, ms: int | None = 100, *, ago: timedelta,
-                  refused_by: str | None = None, hit: bool | None = None, cost: int | None = None) -> int:
+                  refused_by: str | None = None, hit: bool | None = None, cost: int | None = None,
+                  verdict: str | None = None) -> int:
     async with session_maker() as db:
         row = CallRecord(org_id=1, user_email="a@b.c", tool_name=endpoint_id or "plain", method="GET",
                          path="/x", status_code=status, endpoint_id=endpoint_id, duration_ms=ms,
-                         refused_by=refused_by, hit=hit, cost_observed_micro=cost,
+                         refused_by=refused_by, hit=hit, cost_observed_micro=cost, verdict=verdict,
                          created_at=_now() - ago)
         db.add(row)
         await db.commit()
@@ -279,11 +280,14 @@ def test_a_busy_day_outweighs_a_quiet_one_in_the_merged_percentile():
 
 
 def test_merging_days_keeps_the_newest_success_and_every_count():
-    a = stats.Tally(n=3, ok=2, bad=1, last_ok=datetime(2026, 9, 1), hits=1, hit_decided=2, latency_seen=2, latencies=[10, 20])
-    b = stats.Tally(n=4, ok=4, bad=0, last_ok=datetime(2026, 9, 3), paid_hits=2, free_misses=1, latency_seen=4, latencies=[30, 40, 50, 60])
+    a = stats.Tally(n=3, ok=2, bad=1, last_ok=datetime(2026, 9, 1), hits=1, hit_decided=2, latency_seen=2, latencies=[10, 20],
+                    verdicts={"valid": 2, "unknown": 1})
+    b = stats.Tally(n=4, ok=4, bad=0, last_ok=datetime(2026, 9, 3), paid_hits=2, free_misses=1, latency_seen=4, latencies=[30, 40, 50, 60],
+                    verdicts={"valid": 1, "catch_all": 3})
     m = stats.merged([(EP, a), (EP, b)])[EP]
     assert (m.n, m.ok, m.bad, m.last_ok) == (7, 6, 1, datetime(2026, 9, 3))
     assert (m.hits, m.hit_decided, m.paid_hits, m.free_misses) == (1, 2, 2, 1)
+    assert m.verdicts == {"valid": 3, "unknown": 1, "catch_all": 3}
     assert m.latency_seen == 6 and sorted(m.latencies) == [10, 20, 30, 40, 50, 60]
 
 
@@ -302,3 +306,68 @@ async def test_observed_from_drops_the_days_before_a_replaced_service(clients, m
     monkeypatch.setitem(entry, "observed_from", (_now() - timedelta(days=1)).strftime("%Y-%m-%d"))
     after = (await reader.get_many([EP]))[EP]
     assert after["samples"] == 6 and after["ok_rate"] == 1.0
+
+
+VERIFY = "millionverifier.people.email.verify"
+
+
+async def test_verdict_buckets_publish_exactly_what_the_live_aggregate_publishes(clients):
+    """The words are counted by the fold and by the SQL alike, under the same refusal rule, and
+    published only from the hit floor up. `unknown` is its own word, never folded into a miss."""
+    old = timedelta(days=2)
+    for word, count in (("valid", 12), ("invalid", 5), ("catch_all", 3), ("unknown", 2)):
+        for _ in range(count):
+            await _record(VERIFY, 200, 100, ago=old, hit=word != "unknown", verdict=word)
+    await _record(VERIFY, 200, 100, ago=old, hit=True)                        # no word: not counted
+    await _record(VERIFY, 402, None, ago=old, refused_by="balance", verdict="valid")  # a refusal is no evidence
+    assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
+    live = await _live([VERIFY])
+    folded = await PostgresEndpointObservationReader(session_maker).get_many([VERIFY])
+    assert folded[VERIFY]["verdicts"] == live[VERIFY]["verdicts"] == {
+        "catch_all": 3, "invalid": 5, "unknown": 2, "valid": 12}
+    assert folded[VERIFY] == live[VERIFY]
+
+
+async def test_verdicts_below_the_floor_are_not_published(clients):
+    for _ in range(stats.MIN_HIT_SAMPLES - 1):
+        await _record(VERIFY, 200, 100, ago=timedelta(days=1), hit=True, verdict="valid")
+    assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
+    folded = await PostgresEndpointObservationReader(session_maker).get_many([VERIFY])
+    assert folded[VERIFY]["verdicts"] is None
+    async with session_maker() as db:
+        bucket = (await db.execute(select(EndpointDayStat).where(
+            EndpointDayStat.endpoint_id == VERIFY))).scalar_one()
+    assert bucket.verdicts == {"valid": stats.MIN_HIT_SAMPLES - 1}   # stored all the same
+
+
+async def test_a_bucket_folded_before_verdicts_existed_reads_as_empty(clients):
+    """`verdicts` is NULL on a bucket the worker wrote before the column; the next fold into it
+    starts that day's words from the rows it reads."""
+    day = (_now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    async with session_maker() as db:
+        db.add(EndpointDayStat(endpoint_id=VERIFY, day=day, n=3, ok=3, bad=0, verdicts=None))
+        await db.commit()
+    await _record(VERIFY, 200, 100, ago=timedelta(days=1), hit=True, verdict="valid")
+    assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
+    async with session_maker() as db:
+        bucket = await db.get(EndpointDayStat, (VERIFY, day))
+    assert bucket.n == 4 and bucket.verdicts == {"valid": 1}
+
+
+async def test_async_verdicts_are_read_after_the_fold_cursor_passes_submission(clients):
+    """Like `hit`, an async word lands after the cursor has consumed its submission; the reader
+    counts async endpoints live, so the word is still seen."""
+    endpoint = "wiza.people.email.find"
+    row_ids = [await _record(endpoint, 200, 100, ago=timedelta(hours=1), cost=0)
+               for _ in range(stats.MIN_HIT_SAMPLES)]
+    assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
+    reader = PostgresEndpointObservationReader(session_maker)
+    assert (await reader.get_many([endpoint]))[endpoint]["verdicts"] is None
+    async with session_maker() as db:
+        rows = (await db.execute(select(CallRecord).where(CallRecord.id.in_(row_ids)))).scalars().all()
+        for n, row in enumerate(rows):
+            row.hit, row.verdict = True, "verified" if n < 15 else "unverified"
+            db.add(row)
+        await db.commit()
+    final = (await reader.get_many([endpoint]))[endpoint]
+    assert final["verdicts"] == {"unverified": 5, "verified": 15}
