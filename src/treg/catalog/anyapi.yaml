@@ -72,8 +72,9 @@ endpoints:
       limit:
         type: integer
         required: false
-        note: Per-page maximum number of results to return (1-50, default 20). A provider may return a
-          smaller native page; follow nextCursor for more.
+        note: 'Page size to ask for (1-50, default 20). Some sources honor it; others always return
+          their whole native page of about 20. A page is never trimmed after the call, so follow
+          nextCursor to continue exactly where this response ended.'
         default: 20
         min: 1
         max: 50
@@ -238,9 +239,9 @@ endpoints:
   name: Google Search
   summary: Run a Google web search and get the organic results (title, link, snippet, position) as clean
     JSON. Returns about 10 results per call - Google stopped honoring bulk result counts in September
-    2025, so a limit above 10 is accepted but returns no more than a page. Pass the returned nextCursor
-    back as cursor to walk further, or use google.search_100 for up to 100 ranked results in one call,
-    which is cheaper past roughly 20 results.
+    2025, so a limit above 10 is accepted but returns no more than a page. Send page 2, 3, ... to walk
+    further, or use google.search_100 for up to 100 ranked results in one call, which is cheaper past
+    roughly 20 results.
   input:
     body:
       autocorrect:
@@ -269,10 +270,13 @@ endpoints:
       limit:
         type: integer
         required: false
-        note: Maximum number of organic results to return in this response. Google stopped honoring bulk
-          result counts in September 2025, so one page is about 10 results and a limit above 10 is accepted
-          but will not return more than that. To go deeper, either page through with cursor (about 10
-          results per...
+        note: 'Page size to ask for. Google returns about 10 organic results per page and stopped
+          honoring larger counts in September 2025, so a limit above 10 still returns about 10. Some
+          sources return their whole page of about 10 whatever limit says: a page is never trimmed
+          after the call, so nextCursor always continues exactly where this response ended. To go
+          deeper, send page (about 10 results per page, each billed as a request) or use
+          google.search_100, which returns up to 100 ranked results in a single call for one flat
+          charge and is cheaper past roughly 20 results. Price is flat per request.'
         default: 10
         min: 1
         max: 100
@@ -413,11 +417,13 @@ endpoints:
       limit:
         type: integer
         required: false
-        note: Maximum number of authored tweets and replies to return in the current bulk call (1-1000).
-          The provider may return fewer results.
+        note: 'Page size to ask for (1-100, default 20). Some sources honor it; others always return
+          their whole native page of about 20 authored tweets and replies. A page is never trimmed
+          after the call, so follow nextCursor and pass it back as cursor to continue exactly where
+          this response ended.'
         default: 20
         min: 1
-        max: 1000
+        max: 100
         example: 20
     bodyType: json
   test_request:
