@@ -184,7 +184,8 @@ Notes:
   - **Routed endpoints** (`treg.<capability>`, e.g. `treg.people.email.find`) are where you can
     ask treg to choose: POST the identity (`{full_name, domain}` | `{first_name, last_name, domain}` |
     `{linkedin_url}`); treg runs the best child (own keys first, then cheapest per hit), falls back
-    on errors AND misses (cheapest first, within `X-Treg-Route-Max-Cost`, default $1), and returns
+    on errors AND misses (cheapest first, within `X-Treg-Route-Max-Cost`, default $1; a miss can be
+    billed, so a routed row quotes `usd_per_call: null`, not $0 — set the header for bulk runs), and returns
     `{output, raw, _treg.served_by, _treg.tried}` + `X-Treg-Served-By`. `X-Treg-Route-Waterfall: 0`
     stops at the first miss. A filter a provider cannot apply (`country` on a name-only search) is
     still sent to the others, and the answer names it in `X-Treg-Ignored-Filters` / `_treg.ignored_filters`
