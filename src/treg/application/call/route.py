@@ -30,6 +30,7 @@ import httpx
 from ... import audit
 from ...config import get_settings
 from ...infra.db import session_maker
+from ...domain import asynctasks as asynctasks_rules
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.signatures import classify as classify_capacity
@@ -371,6 +372,14 @@ async def _read(response: UpstreamResponse) -> bytes:
     return b"".join(chunks)
 
 
+def _finished_on_submission(descriptor: dict, raw: bytes) -> bool:
+    """The child already answered (`terminal_on_submission`): judged like any synchronous answer."""
+    try:
+        return asynctasks_rules.finished_on_submission(descriptor, json.loads(raw))
+    except (ValueError, UnicodeDecodeError):
+        return False
+
+
 async def _async_cost(parent: CallContext, child_ref: str, fallback: int = 0) -> int:
     """Read the original async task's terminal money truth; BYOK has no task row and costs zero."""
     org_id = parent.input.caller.org_id
@@ -520,7 +529,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
         descriptor = cand.endpoint.get("async")
         async_outcome = ""
-        if descriptor and 200 <= response.status < 300:
+        if (descriptor and 200 <= response.status < 300
+                and not _finished_on_submission(descriptor, raw)):
             kickoff_raw = raw
             reserved = charged
             poll_rule = descriptor.get("poll") or {}

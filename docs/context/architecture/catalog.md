@@ -686,7 +686,9 @@ billing rule (a failed generation is not charged), not the display unit.
 The validator checks the effective descriptor. Dotted JSON paths are syntactically valid; success
 is non-empty; failure may be empty only when optional, non-empty `billed_failure` supplies the
 terminal failure values; optional `progress` names expected non-terminal values so the CLI can
-distinguish them from a new undocumented provider state; all status lists are pairwise disjoint. `interval` is positive; poll has exactly one of `endpoint`
+distinguish them from a new undocumented provider state; all status lists are pairwise disjoint. A
+descriptor with `max_age` may omit failure words altogether, because its task always ends. `interval`
+is positive; poll has exactly one of `endpoint`
 or `url_from`; result has exactly one of `path` or `fetch`; every descriptor block rejects unknown
 keys. Status values are compared after string coercion on both sides; a missing or unrecognized value
 means still in progress, in both the CLI awaiter and the settlement worker, but the CLI warns once
@@ -699,10 +701,25 @@ so a terminal field such as MiniMax's `file_id` is not confused with the utility
 The named path/query input must exist on the target endpoint. Body-mode polling is deliberately
 outside the frozen contract because no surveyed provider uses it and the generic client could not
 faithfully execute it. Dynamic URLs require a non-empty `url_hosts` allow-list. Any endpoint with
-`async:` must use `cost.type: per_success`. The descriptor is metadata
+`async:` must use `cost.type: per_success` or `per_call`. The descriptor is metadata
 beside the faithful relay: it never changes provider-native parameters or response bodies. The call
 router serializes the effective descriptor into `X-Treg-Async` before the response stream starts;
 it does not inspect or buffer the upstream body.
+
+Three optional keys cover a provider that usually answers at once and only sometimes hands back a
+task (BounceBan's single verification answers `verifying` for a greylisted mailbox):
+
+- `terminal_on_submission: true`: when the submission's own status is already a success word, the
+  call is finished. It settles on the response like a synchronous call: no wait, no poll, no
+  pending task. The direct call path, the routed bridge, Enrich Arena and `treg call --await` all
+  read it through `domain.asynctasks.finished_on_submission`.
+- `max_age` (seconds, at most a day): the provider's polling window. The worker stops polling at it
+  and times the task out; the routed and Arena waits and the CLI awaiter never wait past it.
+- `interval` also paces the CLI awaiter, so one caller plus the worker stays near a provider's
+  per-task poll limit. treg does not count polls across pollers.
+
+`terminal_on_submission` asks for `terminal_example_response` like any routed async tool; for a row
+whose finished answer is its usual first answer, both examples may be the same file.
 
 Older async pairs that settle on their existing request paths use `resource_ownership` alongside
 the deferred-settlement design. `produces` maps response JSON paths to provider-local resource

@@ -2383,6 +2383,8 @@ from .domain.asynctasks import extract_submission as _extract_submission  # noqa
 from .domain.asynctasks import fetch_command as _async_fetch_command  # noqa: E402
 from .domain.asynctasks import shown as _shown  # noqa: E402
 from .domain.asynctasks import classify_terminal as _classify_terminal  # noqa: E402
+from .domain.asynctasks import finished_on_submission as _finished_on_submission  # noqa: E402
+from .domain.asynctasks import max_age as _async_max_age  # noqa: E402
 from .domain.asynctasks import json_path as _json_path  # noqa: E402
 
 
@@ -2435,39 +2437,46 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
         recovery = f"treg call {shlex.quote(target)}"
 
     interval = float(descriptor.get("interval") or 10)
+    # A provider that asks callers to stop polling sooner (`max_age`) bounds the wait.
+    timeout = min(timeout, _async_max_age(descriptor).total_seconds())
     start = clock.monotonic()
     failures = 0
     warned: set[str] = set()
+    # The submission may already be the finished answer (`terminal_on_submission`): no poll.
+    ready = (submission, submitted) if _finished_on_submission(descriptor, submitted) else None
     while True:
-        if clock.monotonic() - start >= timeout:
-            return {"code": 3, "task_id": str(task_id), "recovery": recovery,
-                    "error": "timed out while waiting for the async task"}
-        clock.sleep(interval if failures == 0 else min(60.0, interval * (2 ** (failures - 1))))
-        try:
-            response = call_fn(target, params)
-        except (httpx.RequestError, OSError) as exc:
-            failures += 1
-            _clock_report(clock, f"async poll retry {failures}/5 after a network error: {exc}")
-            if failures >= 5:
+        if ready is not None:
+            (response, terminal), ready = ready, None
+        else:
+            if clock.monotonic() - start >= timeout:
                 return {"code": 3, "task_id": str(task_id), "recovery": recovery,
-                        "error": f"polling failed five consecutive times: {exc}"}
-            continue
-        if response.status_code >= 500:
-            failures += 1
-            _clock_report(clock, f"async poll retry {failures}/5 after HTTP {response.status_code}")
-            if failures >= 5:
+                        "error": "timed out while waiting for the async task"}
+            clock.sleep(interval if failures == 0 else min(60.0, interval * (2 ** (failures - 1))))
+            try:
+                response = call_fn(target, params)
+            except (httpx.RequestError, OSError) as exc:
+                failures += 1
+                _clock_report(clock, f"async poll retry {failures}/5 after a network error: {exc}")
+                if failures >= 5:
+                    return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                            "error": f"polling failed five consecutive times: {exc}"}
+                continue
+            if response.status_code >= 500:
+                failures += 1
+                _clock_report(clock, f"async poll retry {failures}/5 after HTTP {response.status_code}")
+                if failures >= 5:
+                    return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                            "error": f"polling returned {response.status_code} five consecutive times"}
+                continue
+            if response.status_code >= 400:
                 return {"code": 3, "task_id": str(task_id), "recovery": recovery,
-                        "error": f"polling returned {response.status_code} five consecutive times"}
-            continue
-        if response.status_code >= 400:
-            return {"code": 3, "task_id": str(task_id), "recovery": recovery,
-                    "error": f"polling returned HTTP {response.status_code}"}
-        failures = 0
-        try:
-            terminal = response.json()
-        except ValueError:
-            return {"code": 3, "task_id": str(task_id), "recovery": recovery,
-                    "error": "a polling response was not JSON"}
+                        "error": f"polling returned HTTP {response.status_code}"}
+            failures = 0
+            try:
+                terminal = response.json()
+            except ValueError:
+                return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                        "error": "a polling response was not JSON"}
         status = str(_json_path(terminal, descriptor["status"]["path"]))
         outcome = _classify_terminal(descriptor, terminal)
         if outcome == "success":

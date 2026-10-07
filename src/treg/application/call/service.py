@@ -1306,7 +1306,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # TREG_ARCHIVE_MODE says otherwise; record() is fire-and-forget and never raises.
                 # `own_credential` here means billed OAuth: the org's token, treg's bill.
                 if (mk.metered and archive.recording() and 200 <= response.status < 300
-                        and spooled_bytes is None
+                        and spooled_bytes is None and not _unfinished_submission(mk, body)
                         and not (own_credential and _echoes_own_credential(tool, secrets, body))
                         and not _account_out_2xx(mk, response, body)):
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
@@ -1332,7 +1332,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # snapshot's origin — the archive decides who else it may serve.
                 response, whole = await _read_whole_if_small(
                     response, get_settings().archive_max_body_bytes)
-                if whole is not None and not _echoes_own_credential(tool, secrets, whole):
+                if (whole is not None and not _echoes_own_credential(tool, secrets, whole)
+                        and not _unfinished_submission(mk, whole)):
                     body = whole
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
                                 if k.lower() == b"content-type"), "")
@@ -1426,7 +1427,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         terminal_2xx = (mk.settlement_basis.get("when") == "terminal"
                         and 200 <= response.status < 300)
         rejected = _submission_rejected(mk, body) if terminal_2xx else ""
-        deferred = terminal_2xx and not rejected
+        # A provider that may answer at once (`terminal_on_submission`) and did: an ordinary
+        # settle below, on the same hold, with no pending task.
+        deferred = terminal_2xx and not rejected and not _finished_on_submission(mk, body)
         account_out_2xx = _account_out_2xx(mk, response, body)
         try:
             request.context.finalization = FinalizationState.FINALIZING
@@ -1644,6 +1647,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if smoothed:
             _set_response_header(response, "X-Treg-Smoothed", " ".join(smoothed))
     return response
+
+
+def _finished_on_submission(mk, body: bytes) -> bool:
+    try:
+        document = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return asynctasks_rules.finished_on_submission(mk.async_descriptor, document)
+
+
+def _unfinished_submission(mk, body: bytes) -> bool:
+    """A row whose first answer may already be finished answered "still working" instead: a task
+    id, not an answer, so the archive keeps nothing a later identical question could replay."""
+    return ((mk.async_descriptor or {}).get("terminal_on_submission") is True
+            and not _finished_on_submission(mk, body))
 
 
 def _submission_rejected(mk, body: bytes) -> str:
