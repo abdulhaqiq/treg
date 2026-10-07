@@ -4,7 +4,7 @@
 import { onMounted, onUnmounted, provide, reactive, ref } from 'vue'
 import { useDashboard } from '../state/context'
 import { loadTable, makeClient } from './client.js'
-import { JEV_TOOL, SOURCES, providersOf, applyTypeAnswers, detectColumns, parseCsv, readAnswer, rowId, typeQuestion, uniqueColumnId } from './jobs.js'
+import { JEV_TOOL, SIGNAL_SOURCES, SOURCES, SOURCE_LOOK, providersOf, applyTypeAnswers, detectColumns, parseCsv, readAnswer, rowId, typeQuestion, uniqueColumnId } from './jobs.js'
 import SourceForm from './SourceForm.vue'
 import { icon } from './icons.js'
 import { agents as setupAgents, moreAgents as setupMore } from '../agent-setup'
@@ -126,8 +126,7 @@ function fromPath() {
 }
 
 // each way to start, as an icon on a tint
-const LOOK = { companies: ['building', '#2563eb'], people: ['users', '#7c3aed'], similar: ['copy', '#d97706'], csv: ['upload', '#059669'] }
-const look = (id) => LOOK[id] || ['table', '#64748b']
+const look = (id) => SOURCE_LOOK[id] || ['table', '#64748b']
 
 // "Setup treg in …": the agents most people use, the rest as a count (as on Enrich Arena)
 const setupAll = [...setupAgents, ...setupMore]
@@ -209,6 +208,15 @@ onUnmounted(() => { window.removeEventListener('popstate', fromPath); window.rem
           <span><strong>Import CSV</strong><small>Start from a list you already have</small></span>
         </button>
         <input ref="csvInput" type="file" accept=".csv,text/csv" hidden @change="importCsv" />
+      </div>
+
+      <div class="section-head"><h2>Signals</h2><span class="muted small">Companies worth contacting now</span></div>
+      <div class="signals">
+        <button v-for="s in SIGNAL_SOURCES" :key="s.id" class="card signal" @click="source = s">
+          <img v-if="s.logo" class="signal-logo" :src="`/logos/${s.logo}.svg`" alt="" />
+          <span v-else class="tile" :style="{ '--tint': look(s.id)[1] }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="icon(look(s.id)[0])" /></svg></span>
+          <span><strong>{{ s.label }}</strong><small>{{ s.hint }}</small></span>
+        </button>
       </div>
 
       <div class="section-head"><h2>Your tables</h2><span class="count">{{ tables.length }}</span></div>

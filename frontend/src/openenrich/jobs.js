@@ -154,6 +154,68 @@ export const SOURCES = [
   },
 ]
 
+// Signals: where a list of companies worth contacting now starts. Each is one provider's search,
+// answered as rows of events (a job posting, a round, an article, a post), with the company in them.
+// `one`: a filter that takes a single value; `keep`: the columns the table keeps; `limitMax`: the
+// most rows one search returns; `noPage`: no next page.
+const ONE = (key) => [ANY(key, key)]
+// each way to start, as an icon on a tint
+export const SOURCE_LOOK = {
+  companies: ['building', '#2563eb'], people: ['users', '#7c3aed'], similar: ['copy', '#d97706'], csv: ['upload', '#059669'],
+  jobs: ['briefcase', '#0891b2'], funding: ['dollar', '#16a34a'], news: ['news', '#ea580c'],
+  linkedin_posts: ['message', '#0a66c2'], x_posts: ['message', '#111827'], reddit_posts: ['message', '#ff4500'],
+}
+export const SIGNAL_SOURCES = [
+  { id: 'jobs', label: 'Job postings', kind: 'jobs', tool: 'anyapi.linkedin.search.jobs', hint: 'Companies hiring for a role, from LinkedIn jobs',
+    identity: ['query'], limitMax: 25, noPage: true, keep: ['title', 'company', 'location', 'createdUtc', 'url', 'companyUrl'],
+    filters: [
+      { name: 'query', label: 'Job title or keywords', icon: 'briefcase', group: 'Job', type: 'text', placeholder: 'Head of Growth', open: true },
+      { name: 'location', label: 'Location', icon: 'pin', group: 'Job', type: 'text', placeholder: 'United States', suggested: true },
+      { name: 'posted', label: 'Posted', icon: 'hash', group: 'Job', type: 'pick', one: true, suggested: true, ops: ONE('postedLimit'),
+        options: opts([['24h', 'Last 24 hours'], ['week', 'Last week'], ['month', 'Last month']]) },
+      { name: 'workplace', label: 'Workplace', icon: 'building', group: 'Job', type: 'pick', one: true, ops: ONE('workplaceType'),
+        options: opts([['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']]) },
+      { name: 'level', label: 'Experience level', icon: 'trend', group: 'Job', type: 'pick', one: true, ops: ONE('experienceLevel'),
+        options: opts([['entry', 'Entry'], ['associate', 'Associate'], ['mid-senior', 'Mid-senior'], ['director', 'Director'], ['executive', 'Executive']]) },
+    ] },
+  { id: 'funding', label: 'Funding rounds', kind: 'funding', tool: 'getleadsio.companies.funding.feed', method: 'GET',
+    hint: 'Companies that just raised, from funding news', identity: [], anyFilters: true, limitMax: 200, noPage: true,
+    keep: ['companyName', 'roundType', 'amount', 'currency', 'announcedDate', 'investors', 'sourceUrl'],
+    filters: [
+      { name: 'region', label: 'Region', icon: 'pin', group: 'Round', type: 'pick', one: true, open: true, ops: ONE('region'),
+        options: opts([['US', 'United States'], ['EU', 'Europe'], ['GLOBAL', 'Global']]) },
+      { name: 'since', label: 'Announced since', icon: 'hash', group: 'Round', type: 'text', placeholder: 'YYYY-MM-DD', suggested: true },
+    ] },
+  { id: 'news', label: 'News & fundraising', kind: 'news', tool: 'treg.google.serp.news', hint: 'Recent articles on a topic, like "raises Series A"',
+    identity: ['q'], limitMax: 100, noPage: true, keep: ['title', 'source', 'domain', 'published_at', 'date', 'timestamp', 'link', 'url', 'snippet'],  // providers name them differently: the filled ones stay
+    filters: [
+      { name: 'q', label: 'Topic', icon: 'news', group: 'News', type: 'text', placeholder: 'raises Series A fintech', open: true },
+      { name: 'country', label: 'Country code', icon: 'pin', group: 'News', type: 'text', placeholder: 'us' },
+    ] },
+  { id: 'linkedin_posts', label: 'LinkedIn post mentions', kind: 'posts', tool: 'anyapi.linkedin.search.posts', logo: 'linkedin',
+    hint: 'Posts that name a brand, a competitor or a problem', identity: ['query'], noLimit: true, noPage: true,
+    keep: ['authorName', 'text', 'createdUtc', 'reactionCount', 'commentCount', 'url', 'authorUrl'],
+    filters: [
+      { name: 'query', label: 'Words in the post', icon: 'search', group: 'Post', type: 'text', placeholder: '"your competitor"', open: true },
+      { name: 'posted', label: 'Posted', icon: 'hash', group: 'Post', type: 'pick', one: true, suggested: true, ops: ONE('datePosted'),
+        options: opts([['last-day', 'Last day'], ['last-week', 'Last week'], ['last-month', 'Last month']]) },
+    ] },
+  { id: 'x_posts', label: 'X post mentions', kind: 'posts', tool: 'treg.x.search.posts', logo: 'x',
+    hint: 'Recent X posts that name a brand or a problem', identity: ['q'], noLimit: true, noPage: true,
+    keep: ['authorName', 'authorUsername', 'text', 'createdUtc', 'likeCount', 'url'],
+    filters: [{ name: 'q', label: 'Words in the post', icon: 'search', group: 'Post', type: 'text', placeholder: '"your competitor"', open: true }] },
+  { id: 'reddit_posts', label: 'Reddit mentions', kind: 'posts', tool: 'scrapecreators.reddit.search.posts', method: 'GET',
+    hint: 'Reddit threads about a brand or a problem', identity: ['query'], noLimit: true, noPage: true,
+    keep: ['subreddit', 'title', 'author', 'created_at_iso', 'num_comments', 'url'],
+    filters: [
+      { name: 'query', label: 'Words in the thread', icon: 'search', group: 'Thread', type: 'text', placeholder: '"your competitor" alternative', open: true },
+      { name: 'timeframe', label: 'Posted', icon: 'hash', group: 'Thread', type: 'pick', one: true, suggested: true, ops: ONE('timeframe'),
+        options: opts([['day', 'Last day'], ['week', 'Last week'], ['month', 'Last month'], ['year', 'Last year']]) },
+      { name: 'sort', label: 'Sort', icon: 'filter', group: 'Thread', type: 'pick', one: true, ops: ONE('sort'),
+        options: opts([['relevance', 'Most relevant'], ['new', 'Newest'], ['top', 'Top']]) },
+    ] },
+]
+
 // The search request a set of filter values makes. A list filter's values (`{value, label}` items,
 // or words for `tags`) go to the field of its condition, or to the condition's `single` field when
 // there is one value; a `range` writes `<key>_min` / `<key>_max`; empty ones are left out.
@@ -179,7 +241,7 @@ export function filterBody(filters, values, conditions = {}) {
 }
 
 // a field the search cannot be made of alone is a filter a provider may not apply: ask treg to skip those
-export const usesStrict = (source, body) => Object.keys(body).some((k) => k !== 'limit' && k !== 'page' && !(source.identity || []).includes(k))
+export const usesStrict = (source, body) => source.tool.startsWith('treg.') && Object.keys(body).some((k) => k !== 'limit' && k !== 'page' && !(source.identity || []).includes(k))
 
 export const COLUMN_JOBS = [
   { id: 'judge', group: 'AI', label: 'Ask AI to judge', tool: 'openrouter.ai-judge.decide', judge: true,
@@ -758,7 +820,8 @@ export const FIXED = {
   companies: ['name', 'domain', 'industry', 'employees', 'location', 'linkedin_url'],
   people: ['first_name', 'last_name', 'title', 'company', 'linkedin_url', 'location'],
 }
-export function keptColumns(kind, columns) {
+export function keptColumns(kind, columns, keep = null) {
+  if (keep) return keep.filter((c) => columns.includes(c))
   const fixed = FIXED[kind]
   return fixed && fixed.every((c) => columns.includes(c)) ? fixed : columns.filter((c) => c !== 'served_by').slice(0, 12)
 }
@@ -775,10 +838,13 @@ const EXTRA = {
 // a pasted list of seeds (lookalikes): at most this many searches, so a list cannot run up a bill
 export const MAX_SEEDS = 10
 
-export function listRecords(kind, rows, columns, limit = Infinity) {
-  const extra = EXTRA[kind] || {}
+// a Unix time (createdUtc) as the date and time it is
+const when = (c, v) => (/Utc$/.test(c) && typeof v === 'number' && v > 1e9 ? new Date(v * 1000).toISOString().slice(0, 16).replace('T', ' ') : v)
+
+export function listRecords(kind, rows, columns, limit = Infinity, keep = null) {
+  const extra = keep ? {} : EXTRA[kind] || {}
   const recs = rows.map((r) => {
-    const rec = Object.fromEntries(keptColumns(kind, columns).map((c) => [c, r[c] ?? null]))
+    const rec = Object.fromEntries(keptColumns(kind, columns, keep).map((c) => [c, when(c, r[c] ?? null)]))
     for (const [name, paths] of Object.entries(extra)) {
       const hit = paths.map((p) => r[p]).find((v) => typeof v === 'string' && v.trim())
       if (hit) rec[name] = hit
@@ -791,7 +857,7 @@ export function listRecords(kind, rows, columns, limit = Infinity) {
   const seen = new Set()
   const out = []
   for (const rec of recs) {
-    const key = String(rec.domain || rec.linkedin_url || rec.full_name || rec.name || '').toLowerCase()
+    const key = String(rec.domain || rec.linkedin_url || rec.full_name || rec.name || rec.url || rec.link || rec.sourceUrl || '').toLowerCase()
     if (key && seen.has(key)) continue
     if (key) seen.add(key)
     out.push(rec)
@@ -801,7 +867,7 @@ export function listRecords(kind, rows, columns, limit = Infinity) {
   // except the ones a row is known by
   const filled = (id) => out.some((r) => r[id] != null && r[id] !== '')
   const always = new Set(['name', 'domain', 'first_name', 'last_name', 'full_name'])
-  const ids = keptColumns(kind, columns).filter((id) => always.has(id) || filled(id))
+  const ids = keptColumns(kind, columns, keep).filter((id) => always.has(id) || filled(id))
   for (const name of Object.keys(extra)) if (out.some((r) => r[name])) ids.splice(kind === 'people' && name === 'full_name' ? 0 : ids.length, 0, name)
   return { records: out, ids }
 }

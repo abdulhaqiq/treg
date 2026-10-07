@@ -92,6 +92,12 @@
 .oe .tile svg { width: 19px; height: 19px; }
 .oe .card .go { margin-left: auto; color: var(--muted2); opacity: 0; transition: opacity .15s; align-self: center; }
 .oe .card:hover .go { opacity: 1; }
+.oe .signals { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.oe .card.signal { flex-direction: row; align-items: center; gap: 12px; padding: 12px 14px; min-height: 0; text-align: left; }
+.oe .card.signal > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.oe .card.signal small { color: var(--muted); font-size: 12px; line-height: 1.35; }
+.oe .card.signal .tile { width: 34px; height: 34px; }
+.oe .signal-logo { width: 34px; height: 34px; flex: none; border-radius: 10px; padding: 7px; box-sizing: border-box; background: var(--panel2, #f4f4f2); object-fit: contain; }
 .oe .section-head { display: flex; align-items: baseline; gap: 8px; margin: 44px 0 14px; }
 .oe .section-head h2 { font-family: var(--display); font-weight: 400; font-size: 20px; color: var(--text); text-transform: none; letter-spacing: 0; margin: 0; }
 .oe .section-head .count { color: var(--muted); font-family: var(--mono); font-size: 12px; }

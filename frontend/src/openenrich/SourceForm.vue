@@ -3,7 +3,7 @@
 // "Add filter" with every filter the search takes), the preview on the right. "Create table" keeps
 // the previewed rows; it does not search again.
 import { computed, inject, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, filterBody, searchCap, searchCostRange, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
+import { FIXED, MAX_SEEDS, SEARCH_DEFAULT_ROWS, SOURCE_LOOK, filterBody, searchCap, searchCostRange, listRecords, readAnswer, tableFromRows, usd, usesStrict } from './jobs.js'
 import { icon } from './icons.js'
 import ValuePicker from './ValuePicker.vue'
 import ProviderPicker from './ProviderPicker.vue'
@@ -23,7 +23,7 @@ const active = ref(filters.filter((f) => f.open).map((f) => f.name))
 const conditions = reactive(Object.fromEntries(filters.filter((f) => f.ops).map((f) => [f.name, f.ops[0].id])))  // filter -> its condition (ops)
 const picker = ref(false)
 const pickQuery = ref('')
-const limit = ref(SEARCH_DEFAULT_ROWS)
+const limit = ref(Math.min(SEARCH_DEFAULT_ROWS, props.source.limitMax || Infinity))
 const tool = ref(null)
 const result = ref(null)           // {rows, ids, body, cost, servedBy, page, pageCost, done} of the last search
 const stale = ref(false)
@@ -68,7 +68,16 @@ const usedFields = computed(() => Object.keys(body.value).filter((k) => !(props.
 const range = computed(() => searchCostRange((chosen.value.length ? pickedCards.value : cards.value).map(asCost), limit.value, capFor(limit.value)))
 const money = (x) => (x === 0 ? 'free' : usd(x * 1e6))
 
-const look = { companies: ['building', '#2563eb'], people: ['users', '#7c3aed'], similar: ['copy', '#d97706'] }[props.source.id] || ['search', '#64748b']
+const look = SOURCE_LOOK[props.source.id] || ['search', '#64748b']
+// one provider's search: its own price, per result or per search
+const who = computed(() => (tool.value?.routing ? 'the first provider with an answer' : tool.value?.endpoint?.provider_display || tool.value?.endpoint?.provider || ''))
+const unitPrice = computed(() => {
+  const c = tool.value?.endpoint?.cost || {}
+  const each = c.usd ?? (c.currency === 'USD' ? c.value : null)
+  if (c.type === 'free' || each === 0) return `Free · ${who.value}`
+  if (each == null) return ''
+  return `${tool.value?.routing ? 'From ' : ''}${usd(each * 1e6)} ${c.type === 'per_result' ? 'per result' : 'per search'} · ${who.value}`
+})
 const suggested = computed(() => filters.filter((f) => f.suggested && !active.value.includes(f.name)))
 const pickable = computed(() => {
   const q = pickQuery.value.trim().toLowerCase()
@@ -80,7 +89,7 @@ const pickable = computed(() => {
 const op = (f) => (f.type === 'range' ? 'between' : f.type === 'number' ? 'at most' : f.ops?.length === 1 ? f.ops[0].label : 'is')
 const picked = (f, o) => values[f.name].some((x) => JSON.stringify(x.value) === JSON.stringify(o.value))
 function togglePick(f, o) {
-  values[f.name] = picked(f, o) ? values[f.name].filter((x) => JSON.stringify(x.value) !== JSON.stringify(o.value)) : [...values[f.name], o]
+  values[f.name] = picked(f, o) ? values[f.name].filter((x) => JSON.stringify(x.value) !== JSON.stringify(o.value)) : f.one ? [o] : [...values[f.name], o]
 }
 
 async function addFilter(name) {
@@ -100,8 +109,8 @@ function removeFilter(name) {
   values[name] = empty(byName[name])
 }
 const body = computed(() => filterBody(filters.filter((f) => active.value.includes(f.name)), values, conditions))
-const canSearch = computed(() => Object.keys(body.value).some((k) => (props.source.identity || []).includes(k)))
-const columns = computed(() => result.value?.ids || FIXED[props.source.kind])
+const canSearch = computed(() => props.source.anyFilters || Object.keys(body.value).some((k) => (props.source.identity || []).includes(k)))
+const columns = computed(() => result.value?.ids || props.source.keep || FIXED[props.source.kind])
 watch([values, limit, active, conditions], () => { if (result.value) stale.value = true }, { deep: true })
 
 async function search() {
@@ -116,16 +125,17 @@ async function search() {
     const perSeed = multi ? Math.max(1, Math.ceil((b.limit || SEARCH_DEFAULT_ROWS) / seeds.length)) : b.limit
     const bodies = multi ? seeds.map((v) => ({ ...b, [multi.name]: v, limit: perSeed })) : [b]
     const strict = usesStrict(props.source, b)
-    const runs = await Promise.all(bodies.map((x) => api.run(props.source.tool,
-      { method: 'POST', body: x, maxCost: capFor(x.limit), exclude: [...(props.source.exclude || []), ...excluded.value], fresh: true, strict })))
+    const runs = await Promise.all(bodies.map((x) => api.run(props.source.tool, props.source.method === 'GET'
+      ? { method: 'GET', query: x, fresh: true }
+      : { method: 'POST', body: x, maxCost: capFor(x.limit), exclude: [...(props.source.exclude || []), ...excluded.value], fresh: true, strict })))
     const answers = runs.map(readAnswer)
     const hits = answers.filter((a) => a.state === 'hit')
     if (hits.length) {
       const own = new Set(seeds.map((v) => v.toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split('/')[0]))
       const rows = hits.flatMap((a) => a.rows).filter((r) => !own.has(String(r.domain || '').toLowerCase()))
-      const { records, ids } = listRecords(props.source.kind, rows, [...new Set(hits.flatMap((a) => a.columns))], b.limit)
+      const { records, ids } = listRecords(props.source.kind, rows, [...new Set(hits.flatMap((a) => a.columns))], b.limit, props.source.keep)
       const cost = runs.reduce((n, r) => n + (r.cost_micro || 0), 0)
-      result.value = { rows: records, ids, body: b, cost, servedBy: [...new Set(runs.map((r) => r.served_by).filter(Boolean))].join(', '),
+      result.value = { rows: records, ids, body: b, cost, servedBy: [...new Set(runs.map((r) => r.served_by).filter(Boolean))].join(', ') || props.source.tool,
         page: 1, pageCost: cost, done: multi || props.source.noLimit || records.length < (b.limit || 0) }
       stale.value = false
     } else {
@@ -188,7 +198,8 @@ function create() {
       // what "Load more rows" on the table continues from: who answered, how far, with which filters
       served_by: [...new Set(result.value.servedBy.split(',').map((x) => x.trim().split('.')[0]).filter(Boolean))],
       page: result.value.page, exclude: [...(props.source.exclude || []), ...excluded.value],
-      strict: usesStrict(props.source, result.value.body), split: filters.find((f) => f.split)?.name || null } }))
+      strict: usesStrict(props.source, result.value.body), split: filters.find((f) => f.split)?.name || null,
+      method: props.source.method || 'POST', keep: props.source.keep || null, noPage: !!props.source.noPage } }))
 }
 </script>
 
@@ -259,7 +270,7 @@ function create() {
 
         <label v-if="!source.noLimit" class="oe-field">
           <span>Number of results</span>
-          <input v-model.number="limit" type="number" min="1" max="100" />
+          <input v-model.number="limit" type="number" min="1" :max="source.limitMax || 100" />
         </label>
 
         <div class="fb-foot">
@@ -270,7 +281,8 @@ function create() {
           </button>
           <p v-if="Object.keys(body).length && !canSearch" class="muted small center">Add a title, department, industry, location, keyword or technology to search on.</p>
           <p class="muted small center">
-            <template v-if="range">{{ range.min === range.max ? money(range.min) : `${money(range.min)} – ${money(range.max)}` }} for {{ limit }} results{{ pickedCards.length === 1 ? ` from ${pickedCards[0].name}` : ', depending on the provider' }}</template>
+            <template v-if="(!tool?.routing || source.noLimit) && unitPrice">{{ unitPrice }}</template>
+            <template v-else-if="range">{{ range.min === range.max ? money(range.min) : `${money(range.min)} – ${money(range.max)}` }} for {{ limit }} results{{ pickedCards.length === 1 ? ` from ${pickedCards[0].name}` : ', depending on the provider' }}</template>
             <template v-else>At most {{ usd(capFor(limit) * 1e6) }} for {{ limit }} results</template><template v-if="filters.some((f) => f.split)">, shared by the domains (up to {{ MAX_SEEDS }})</template>.
           </p>
         </div>

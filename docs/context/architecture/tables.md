@@ -180,6 +180,14 @@ replaces it. "Load more rows" on the table asks the next page from the providers
 drops rows the table already has (by domain, LinkedIn page or name) and saves how far it got. A table
 saved before `served_by` was kept asks the next page from whichever provider answers it.
 
+**Signals as sources.** The start page lists signal searches beside the company and people searches
+(`SIGNAL_SOURCES`): job postings (LinkedIn jobs), funding rounds (a funding-news feed), news on a
+topic (routed Google News), and LinkedIn, X and Reddit posts that name a brand or a problem. Each is
+one provider's search (routed for news and X) in the same filter builder: a GET tool is asked with a
+query string, `one` filters take a single value, `keep` names the columns its table keeps, Unix times
+become dates, and one without a next page (`noPage`) offers no "Load more rows". Job changes,
+new hires and promotions start from people the team already has, so they are columns, not sources.
+
 **Mentions as signals.** Besides the people and company signal capabilities, four keyword searches
 run per row with the company's name as the query (`SIGNAL_SEARCHES`): news (routed Google News), X
 (routed), Reddit and LinkedIn posts from the last month. The query is an ordinary editable input.

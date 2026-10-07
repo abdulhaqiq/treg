@@ -322,3 +322,15 @@ test('keyword-search signals name the company and price from the catalog', async
   const { SIGNAL_SEARCHES } = await import('../src/openenrich/jobs.js')
   for (const j of SIGNAL_SEARCHES) assert.ok(Object.values(j.inputs).some((v) => v.includes('{name}')) && j.group === 'Signals', j.id)
 })
+
+test('a signal search keeps its own columns, dates readable, one value per single-choice filter', async () => {
+  const { SIGNAL_SOURCES, listRecords, filterBody } = await import('../src/openenrich/jobs.js')
+  const jobs = SIGNAL_SOURCES.find((s) => s.id === 'jobs')
+  const { records, ids } = listRecords('jobs', [{ title: 'VP Growth', company: 'Pendo', id: '9', createdUtc: 1790899200, url: 'u1' }],
+    ['title', 'company', 'id', 'createdUtc', 'url'], Infinity, jobs.keep)
+  assert.deepEqual(ids, ['title', 'company', 'createdUtc', 'url'])
+  assert.equal(records[0].createdUtc, '2026-10-02 00:00')
+  const posted = jobs.filters.find((f) => f.name === 'posted')
+  assert.deepEqual(filterBody([posted], { posted: [{ value: 'week', label: 'Last week' }] }), { postedLimit: 'week' })
+  for (const s of SIGNAL_SOURCES) assert.ok(s.keep?.length && s.filters.length, s.id)
+})

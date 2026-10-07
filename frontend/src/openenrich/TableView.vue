@@ -183,11 +183,12 @@ async function loadMore() {
     if (src.split) for (const v of [src.body?.[src.split]].flat()) if (v) have.add(rowKey({ domain: v }))
     let spent = 0
     for (const plan of moreRowsPlans(src, tool?.endpoint?.routed_children || [])) {
-      const answers = await Promise.all(plan.bodies.map((body) => api.run(src.tool,
-        { method: 'POST', body, maxCost: searchCap(body.limit), exclude: plan.exclude, fresh: true, strict: plan.strict })))
+      const answers = await Promise.all(plan.bodies.map((body) => api.run(src.tool, src.method === 'GET'
+        ? { method: 'GET', query: body, fresh: true }
+        : { method: 'POST', body, maxCost: searchCap(body.limit), exclude: plan.exclude, fresh: true, strict: plan.strict })))
       spent += answers.reduce((n, r) => n + (r.cost_micro || 0), 0)
       const hits = answers.map(readAnswer).filter((a) => a.state === 'hit')
-      const { records, ids } = listRecords(kind, hits.flatMap((a) => a.rows), [...new Set(hits.flatMap((a) => a.columns))])
+      const { records, ids } = listRecords(kind, hits.flatMap((a) => a.rows), [...new Set(hits.flatMap((a) => a.columns))], Infinity, src.keep)
       const made = tableFromRows(t.value.name, kind, records, ids)
       const fresh = made.rows.filter((r) => { const k = rowKey(r.cells); return k && !have.has(k) && have.add(k) })
       if (!fresh.length) continue
@@ -367,7 +368,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
       </span>
       <span class="spacer" />
       <button v-if="retry" @click="runGroup(retry.group, 'all')">Retry {{ retry.n }} unfinished rows</button>
-      <button v-if="t.source?.tool && !t.parent" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? 'Loading…' : 'Load more rows' }}</button>
+      <button v-if="t.source?.tool && !t.source.noPage && !t.parent" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? 'Loading…' : 'Load more rows' }}</button>
       <button @click="exportCsv">Export CSV</button>
       <button class="primary" @click="editGroup = null; adding = true; detail = null">+ Add column</button>
     </div>
