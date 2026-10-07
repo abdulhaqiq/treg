@@ -248,6 +248,15 @@ async function removeColumn(col) {
 }
 
 // a column's type decides which tool inputs it feeds; the menu corrects a wrong guess
+// a new name only: the column's id stays, so its job, judgments and runs still find it
+async function renameColumn(col, label) {
+  const next = String(label || '').trim()
+  menu.value = null
+  if (!next || next === col.label) return
+  col.label = next
+  await flush()
+}
+
 async function setType(col, type) {
   if (type) col.type = type
   else delete col.type
@@ -387,6 +396,11 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                 <span v-if="c.type && !c.job" class="th-type">{{ c.type.replace(/_/g, ' ') }}</span>
                 <span class="caret">▾</span>
                 <div v-if="menu === c.id" class="menu" :style="menuAt" @click.stop>
+                  <form class="menu-rename" @submit.prevent="renameColumn(c, $event.target.elements.label.value)">
+                    <input name="label" :value="c.label" aria-label="Column name" @keydown.esc="menu = null" />
+                    <button class="ghost">Rename</button>
+                  </form>
+                  <hr />
                   <template v-if="c.job">
                     <button :disabled="!remaining(c)" @click="menu = null; runGroup(c.job.group, 10)">Run 10 rows</button>
                     <button :disabled="!remaining(c)" @click="menu = null; runGroup(c.job.group, 'all')">Run {{ remaining(c) }} rows left</button>
