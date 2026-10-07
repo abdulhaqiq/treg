@@ -339,6 +339,10 @@ terminal response, or one more catalog call that fetches it).
 - **Money:** reserved at submission, charged only when the task succeeds; a failed or moderated task
   refunds the whole hold. `treg audit`, `GET /calls` (`async_task`) and the dashboard Activity page
   show each task's state and, once done, the result link.
+- **Some async tools usually answer at once** (an email verification): a first response that is
+  already finished is the answer, charged as one, and `--await` prints it without polling. If it
+  says "still working", poll no faster than `interval` and stop at `max_age` seconds; a task with
+  no answer by then is refunded.
 - **Result URLs expire** (`ttl_note` in the descriptor; MiniMax ~9h). Download promptly; treg never
   stores generated media. Fetch-mode routes need one more call - `--await` prints that command.
 

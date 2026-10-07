@@ -538,12 +538,15 @@ tests include an invented prefix-matching header so the guarantee cannot regress
 ## Asynchronous submissions on the call path
 
 A catalog endpoint carrying an `async` descriptor resolves like any other (`resolve.py` freezes a
-`settlement_basis` with `when: terminal` and the descriptor on the `MarketplaceCall`). In
-`service._execute_call`, a metered 2xx from such an endpoint is **deferred**
-(`application.asynctasks.defer_submission` writes the pending row and leaves the hold open) unless
-`_submission_rejected` says the body is not an accepted submission (not JSON, `expect` rule failed,
-no task id), in which case it settles at zero at once; a persistence failure releases the hold with
-an alert. `routers/call._attach_async_descriptor` adds `X-Treg-Async` (the effective descriptor) to
+`settlement_basis`, `when: terminal` for a table, `usage` or `per_call` price, and the descriptor on
+the `MarketplaceCall`). In `service._execute_call`, a metered 2xx from such an endpoint is
+**deferred** (`application.asynctasks.defer_submission` writes the pending row and leaves the hold
+open) unless `_submission_rejected` says the body is not an accepted submission (not JSON, `expect`
+rule failed, no task id), in which case it settles at zero at once, or the descriptor's
+`terminal_on_submission` finds a success word in the submission itself, in which case it settles on
+the response like a synchronous call; a persistence failure releases the hold with an alert. The
+body the caller receives is the provider's either way. On such a row a "still working" submission
+is a task id, not an answer, so the archive records nothing for it. `routers/call._attach_async_descriptor` adds `X-Treg-Async` (the effective descriptor) to
 the response, also on an idempotent replay, so a retried `--await` polls the task already running.
 The settlement itself is the money fragment's subject.
 

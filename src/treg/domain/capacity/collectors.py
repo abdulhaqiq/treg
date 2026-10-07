@@ -713,6 +713,24 @@ async def _tomba(c, key):
                     f"plan {((d.get('pricing') or {}).get('name', '?'))}"}
 
 
+async def _hlrlookup(c, key):
+    # Free. Both halves of the pair ride in the JSON body; the secret has its own platform slot
+    # (HLRLOOKUP.platform_extra_setting). Credits can be fractional (cache hits cost half a credit).
+    secret = get_settings().platform_key_hlrlookup_secret or ""
+    r = await c.post("https://api.hlrlookup.com/apiv2/balance",
+                     json={"api_key": key, "api_secret": secret})
+    r.raise_for_status()
+    d = r.json()
+    raw = d.get("Credits") if isinstance(d, dict) and d.get("Status") == "OK" else None
+    try:
+        balance = Decimal(str(raw)) if not isinstance(raw, bool) and raw is not None else None
+    except (InvalidOperation, ValueError):
+        balance = None
+    if balance is None or not balance.is_finite() or balance < 0:
+        raise ValueError("HLR Lookup balance returned an invalid credit count")
+    return {"value": float(balance), "unit": "credits", "note": ""}
+
+
 async def _predictleads(c, key):
     # The platform slot holds base64("api_key:api_token") for HTTP Basic — pass it straight through.
     d = await _get(c, "https://predictleads.com/api/v3/api_subscription",
@@ -953,6 +971,7 @@ BALANCE_ROUTES = {
     "oceanio": _oceanio,
     "predictleads": _predictleads,
     "tomba": _tomba,
+    "hlrlookup": _hlrlookup,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
@@ -1053,7 +1072,7 @@ NO_BALANCE_API = {
 
 # platform_key_* slots that are the SECOND half of a provider's credential pair, not a provider of
 # their own (see OAuthProvider.platform_extra_setting) — they must not become report rows.
-AUX_SLOTS = {"tomba_secret"}
+AUX_SLOTS = {"tomba_secret", "hlrlookup_secret"}
 
 
 def all_platform_providers() -> list[str]:

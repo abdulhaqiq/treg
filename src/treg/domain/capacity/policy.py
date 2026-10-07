@@ -45,6 +45,8 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     # Manually verified in the Developer Portal: vendor auto-recharge is enabled. treg neither
     # reads nor changes that setting, so the observation source remains manual.
     "trestleiq": ("cash", "auto_recharge", "manual"),
+    # Prepaid bundles bought by hand; the free balance route returns the exact credit count.
+    "hlrlookup": ("credits", "manual", "api"),
     "tavily": ("credits", "manual", "api"),
     "search1api": ("credits", "auto_recharge", "api"),
     "octen": ("cash", "manual", "manual"),
@@ -114,6 +116,10 @@ _RATE_LIMITS: dict[str, dict] = {
     # provider-wide limiter cannot weight one endpoint, so two calls/s is the safe shared-key pace.
     "fetchinio": {"limit": 2, "window_s": 1, "source": "policy"},
     "adyntel": {"limit": 5, "window_s": 1, "source": "docs"},
+    # HLR Lookup caps each customer at 210 concurrent requests and throttles per telephone
+    # network, answering 429 (unbilled) above about 200 requests/s. It publishes no per-second
+    # quota, so the shared key keeps a conservative pace; BYOK calls bypass this limiter.
+    "hlrlookup": {"limit": 50, "window_s": 1, "source": "policy"},
     # Search's documented burst allowance is the strictest request-count limit shared by these
     # hosts. Fetch additionally meters URLs and Agent limits concurrency; upstream remains the
     # authority for those differently-shaped limits.

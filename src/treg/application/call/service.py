@@ -908,7 +908,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 
     def _audit(status_code: int, *, observed_micro: int | None = None, charged_micro: int | None = None,
                duration_ms: int | None = None, response_bytes: int | None = None,
-               refused_by: str | None = None, hit: bool | None = None,
+               refused_by: str | None = None, hit: bool | None = None, verdict: str | None = None,
                error_request: str | None = None, error_response: str | None = None,
                capacity_signal: str | None = None, answered: bool = True,
                defer_analytics: bool = False, async_submission: bool = False) -> dict | None:
@@ -941,6 +941,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 "params_hash": mk.params_hash,
                 # found / not found, when this endpoint's routing adapter could read the body
                 **({"hit": hit} if hit is not None else {}),
+                # the contract's verdict word (`valid`, `catch_all`, `verified`...) when it has one
+                **({"verdict": verdict} if verdict is not None else {}),
                 # The stored answer's identities — the join to the archive for `/calls/{id}/result`.
                 **({"archive_key_hash": archive_key_hash,
                     "archive_content_hash": archive_content_hash} if archive_key_hash else {}),
@@ -1328,7 +1330,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # TREG_ARCHIVE_MODE says otherwise; record() is fire-and-forget and never raises.
                 # `own_credential` here means billed OAuth: the org's token, treg's bill.
                 if (mk.metered and archive.recording() and 200 <= response.status < 300
-                        and spooled_bytes is None
+                        and spooled_bytes is None and not _unfinished_submission(mk, body)
                         and not (own_credential and _echoes_own_credential(tool, secrets, body))
                         and not _account_out_2xx(mk, response, body)):
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
@@ -1354,7 +1356,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # snapshot's origin — the archive decides who else it may serve.
                 response, whole = await _read_whole_if_small(
                     response, get_settings().archive_max_body_bytes)
-                if whole is not None and not _echoes_own_credential(tool, secrets, whole):
+                if (whole is not None and not _echoes_own_credential(tool, secrets, whole)
+                        and not _unfinished_submission(mk, whole)):
                     body = whole
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
                                 if k.lower() == b"content-type"), "")
@@ -1453,7 +1456,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         terminal_2xx = (mk.settlement_basis.get("when") == "terminal"
                         and 200 <= response.status < 300)
         rejected = _submission_rejected(mk, body) if terminal_2xx else ""
-        deferred = terminal_2xx and not rejected
+        # A provider that may answer at once (`terminal_on_submission`) and did: an ordinary
+        # settle below, on the same hold, with no pending task.
+        deferred = terminal_2xx and not rejected and not _finished_on_submission(mk, body)
         account_out_2xx = _account_out_2xx(mk, response, body)
         try:
             request.context.finalization = FinalizationState.FINALIZING
@@ -1548,7 +1553,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 err_response = _error_response_evidence(
                     response.raw_headers, body, _renderings)
         may_overflow = (response.status >= 400 or account_out_2xx) and mk.tier == "platform"
-        from ...domain.catalog.results import classify, has_result_rules
+        from ...domain.catalog.results import classify, has_result_rules, verdict
 
         # The submission is only a task ticket. Its contact verdict is learned from the
         # terminal poll and copied onto this same CallRecord by the async finalizer.
@@ -1567,6 +1572,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                          response_bytes=(None if streaming_free_result else spooled_bytes
                                          if spooled_bytes is not None else len(body)),
                          hit=result.hit if result else None,
+                         verdict=verdict(mk.endpoint_id, response.status, body) if not deferred else None,
                          capacity_signal=capacity_signal, error_request=err_request, error_response=err_response,
                          defer_analytics=may_overflow, async_submission=deferred)
         served_via = ""
@@ -1677,6 +1683,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if smoothed:
             _set_response_header(response, "X-Treg-Smoothed", " ".join(smoothed))
     return response
+
+
+def _finished_on_submission(mk, body: bytes) -> bool:
+    try:
+        document = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return asynctasks_rules.finished_on_submission(mk.async_descriptor, document)
+
+
+def _unfinished_submission(mk, body: bytes) -> bool:
+    """A row whose first answer may already be finished answered "still working" instead: a task
+    id, not an answer, so the archive keeps nothing a later identical question could replay."""
+    return ((mk.async_descriptor or {}).get("terminal_on_submission") is True
+            and not _finished_on_submission(mk, body))
 
 
 def _submission_rejected(mk, body: bytes) -> str:

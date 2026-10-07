@@ -229,7 +229,7 @@ stale holds is paid by the caller who benefits from it, and an org that never ca
 balance to strand. Each stale release commits independently before the new balance gate. A later 402
 rolls back only the failed reservation, never a refund the reaper already made durable.
 Pending `AsyncTaskRecord` holds are excluded from this short request reaper. Their worker has a separate
-24-hour deadline and always closes the hold by settle or release.
+24-hour deadline (or the descriptor's shorter `max_age`) and always closes the hold by settle or release.
 
 ## Deferred asynchronous settlement
 
@@ -240,6 +240,13 @@ the field's declared `min`/`max` (finite and always positive, whatever minimum i
 matches no row and prices at the fallback, so a caller can neither reserve zero nor bill past the
 validated ceiling. Both the normal response path and the async worker
 use it. Provider differences remain in catalog YAML; there are no provider billing adapters.
+An async row settles at the terminal answer when its price is a table, a `usage` meter, or a plain
+`per_call` price (`observed` amount, the fixed price as fallback): a provider that bills every
+finished answer is charged for each one, a finished answer with no result included. Async
+`per_success` rows without a table keep settling on the submission response.
+
+A submission whose own status is already a success word, on a descriptor with
+`terminal_on_submission`, is not deferred: it settles on the response through the ordinary path.
 
 For a tier-4 endpoint carrying `async`, a successful submission keeps its hold and writes an
 `AsyncTaskRecord` whose `settlement_basis` freezes the whole price rule with the request it was
@@ -254,6 +261,8 @@ a confirmed terminal failure stores `false` when the endpoint has verified hit r
 pending and timed-out tasks remain undecided. This counts failed attempts in routing's hit rate.
 The audit path copies the verdict to the original submission row whether that row was inserted
 before or after the terminal poll. The submission ticket itself supplies no hit verdict.
+A successful task also stores the contract's verdict word (`AsyncTaskRecord.verdict`), copied the
+same way; a failure carries none. Neither moves money.
 An async status declared as `billed_failure` is still presented as failure by the CLI, but the
 worker settles its usage evidence and records the terminal outcome; this covers cancellation after
 billable work without manufacturing a successful result.
@@ -278,8 +287,10 @@ other non-2xx, the same rule the CLI applies). Valid nonterminal responses reset
 failures and use the normal interval, capped at 60 seconds. HTTP errors, invalid JSON and timeouts
 increase a persisted failure counter with 2/4/8/15-minute backoff, capped at the task deadline.
 These are eligibility delays; the two-minute cron cadence determines the actual next check.
-There is no provider-wide circuit breaker. **At the 24-hour
-deadline it releases the hold in full**, marks the row `timed_out` with `reconcile_review`, and logs
+There is no provider-wide circuit breaker. A descriptor's `max_age` caps the polling window below 24
+hours; a terminal answer that a caller poll still sees while the row is pending settles normally,
+because the 24-hour bound alone overrides a terminal outcome. **At the deadline (24 hours or
+`max_age`) it releases the hold in full**, marks the row `timed_out` with `reconcile_review`, and logs
 an ERROR-level alert: an outcome nobody observed is the platform's cost, never the customer's, and a
 provider that silently changed its status field shows up as absorbed timeouts in
 `reconcile.async_task_settlement` (`absorbed_timeouts`) rather than as a quiet overcharge.
