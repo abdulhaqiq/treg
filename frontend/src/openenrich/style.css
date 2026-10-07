@@ -53,7 +53,9 @@
 .oe .balance { font-variant-numeric: tabular-nums; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
 
 .oe .oe-main { flex: 1; min-height: 0; }
-.oe .oe-main.narrow { max-width: 1040px; width: 100%; margin: 0 auto; padding: 32px 4px 8px; overflow: auto; }
+/* the start page scrolls edge to edge (its scrollbar at the window's side, not beside the cards);
+   the content keeps to 1040px in the middle */
+.oe .oe-main.narrow { margin: 0 -20px; padding: 32px max(24px, calc((100% - 1040px) / 2)) 8px; overflow: auto; }
 .oe .oe-main.full { background: var(--surface); border-radius: var(--r); box-shadow: var(--shadow-md), 0 0 0 1px var(--line); overflow: hidden; }
 
 /* start */
