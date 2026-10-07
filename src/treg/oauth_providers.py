@@ -3178,6 +3178,49 @@ TRESTLEIQ = OAuthProvider(
     probe_cost_micro=15_000,
 )
 
+HLRLOOKUP = OAuthProvider(
+    service="hlrlookup",
+    display_name="HLR Lookup",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your HLR Lookup API key",
+    token_location="json",
+    token_param="api_key",
+    token_format="{secret}",
+    extra_credential_label="API secret",
+    extra_credential_location="json",
+    extra_credential_param="api_secret",
+    platform_extra_setting="platform_key_hlrlookup_secret",
+    extra_credential_note=(
+        "HLR Lookup authenticates every request with an API key and an API secret in the JSON "
+        "body. Add the secret after the key; treg injects both values server-side."
+    ),
+    setup_url="https://www.hlrlookup.com/",
+    setup_action_label="Get your HLR Lookup API key and secret",
+    setup_steps=(
+        "Sign in to HLR Lookup and open the API settings in your account.",
+        "Copy BOTH the API key and the API secret. Paste the key here, then add the secret.",
+    ),
+    setup_note=(
+        "A live lookup of a mobile number spends one credit, two for a US mobile with usa_status. "
+        "Landlines, numbers without coverage, bad formats and errors are free. The balance check "
+        "treg uses to verify the pair is free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Check whether a mobile number is live on its network right now, and which network serves it.",
+    base_url="https://api.hlrlookup.com",
+    docs_url="https://www.hlrlookup.com/knowledge",
+    # Free. POST /apiv2/balance answers 200 {"Status":"OK","Credits":…} for a valid pair and 401
+    # {"error":"UNAUTHORIZED"} when either half is wrong. The key alone always answers 400
+    # BAD_REQUEST, valid or not, so the first connect step stores the key unchecked until the secret
+    # is added; it is never labelled verified from that partial probe.
+    probe_path="/apiv2/balance",
+    probe_method="POST",
+    probe_json={},
+    probe_deferred_statuses=(400,),
+)
+
 
 PREDICTLEADS = OAuthProvider(
     service="predictleads",
@@ -3895,7 +3938,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
