@@ -47,7 +47,7 @@ this page keeps what no single file shows. The look follows the root `design.md`
 | Connections; a provider | `#connections`; `/app/marketplace/<service>` | `ConnectionsPage.vue`, `ProviderPage.vue` |
 | Your own tools | `#tools`, `#secrets`, `#resources` | `ToolsPage.vue`, `SecretsPage.vue`, `TeamResourcesPage.vue` |
 | A shared skill or tool | `/app/skills/<name>`, `/app/tools/<name>` | `DetailPage.vue` |
-| openenrich: the team's tables | `/openenrich`, `/openenrich/<table>` (behind the `/table/` flag) | `openenrich/OpenEnrichPage.vue` ([tables](../architecture/tables.md)) |
+| Open Enrich: the team's tables | `/openenrich`, `/openenrich/<table>` (behind the `/table/` flag); a full-window app under its own bar (treg / Open Enrich, team, balance, account; no dashboard tabs) | `openenrich/OpenEnrichPage.vue` ([tables](../architecture/tables.md)) |
 | Activity, Team, Hub, Referrals, Admin; find a tool | `#activity`, `#orgs`, `#hub`, `#referrals`, `#admin`; public `/search` | the matching page, `SearchPage.vue` |
 
 ## Rules every change keeps

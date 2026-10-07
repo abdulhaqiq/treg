@@ -23,7 +23,8 @@ export default {
 <template>
 <header class="rd-top" >
       <div class="rd-identity">
-        <a class="rd-brand brand" href="/" aria-label="treg home"><BrandMark/>treg</a>
+        <a class="rd-brand brand" :href="view==='openenrich' ? '/app#start' : '/'" :aria-label="view==='openenrich' ? 'Back to the treg dashboard' : 'treg home'"><BrandMark/>treg</a>
+        <span v-if="view==='openenrich'" class="rd-app-name"><span>/</span>Open Enrich</span>
         <div class="orgblock" v-if="authed">
           <div class="orgmain" :ref="el => setElement('orgmain', el)" @click="toggleOrgMenu" role="button" tabindex="0" @keydown.enter="toggleOrgMenu" @keydown.space.prevent="toggleOrgMenu" aria-haspopup="true" :aria-expanded="orgMenu" aria-label="Teams">
             <span class="role" :class="activeRole">{{activeRole}}</span>
@@ -51,7 +52,10 @@ export default {
 
 
       </div>
-      <nav class="rd-navs" aria-label="Primary navigation"><button v-if="authed" class="rd-nav" :class="{active:view==='start'}" :aria-current="(view==='start')?'page':null" @click="go('start')">Getting started</button>
+      <!-- Open Enrich is an app of its own on the dashboard's sign-in: its bar keeps the team, balance
+           and account, not the dashboard's tabs -->
+      <nav v-if="view==='openenrich'" class="rd-navs" aria-hidden="true"></nav>
+      <nav v-else class="rd-navs" aria-label="Primary navigation"><button v-if="authed" class="rd-nav" :class="{active:view==='start'}" :aria-current="(view==='start')?'page':null" @click="go('start')">Getting started</button>
 <button v-if="canRegister" class="rd-nav" :class="{active:view==='catalog'}" :aria-current="(view==='catalog')?'page':null" @click="go('catalog')">Catalog</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='connections'||view==='provider'}" :aria-current="(view==='connections'||view==='provider')?'page':null" @click="go('connections')">Connections</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='tools'||view==='secrets'||view==='resources'}" :aria-current="(view==='tools'||view==='secrets'||view==='resources')?'page':null" @click="go('tools')">Your own tools</button>
@@ -66,7 +70,7 @@ export default {
           <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.3 7 12 12l8.7-5 M12 22V12"/></svg>Hub</button>
       </div>
       <div class="rd-account">
-        <a v-if="authed" class="rd-referral" href="#referrals" @click.prevent="go('referrals')" :aria-current="view==='referrals'?'page':null" :title="refEntryTitle()" :aria-label="'Referral: '+refEntryTitle()"><img src="/media/redesign/referral-gift.svg" alt=""><span>Referral</span></a>
+        <a v-if="authed && view!=='openenrich'" class="rd-referral" href="#referrals" @click.prevent="go('referrals')" :aria-current="view==='referrals'?'page':null" :title="refEntryTitle()" :aria-label="'Referral: '+refEntryTitle()"><img src="/media/redesign/referral-gift.svg" alt=""><span>Referral</span></a>
         <button v-if="billing" class="rd-balance" :title="'Balance: '+money(billing.balance_micro)" @click="orgTab='billing'; go('orgs')"><span>Balance</span><b>{{moneyGlance(billing.balance_micro)}}</b></button>
         <details class="rd-account-menu" :ref="el => setElement('accountMenu', el)">
           <summary :aria-label="'Account: '+me"><span class="rd-avatar">{{initials}}</span></summary>

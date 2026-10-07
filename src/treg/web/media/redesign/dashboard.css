@@ -19,6 +19,10 @@ body:has(.redesign)::before { display:none; }
 .redesign :focus-visible { outline:2px solid var(--ink); outline-offset:3px; }
 .redesign .layout { position:relative; display:block; min-height:calc(100vh - 57px); }
 .redesign main { width:100%; max-width:1432px; min-width:0; margin:0 auto; padding:22px 26px 100px; }
+/* Open Enrich: a full-window app under its own bar */
+.redesign main.app { max-width:none; padding:10px 20px 0; }
+.rd-app-name { display:flex; align-items:center; gap:8px; margin-left:8px; font:500 15px var(--sans); color:var(--ink); white-space:nowrap; }
+.rd-app-name span { color:var(--muted2); font-weight:400; }
 .redesign h1 { font-family:var(--display); font-size:22px; line-height:1.25; font-weight:400; letter-spacing:0; }
 .redesign .btn,.redesign .seg button,.redesign .tabs button { font-family:var(--sans); }
 .rd-background { position:absolute; top:0; left:0; width:100%; height:auto; pointer-events:none; }
