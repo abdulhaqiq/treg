@@ -59,6 +59,11 @@
 .oe .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .oe .gh-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--rb); background: var(--surface);
   color: var(--text); font-weight: 500; font-size: 13px; box-shadow: var(--shadow-sm), 0 0 0 1px var(--line2); text-decoration: none; }
+.oe .hero-actions { display: flex; align-items: center; gap: 8px; }
+.oe .setup-btn { gap: 10px; cursor: pointer; border: 0; }
+.oe .setup-logos { display: inline-flex; align-items: center; gap: 5px; }
+.oe .setup-logos img { width: 18px; height: 18px; object-fit: contain; }
+.oe .setup-logos > span { color: var(--muted); font-size: 11.5px; }
 .oe .gh-btn:hover { box-shadow: var(--shadow-md), 0 0 0 1px var(--ink); }
 .oe .hero p { color: var(--muted); font-size: 14px; margin: 10px 0 0; max-width: 620px; }
 .oe .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 28px; }

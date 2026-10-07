@@ -31,6 +31,10 @@ maybeOnboard(){  // first-run: a brand-new user with no team yet is asked to NAM
       // throwaway team of their own (confusing: they'd end up with two). Decline → create-team.
       if(this.pendingInvites.length){ this.openInviteChoice(); return; }
       this.openWelcome(); },
+// "Setup treg in …" outside Getting started (Open Enrich): the same dialog from the agent picker on,
+// closing back where it was opened rather than moving on to Getting started
+openAgentSetup(from){ this._welcomeAgentFromRef(); this.welcome={...this.welcome, step:1, from, on:true};
+      if(!this.myToken||this._myTokenOrg!==this.activeSlugNow) this.loadDefaultToken(); },
 openWelcome(){ this.welcome.name=this._suggestTeamName(); this._welcomeAgentFromRef(); this.welcome.on=true; },
 _welcomeAgentFromRef(){  // /grokbot's "Setup treg" CTA → the welcome already has Grok Bot picked; any other ref is ignored
       const r=storageGet('treg-ref'); storageRemove('treg-ref');
@@ -83,7 +87,8 @@ async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ thi
         this.welcome.step=1; }  // stay in the modal: pick your agent → get the setup line
       catch(e){ this.welcome.err='Could not create the team: '+(e.detail||e.status); }
       finally{ this.welcome.busy=false; } },
-welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step}); this.welcome.on=false;
+welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step, from:this.welcome.from||'welcome'}); this.welcome.on=false;
+      if(this.welcome.from){ this.welcome.from=''; return; }
       // Someone who signed up on the way to a platform (a /search result) stays on it; otherwise
       // Getting started, where the setup line lives.
       if(this.view!=='platform') this.go('start');
