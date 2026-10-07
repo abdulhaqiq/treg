@@ -415,8 +415,8 @@ adapters:
     accepts: [[email]]
     in: {email: queryParams.email}
     out: {valid: "result == 'deliverable'", status: result, score: score}
-    # A standard submission can return status=verifying before the verdict exists. It was billed,
-    # but it is not a routed answer yet, so the existing waterfall may continue.
+    # A status=verifying submission is waited for (the endpoint's `async` block) and judged on
+    # its finished answer, so this rule sees only finished answers: one without a verdict is a miss.
     miss: "result == null"
     # BounceBan reports a catch-all domain as a flag next to `risky`.
     verdict: "choose(is_accept_all == true, choose(result == 'risky', 'catch_all', result), result)"
