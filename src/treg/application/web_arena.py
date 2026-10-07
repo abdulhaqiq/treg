@@ -428,16 +428,10 @@ async def _run(run_id, task, mode, payload, snapshot, client, client_ip):
                     break
                 quoted_spend += a["estimate_micro"]
                 await leg(a)
+                # Cheapest first: the first provider that returns a result ends the Waterfall.
+                # A quality check still scores that result; it never decides when to stop.
                 if a["state"] == "hit":
-                    if task in {"search", "news", "papers", "youtube"} and payload["jev"]:
-                        score = (a.get("quality") or {}).get("estimated_match")
-                        if score is None or score < 60:
-                            continue
-                        payload["stop_reason"] = "Stopped after an estimated match of at least 60%."
-                    elif task in {"search", "news", "papers", "youtube"}:
-                        payload["stop_reason"] = "Stopped at the first valid list. Relevance was not checked."
-                    else:
-                        payload["stop_reason"] = "Stopped at the first useful result."
+                    payload["stop_reason"] = "Stopped at the first useful result."
                     break
                 if a["state"] in {"timeout", "error"} and a.get("charged_micro") is None:
                     payload["stop_reason"] = "Stopped because the provider fee is not known yet."
