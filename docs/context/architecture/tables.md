@@ -120,6 +120,10 @@ ignore it is skipped. "Load more" asks for the next `page` with every other prov
 list continues from the provider that served it; one that cannot page answers no_route_candidate,
 uncharged, and the list ends there.
 
+**First visit.** A team that opens Open Enrich with no tables gets three real tables (`seeds.js`, about
+50 company rows each, built through treg's searches and column runs; people columns left to run),
+once per team in that browser; the seed data loads only then.
+
 **Column types.** A search or a job knows what its fields hold (`typeOfField`). An imported CSV is
 typed from its values first (`detectType`: email, LinkedIn person or company, website, domain,
 phone, IP, number, boolean; most of a sample must agree), then its header (`typeOfHeader`), then

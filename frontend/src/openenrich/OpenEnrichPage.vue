@@ -55,14 +55,17 @@ async function home(fromPop = false) {
   source.value = null
   error.value = ''
   if (!fromPop) history.pushState({ view: 'openenrich' }, '', '/openenrich')
-  try { tables.value = await api.tables() } catch (e) { error.value = e.status === 404 ? 'openenrich is not turned on for this team yet.' : e.message }
+  try {
+    tables.value = await api.tables()
+    if (!tables.value.length) await seed()
+  } catch (e) { error.value = e.status === 404 ? 'openenrich is not turned on for this team yet.' : e.message }
   refreshAccount()
 }
 
 async function created(t) {
   try {
     const stored = await api.create({ name: t.name, kind: t.kind, columns: t.columns, source: t.source || null,
-      rows: t.rows.map((r) => ({ id: r.id, cells: r.cells })) })
+      rows: t.rows.map((r) => ({ id: r.id, cells: r.cells, ...(r.runs ? { runs: r.runs } : {}) })) })
     await open(stored.name, false, true)
   } catch (e) {
     error.value = e.message
@@ -73,6 +76,19 @@ async function created(t) {
 async function renamed(name) {
   history.replaceState({ view: 'openenrich', oe: name }, '', `/openenrich/${name}`)
   await open(name, true)
+}
+
+// A team's first visit finds a few real tables (seeds.js) instead of an empty page. Once per team in
+// this browser: a team that deletes them is not given them again.
+async function seed() {
+  const key = `oe-seeded:${dash.activeSlugNow || 'team'}`
+  try { if (localStorage.getItem(key)) return } catch {}
+  const { SEEDS } = await import('./seeds.js')
+  for (const t of SEEDS) {
+    try { await api.create({ name: t.name, kind: t.kind, columns: t.columns, source: t.source || null, rows: t.rows }) } catch {}
+  }
+  try { localStorage.setItem(key, '1') } catch {}
+  tables.value = await api.tables()
 }
 
 async function removeTable(t) {
