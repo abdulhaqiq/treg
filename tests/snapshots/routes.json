@@ -538,6 +538,31 @@
     "methods": [
       "POST"
     ],
+    "name": "start_run",
+    "path": "/tables/{name}/runs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "list_runs",
+    "path": "/tables/{name}/runs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "stop_run",
+    "path": "/tables/{name}/runs/{run_id}/stop"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "host_media",
     "path": "/media"
   },

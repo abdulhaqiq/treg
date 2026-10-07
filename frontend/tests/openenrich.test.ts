@@ -245,9 +245,9 @@ test('filters make the search request: conditions pick the field, one value goes
   assert.deepEqual(filterBody([industry], { industry: [{ value: [5112, 5415], label: 'Software' }] }), { naics: [5112, 5415] })
 })
 
-test('a stored queued or running run reads as not run yet', () => {
-  const t = fromStored({ name: 't', items: [{ id: 'r1', cells: {}, runs: { a: { state: 'running' }, b: { state: 'hit' }, c: { state: 'queued' } } }] })
-  assert.deepEqual(t.rows[0].runs, { b: { state: 'hit' } })
+test('a stored queued row is kept: a server run may be filling it', () => {
+  const t = fromStored({ name: 't', items: [{ id: 'r1', cells: {}, runs: { b: { state: 'hit' }, c: { state: 'queued' } } }] })
+  assert.deepEqual(t.rows[0].runs, { b: { state: 'hit' }, c: { state: 'queued' } })
 })
 
 test('typing to find a value forgives a typo, never a different word', () => {

@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient
 
 from conftest import verified_signup
+from tests.test_marketplace_call import platform_on  # noqa: F401 - tier 4 on
 from treg.config import get_settings
 
 
@@ -152,3 +153,96 @@ async def test_csv_export_neutralises_formulas(clients: AsyncClient, table_on):
                                         "rows": [{"cells": {"a": "=HYPERLINK(\"x\")"}}, {"cells": {"a": -5}}]})
     lines = (await clients.get("/tables/f?format=csv")).text.splitlines()
     assert lines[1] == "\"'=HYPERLINK(\"\"x\"\")\"" and lines[2] == "-5"
+
+
+# ---- runs on the server (phase 2) -------------------------------------------------------------------
+
+RUN_EP = "tikhub.tiktok.video.comments"      # a real catalog GET endpoint with a platform price
+
+
+async def _drive_all():
+    """What the worker does, in the test's loop: claim each queued run and drive it to its end."""
+    import httpx
+    from treg.application import table_runs
+    async with httpx.AsyncClient() as http:
+        while (claimed := await table_runs._claim()) is not None:
+            await table_runs._Driver(*claimed, http).drive()
+
+
+def test_the_server_makes_the_same_idempotency_key_as_the_page():
+    # the values frontend/src/openenrich/client.js `idempotencyKey` gives for the same calls, so a
+    # row the page already ran replays on the server for nothing
+    from treg.application.table_runs import idempotency_key
+    assert idempotency_key("treg.people.email.find", "POST", {}, {"domain": "ramp.com", "full_name": "Éric Glyman", "limit": 5},
+                           {"exclude": ["hunter"]}) == "oe-0232c24f3b86bb3c7260292868590cab0e466df7e4ec"
+    assert idempotency_key(RUN_EP, "GET", {"aweme_id": "7"}, None, {}) == "oe-7b901c9c9cfabeac6601d6d5888529c793d6c6832b43"
+
+
+async def test_a_run_fills_the_column_on_the_server_and_replays_when_asked_again(clients: AsyncClient, table_on, platform_on, monkeypatch):
+    from tests.test_marketplace_call import _fake_relay
+    from treg.application.call import service as call_service
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": [{"a": 1}, {"a": 2}]}'))
+    cols = [{"id": "vid", "label": "vid"},
+            {"id": "a", "label": "a", "job": {"group": "g1", "tool": RUN_EP, "method": "GET", "inputs": {"aweme_id": "{vid}"}, "field": "a"}}]
+    # r2's `running` was left by a page closed mid-run: no run owns it, so it is not run yet
+    await clients.post("/tables", json={"name": "vids", "columns": cols, "rows": [
+        {"id": "r1", "cells": {"vid": "1"}}, {"id": "r2", "cells": {"vid": "2"}, "runs": {"g1": {"state": "running"}}},
+        {"id": "r3", "cells": {}}]})
+    r = await clients.post("/tables/vids/runs", json={"group": "g1"})
+    assert r.status_code == 200, r.text
+    assert r.json()["added"] == 3 and r.json()["run"]["state"] == "queued"
+    items = (await clients.get("/tables/vids")).json()["items"]
+    assert {i["runs"]["g1"]["state"] for i in items} == {"queued"}
+    # asking again while it is queued adds nothing: the rows are already in the run
+    assert (await clients.post("/tables/vids/runs", json={"group": "g1"})).json()["added"] == 0
+
+    await _drive_all()
+    rows = {i["id"]: i for i in (await clients.get("/tables/vids")).json()["items"]}
+    assert rows["r1"]["cells"]["a"] == "1, 2" and rows["r1"]["runs"]["g1"]["state"] == "hit"
+    assert rows["r1"]["runs"]["g1"]["cost_micro"] > 0 and rows["r1"]["runs"]["g1"]["call_id"]
+    assert rows["r3"]["runs"]["g1"]["state"] == "skipped"
+    run = (await clients.get("/tables/vids/runs")).json()[0]
+    assert (run["state"], run["done"], run["hits"], run["total"]) == ("done", 3, 2, 3)
+
+    # re-running every row asks with the same keys: answered from treg's replay, nothing charged
+    spent = run["spent_micro"]
+    await clients.post("/tables/vids/runs", json={"group": "g1", "rows": "all"})
+    await _drive_all()
+    again = (await clients.get("/tables/vids/runs")).json()[0]
+    assert again["state"] == "done" and again["hits"] == 2 and again["spent_micro"] == 0 and spent > 0
+    rows = {i["id"]: i for i in (await clients.get("/tables/vids")).json()["items"]}
+    assert rows["r1"]["runs"]["g1"]["replay"] is True
+
+
+async def test_a_stopped_run_puts_its_rows_back_and_a_team_runs_three_at_once(clients: AsyncClient, table_on):
+    cols = [{"id": f"c{i}", "label": "x", "job": {"group": f"g{i}", "tool": RUN_EP, "method": "GET", "inputs": {"aweme_id": "{v}"}}}
+            for i in range(4)]
+    await clients.post("/tables", json={"name": "stops", "columns": cols, "rows": [{"id": "r1", "cells": {"v": "1"}}]})
+    run = (await clients.post("/tables/stops/runs", json={"group": "g0"})).json()["run"]
+    assert (await clients.post("/tables/stops/runs", json={"group": "g1"})).status_code == 200
+    assert (await clients.post("/tables/stops/runs", json={"group": "g2"})).status_code == 200
+    busy = await clients.post("/tables/stops/runs", json={"group": "g3"})
+    assert busy.status_code == 429 and busy.json()["detail"]["error"] == "too_many_runs"
+    for g in ("g0", "g1", "g2"):
+        rid = next(x["id"] for x in (await clients.get("/tables/stops/runs")).json() if x["group"] == g)
+        assert (await clients.post(f"/tables/stops/runs/{rid}/stop")).json()["stopping"] is True
+    await _drive_all()
+    runs = {x["id"]: x for x in (await clients.get("/tables/stops/runs")).json()}
+    assert runs[run["id"]]["state"] == "stopped" and runs[run["id"]]["done"] == 0
+    assert (await clients.get("/tables/stops")).json()["items"][0]["runs"] == {}
+
+
+async def test_a_run_that_lost_its_claim_writes_nothing(clients: AsyncClient, table_on):
+    from sqlalchemy import update
+    from treg.application import table_runs
+    from treg.infra.db import session_maker
+    from treg.models import TableRun
+    await clients.post("/tables", json={"name": "lease", "columns": [{"id": "c", "label": "c", "job": {
+        "group": "g", "tool": RUN_EP, "method": "GET", "inputs": {"aweme_id": "{v}"}}}], "rows": [{"id": "r1", "cells": {}}]})
+    await clients.post("/tables/lease/runs", json={"group": "g"})
+    run_id, token = await table_runs._claim()
+    async with session_maker() as db:     # another process took it over
+        await db.execute(update(TableRun).where(TableRun.id == run_id).values(attempts=token + 1))
+        await db.commit()
+    await table_runs._Driver(run_id, token, None).drive()
+    assert (await clients.get("/tables/lease")).json()["items"][0]["runs"]["g"]["state"] == "queued"

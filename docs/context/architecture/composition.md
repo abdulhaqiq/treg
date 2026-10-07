@@ -172,7 +172,8 @@ dashboard's `/app/legacy/assets/{path:path}` mount is gone — see [dashboard](.
 
 No web process collects Arena statistics any more: `treg-worker arena insights` (a cron) does,
 and `/arena/insights`, a control route, only reads the last published snapshot. `ROLE_BACKGROUND_TASKS`
-therefore lists `adsconv.worker` alone for control/all.
+therefore lists `adsconv.worker` and openenrich's run worker (`table_runs.worker`, see
+[tables](tables.md)) for control/all.
 Shutdown cancels and awaits every started background worker before draining Arena, audit and
 analytics or closing the shared client, so database rollback/close finishes before event-loop teardown.
 

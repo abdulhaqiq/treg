@@ -144,7 +144,11 @@ def _lifespan() -> dict[str, Any]:
             {
                 "condition": "treg.adsconv.enabled()",
                 "task": "treg.adsconv.worker",
-            }
+            },
+            {
+                "condition": "get_settings().table_enabled",
+                "task": "treg.application.table_runs.worker",
+            },
         ],
         "mounted_lifespans": [
             {

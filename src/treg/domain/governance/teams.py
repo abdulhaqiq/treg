@@ -10,6 +10,7 @@ from ...models import (
     AdConversion,
     TableDoc,
     TableRow,
+    TableRun,
     ApiKey,
     ApiKeyEvent,
     ArenaEvaluation,
@@ -262,6 +263,7 @@ ORG_SCOPED_MODELS = (
     CallReview,
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
+    TableRun,     # openenrich's server runs (before their tables, which they name)
     TableDoc,     # openenrich's tables (their rows go first, below: a row names its table, not the team)
     Membership,   # last: it is what makes the caller a member of the org being deleted
 )

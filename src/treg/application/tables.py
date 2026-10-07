@@ -1,7 +1,7 @@
 """openenrich's team tables (docs/context/architecture/tables.md): store, list, read and merge rows.
 
-Phase 1 is storage only. The page runs a column's job row by row through `/table/<tool>` and writes
-each cell back here, so nothing in this module calls a provider or touches money. A table belongs
+Storage only: nothing in this module calls a provider or touches money. Filling a column runs on
+the server in `table_runs`, which writes its cells back through `merge_rows`. A table belongs
 to the team: every member reads and writes it. The use cases here own their commits.
 """
 
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import TableDoc, TableRow
+from ..models import TableDoc, TableRow, TableRun
 from ..timeutil import utcnow_naive
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
@@ -285,6 +285,7 @@ async def _relink(db: AsyncSession, parent_id: int, old: str, new: str) -> None:
 async def delete_table(db: AsyncSession, *, org_id: int, name: str) -> None:
     """Delete a table and its rows. A linked table made from it stays, unlinked."""
     doc = await _doc(db, org_id, name)
+    await db.execute(delete(TableRun).where(TableRun.table_id == doc.id))
     await db.execute(delete(TableRow).where(TableRow.table_id == doc.id))
     for child in (await db.execute(select(TableDoc).where(TableDoc.parent_id == doc.id))).scalars().all():
         child.parent_id, child.parent_column = None, None
@@ -298,7 +299,14 @@ async def upsert_rows(db: AsyncSession, *, org_id: int, name: str, rows: list,
     teammate's or the page's other cells stay); a row without a known id is added at the end. With
     `replace_parent_rows`, the rows of those parents are removed first (re-running "find people
     at company" for a company replaces its people)."""
-    doc = await _doc(db, org_id, name)
+    result = await merge_rows(db, await _doc(db, org_id, name), rows, replace_parent_rows)
+    await db.commit()
+    return result
+
+
+async def merge_rows(db: AsyncSession, doc: TableDoc, rows: list, replace_parent_rows: list | None = None) -> dict:
+    """`upsert_rows` on a loaded table, without the commit: the run worker writes by table id, so a
+    rename mid-run does not lose its rows."""
     clean = _clean_rows(rows if isinstance(rows, list) else [])
     if replace_parent_rows:
         await db.execute(delete(TableRow).where(TableRow.table_id == doc.id,
@@ -325,7 +333,6 @@ async def upsert_rows(db: AsyncSession, *, org_id: int, name: str, rows: list,
         row.cells, row.runs, row.updated_at = merged, runs, now
     added = _insert(db, doc.id, new, start=(last if last is not None else -1) + 1)
     doc.updated_at = now
-    await db.commit()
     return {"updated": len(clean) - len(new), "added": added}
 
 

@@ -34,22 +34,25 @@ ENVELOPE_KEYS = frozenset({"summary", "tasks", "result", "results", "data", "res
 # Provider-native rows of a routed list job, mapped to fixed columns first. Each entry: the column,
 # then the item paths that may hold it, first match wins. Keyed by the contract's list field.
 _PEOPLE_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("first_name", ("first_name", "firstname", "firstName", "profile.first_name", "person.first_name")),
-    ("last_name", ("last_name", "lastname", "lastName", "last_name_obfuscated", "profile.last_name", "person.last_name")),
+    ("first_name", ("first_name", "firstname", "firstName", "profile.first_name", "person.first_name",
+                    "contact_first_name")),
+    ("last_name", ("last_name", "lastname", "lastName", "last_name_obfuscated", "profile.last_name", "person.last_name",
+                   "contact_last_name")),
     # `headline` last: a profile tagline, used only when no job title field exists
     ("title", ("title", "job_title", "jobTitle", "jobTitle.title", "position", "profile.title",
                "basic_profile.current_title", "lastJobTitle", "person.current_job_title",
-               "currentPositions.0.title", "headline")),
+               "currentPositions.0.title", "contact_job_title", "headline")),
     ("company", ("company", "company_name", "companyName", "organization_name", "organization.name",
                  "company.name", "job_company_name", "lastCompanyName", "companyName",
-                 "currentPositions.0.companyName")),
+                 "currentPositions.0.companyName", "contact_company_name")),
     ("linkedin_url", ("linkedin_url", "linkedinUrl", "profileUrl", "linkedin", "employee_linkedin",
                       "URLs.linkedin", "socials.linkedin_url", "link.linkedin", "socialLinks.linkedin",
                       "person.linkedin_url", "profile_url",
-                      "social_handles.professional_network_identifier.profile_url")),
+                      "social_handles.professional_network_identifier.profile_url",
+                      "contact_linkedin_url")),
     ("location", ("location", "location_name", "basic_profile.location.full_location", "location.linkedinText",
                   "location.address", "city", "location.city", "address", "location.country",
-                  "person.location.country", "country_code")),
+                  "person.location.country", "country_code", "contact_city")),
 )
 # `title` and `url` come last: exa names a company `title` and its homepage `url`, while other
 # providers' `url` is the LinkedIn page, read only after every domain field has been tried

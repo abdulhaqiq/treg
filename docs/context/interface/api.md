@@ -128,7 +128,8 @@ local resource shape; without BYOK it returns only voices owned by that treg org
 HTTP call over this. The factory lifespan runs read-only `verify_db()` and creates the shared keepalive
 `httpx.AsyncClient` at `app.state.http` (and `audit.drain()`s on shutdown). It also starts the Google Ads conversion uploader (`adsconv.worker`) as
 a background task, but only when `adsconv.enabled()` - see
-[ads-conversions](../architecture/ads-conversions.md).
+[ads-conversions](../architecture/ads-conversions.md) - and openenrich's run worker while
+`TREG_TABLE_ENABLED` is on - see [tables](../architecture/tables.md).
 Content-driven provider companion backfills run in the explicit `python -m treg upgrade` release
 phase, outside every app role's lifespan. The default `python -m treg` entrypoint also provisions the
 guarded local single-user identity before Uvicorn starts.

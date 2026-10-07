@@ -2062,6 +2062,35 @@ class TableDoc(SQLModel, table=True):
     updated_at: NaiveUTC = Field(default_factory=_now)
 
 
+class TableRun(SQLModel, table=True):
+    """A column group filled on the server (docs/context/architecture/tables.md, phase 2): the rows asked
+    for, who asked (the calls run as that membership), progress, and the worker's claim on it
+    (`lease_until`, with `attempts` as the fencing token). Each row's call keeps its own hold and
+    idempotency key, so a run picked up again after a restart replays, never pays twice."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    table_id: int = Field(foreign_key="tabledoc.id", index=True)
+    group: str
+    membership_id: int = Field(foreign_key="membership.id")
+    row_ids: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    fresh_ids: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    state: str = Field(default="queued", index=True)    # queued | running | done | stopped | failed
+    total: int = 0
+    done: int = 0
+    hits: int = 0
+    misses: int = 0
+    errors: int = 0
+    spent_micro: int = 0
+    max_usd: float | None = None
+    stop_requested: bool = False
+    error: str | None = None
+    lease_until: NaiveUTC | None = Field(default=None, index=True)
+    attempts: int = 0
+    created_at: NaiveUTC = Field(default_factory=_now)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
 class TableRow(SQLModel, table=True):
     """One row of a TableDoc. `row_key` is the id clients address it by; `cells` maps a column id to
     its value; `runs` maps a job's column group to the one call that filled those columns (state,

@@ -39,6 +39,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     # Interactive paid runs: short transactions between legs, never across upstream waits.
     "application/arena.py": {API},
     "application/web_arena.py": {API},
+    "application/table_runs.py": {API},     # openenrich runs: one short transaction per row, none across a call
     "application/web_arena_quality.py": {API},
     "application/web_arena_publications.py": {API},
     # Request previews read a short snapshot; scheduled call folding uses the worker process.

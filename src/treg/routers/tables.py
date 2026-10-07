@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application import table as table_app
+from ..application import table_runs
 from ..application import tables as tables_app
 from ..domain.identity.access import Caller, require_member
 from ..infra.db import get_session
@@ -133,5 +134,37 @@ async def delete_rows(name: str, body: dict = Body(...), caller: Caller = Depend
     _require_tables(caller)
     try:
         return await tables_app.delete_rows(db, org_id=caller.org_id, name=name, ids=body.get("ids") or [])
+    except tables_app.TableError as exc:
+        return _error(exc)
+
+
+@app.post("/tables/{name}/runs")
+async def start_run(name: str, body: dict = Body(...), caller: Caller = Depends(require_member),
+                    db: AsyncSession = Depends(get_session)) -> Any:
+    """{group, rows?: "pending" | "failed" | "all" | [row id], fresh?, limit?, max_usd?}: fill a column
+    group on the server, as this member. The run goes on when the page closes."""
+    _require_tables(caller)
+    try:
+        return await table_runs.start_run(db, org_id=caller.org_id, membership_id=caller.membership.id, name=name, body=body)
+    except tables_app.TableError as exc:
+        return _error(exc)
+
+
+@app.get("/tables/{name}/runs")
+async def list_runs(name: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)) -> Any:
+    """The table's runs still going, and those that ended in the last few minutes."""
+    _require_tables(caller)
+    try:
+        return await table_runs.list_runs(db, org_id=caller.org_id, name=name)
+    except tables_app.TableError as exc:
+        return _error(exc)
+
+
+@app.post("/tables/{name}/runs/{run_id}/stop")
+async def stop_run(name: str, run_id: int, caller: Caller = Depends(require_member),
+                   db: AsyncSession = Depends(get_session)) -> Any:
+    _require_tables(caller)
+    try:
+        return await table_runs.stop_run(db, org_id=caller.org_id, name=name, run_id=run_id)
     except tables_app.TableError as exc:
         return _error(exc)

@@ -22,7 +22,7 @@ from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit
 from .application.call import route as routed_call
-from .application import arena, find_index
+from .application import arena, find_index, table_runs
 from .application.onboard import first_run
 from . import bootstrap_handlers
 from .bootstrap_http import (
@@ -124,6 +124,9 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/tables/{name}', ('DELETE',), 'delete_table'),
     ('/tables/{name}/rows', ('POST',), 'upsert_rows'),
     ('/tables/{name}/rows/delete', ('POST',), 'delete_rows'),
+    ('/tables/{name}/runs', ('POST',), 'start_run'),
+    ('/tables/{name}/runs', ('GET',), 'list_runs'),
+    ('/tables/{name}/runs/{run_id}/stop', ('POST',), 'stop_run'),
     ('/openenrich', ('GET',), 'openenrich_page'),
     ('/openenrich/{name}', ('GET',), 'openenrich_table_page'),
     ('/hub/tools', ('POST',), 'publish_hub_tool'),
@@ -394,9 +397,9 @@ ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
     # walks `callrecord` on its own schedule, so web processes no longer compete for the cursor
     # row and a deploy no longer multiplies that scan. Only `/arena/insights` (a
     # snapshot read) stays here.
-    "all": ("treg.adsconv.worker",),
+    "all": ("treg.adsconv.worker", "treg.application.table_runs.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker",),
+    "control": ("treg.adsconv.worker", "treg.application.table_runs.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -688,6 +691,13 @@ def _lifespan(role: AppRole):
                 if ROLE_BACKGROUND_TASKS[role] and archive.prune_enabled()
                 else None
             )
+            # openenrich's column runs (docs/context/architecture/tables.md): claimed from the
+            # database, so any process may drive a run and a deploy only pauses it.
+            table_runs_task = (
+                asyncio.create_task(table_runs.worker(app.state.http))
+                if ROLE_BACKGROUND_TASKS[role] and get_settings().table_enabled
+                else None
+            )
             # Find's card vectors (docs/context/architecture/find.md): built now, in the background,
             # instead of by the first find after a deploy; off without an embedding key.
             find_task = asyncio.create_task(find_index.warm()) if find_index.enabled() else None
@@ -710,7 +720,7 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task, find_task,
+                        gauge_task, ads_task, archive_task, prune_task, find_task, table_runs_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
