@@ -884,7 +884,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 
     def _audit(status_code: int, *, observed_micro: int | None = None, charged_micro: int | None = None,
                duration_ms: int | None = None, response_bytes: int | None = None,
-               refused_by: str | None = None, hit: bool | None = None,
+               refused_by: str | None = None, hit: bool | None = None, verdict: str | None = None,
                error_request: str | None = None, error_response: str | None = None,
                capacity_signal: str | None = None, answered: bool = True,
                defer_analytics: bool = False, async_submission: bool = False) -> dict | None:
@@ -917,6 +917,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 "params_hash": mk.params_hash,
                 # found / not found, when this endpoint's routing adapter could read the body
                 **({"hit": hit} if hit is not None else {}),
+                # the contract's verdict word (`valid`, `catch_all`, `verified`...) when it has one
+                **({"verdict": verdict} if verdict is not None else {}),
                 # The stored answer's identities — the join to the archive for `/calls/{id}/result`.
                 **({"archive_key_hash": archive_key_hash,
                     "archive_content_hash": archive_content_hash} if archive_key_hash else {}),
@@ -1519,7 +1521,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 err_response = _error_response_evidence(
                     response.raw_headers, body, _renderings)
         may_overflow = (response.status >= 400 or account_out_2xx) and mk.tier == "platform"
-        from ...domain.catalog.results import classify, has_result_rules
+        from ...domain.catalog.results import classify, has_result_rules, verdict
 
         # The submission is only a task ticket. Its contact verdict is learned from the
         # terminal poll and copied onto this same CallRecord by the async finalizer.
@@ -1538,6 +1540,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                          response_bytes=(None if streaming_free_result else spooled_bytes
                                          if spooled_bytes is not None else len(body)),
                          hit=result.hit if result else None,
+                         verdict=verdict(mk.endpoint_id, response.status, body) if not deferred else None,
                          capacity_signal=capacity_signal, error_request=err_request, error_response=err_response,
                          defer_analytics=may_overflow, async_submission=deferred)
         served_via = ""

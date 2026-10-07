@@ -254,6 +254,8 @@ a confirmed terminal failure stores `false` when the endpoint has verified hit r
 pending and timed-out tasks remain undecided. This counts failed attempts in routing's hit rate.
 The audit path copies the verdict to the original submission row whether that row was inserted
 before or after the terminal poll. The submission ticket itself supplies no hit verdict.
+A successful task also stores the contract's verdict word (`AsyncTaskRecord.verdict`), copied the
+same way; a failure carries none. Neither moves money.
 An async status declared as `billed_failure` is still presented as failure by the CLI, but the
 worker settles its usage evidence and records the terminal outcome; this covers cancellation after
 billable work without manufacturing a successful result.
