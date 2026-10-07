@@ -23,8 +23,10 @@ export default {
 <template>
 <header class="rd-top" >
       <div class="rd-identity">
-        <a class="rd-brand brand" :href="view==='openenrich' ? '/app#start' : '/'" :aria-label="view==='openenrich' ? 'Back to the treg dashboard' : 'treg home'"><BrandMark/>treg</a>
-        <span v-if="view==='openenrich'" class="rd-app-name"><span>/</span>Open Enrich</span>
+        <span class="rd-brandline">
+          <a class="rd-brand brand" :href="view==='openenrich' ? '/app#start' : '/'" :aria-label="view==='openenrich' ? 'Back to the treg dashboard' : 'treg home'"><BrandMark/>treg</a>
+          <span v-if="view==='openenrich'" class="rd-app-name"><span>/</span>Open Enrich</span>
+        </span>
         <div class="orgblock" v-if="authed">
           <div class="orgmain" :ref="el => setElement('orgmain', el)" @click="toggleOrgMenu" role="button" tabindex="0" @keydown.enter="toggleOrgMenu" @keydown.space.prevent="toggleOrgMenu" aria-haspopup="true" :aria-expanded="orgMenu" aria-label="Teams">
             <span class="role" :class="activeRole">{{activeRole}}</span>
