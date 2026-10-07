@@ -2197,7 +2197,7 @@
     },
     "/admin/calls": {
       "get": {
-        "description": "The newest calls, or with `since_id` the calls after that id, oldest first, so a poller\nadvances its cursor to the last id it read. `provider` needs `since_id`: it keeps the read a\nrange over the primary key instead of a walk back through the whole table.",
+        "description": "The newest calls, or with `since_id` the calls after that id, oldest first, so a poller\nadvances its cursor to the last id it read. `provider` needs `since_id`: it keeps the read a\nrange over the primary key instead of a walk back through the whole table. A failed call carries\n`error_reason`, the upstream's own short reason from its stored error answer.",
         "operationId": "admin_calls_admin_calls_get",
         "parameters": [
           {
