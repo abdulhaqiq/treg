@@ -67,8 +67,11 @@
 .oe .setup-logos img { width: 20px; height: 20px; object-fit: contain; }
 .oe .setup-logos > span { color: var(--muted); font-size: 11px; }
 .oe .hero-title { display: flex; align-items: center; gap: 14px; }
-.oe .hero-mark { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--surface); color: var(--muted); }
-.oe .hero-mark svg { width: 22px; height: 22px; }
+.oe .hero-mark { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 14px;
+  background: var(--inverse); color: var(--inverse-ink); box-shadow: var(--shadow-sm); }
+.oe .hero-mark svg { width: 26px; height: 26px; }
+.oe .hero-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.oe .hero-actions .gh-btn { height: 40px; min-height: 0; margin: 0; padding: 0 14px; font: 500 12.5px/1 "Google Sans Flex", var(--sans); }
 .oe .powered { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
 .oe .powered b { color: var(--text); font-weight: 600; }
 .oe .powered svg { width: 16px; height: 16px; }
@@ -178,10 +181,9 @@
 .oe .vendors.wide:has(.picked) .vendor:not(.picked) img { opacity: .3; filter: grayscale(1); }
 .oe .vhint { font-size: 11px; margin-top: 2px; }
 .oe .picked-line a { color: var(--ink); text-decoration: underline; }
-.oe .vcard { display: none; position: absolute; z-index: 30; bottom: calc(100% + 6px); left: 0; right: 0;
+.oe .vcard { display: flex; position: fixed; z-index: 60; width: 300px; box-sizing: border-box;
   flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--surface); border-radius: var(--rb); box-shadow: var(--shadow-lg), 0 0 0 1px var(--line);
   font-size: 12px; line-height: 1.4; color: var(--text); text-align: left; }
-.oe .vendor:hover .vcard, .oe .vendor:focus .vcard { display: flex; }
 .oe .vcard strong { font-size: 13px; }
 .oe .vcard .warn { color: var(--warn); }
 .oe .vfilters { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }

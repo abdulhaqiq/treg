@@ -69,6 +69,16 @@ const cards = computed(() => {
   return Object.values(out)
 })
 watch(cards, (c) => emit('cards', c), { immediate: true })
+// The card sits on the window beside its logo, above it when there is room, else below: inside a
+// scrolling side panel an absolute card was cut off
+const hover = ref(null)
+const cardAt = ref({})
+function showCard(slug, e) {
+  const r = e.currentTarget.getBoundingClientRect()
+  const left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - 316)))}px`
+  cardAt.value = r.top > 300 ? { left, bottom: `${Math.round(window.innerHeight - r.top + 8)}px` } : { left, top: `${Math.round(r.bottom + 8)}px` }
+  hover.value = slug
+}
 const pickedNames = computed(() => cards.value.filter((c) => picked.value.has(c.slug)).map((c) => c.name))
 const price = (c) => (c.cost === 0 ? `Free${props.rows > 1 ? ` for ${props.rows} results` : ''}`
   : props.rows > 1 ? `~${usd(c.cost * 1e6)} for ${props.rows} results · ${c.billing}` : c.billing)
@@ -79,9 +89,10 @@ const price = (c) => (c.cost === 0 ? `Free${props.rows > 1 ? ` for ${props.rows}
     <span class="fb-label">{{ picked.size ? `${picked.size} of ${cards.length} providers picked` : `${cards.length} providers behind this ${noun}` }}</span>
     <span class="vendors wide">
       <span v-for="c in cards" :key="c.slug" :class="['vendor', { off: c.skipped.length || c.overCap || c.unfed, picked: picked.has(c.slug) }]"
-            tabindex="0" role="button" :aria-pressed="picked.has(c.slug)" @click="toggle(c.slug); $event.currentTarget.blur()" @keydown.enter="toggle(c.slug)">
+            tabindex="0" role="button" :aria-pressed="picked.has(c.slug)" @click="toggle(c.slug)" @keydown.enter="toggle(c.slug)"
+            @mouseenter="showCard(c.slug, $event)" @mouseleave="hover = null" @focus="showCard(c.slug, $event)" @blur="hover = null">
         <img :src="`/logos/${c.slug}.svg`" :alt="c.name" @error="$event.target.style.visibility = 'hidden'" />
-        <span class="vcard">
+        <span v-if="hover === c.slug" class="vcard" :style="cardAt">
           <strong>{{ c.name }}</strong>
           <span>{{ price(c) }}</span>
           <span v-if="c.works != null" class="muted">Works on {{ Math.round(c.works * 100) }}% of calls</span>
