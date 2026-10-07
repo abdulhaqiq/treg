@@ -304,10 +304,12 @@ async function rename() {
 
 // ---- a cell opened in the side panel: its whole value, editable, and the call that filled it ----
 const editing = ref(null)        // the text being edited, or null when reading
-function openCell(row, col) {
+function openCell(row, col, el) {
   detail.value = { row, column: col }
   editing.value = null
   adding.value = false
+  // the panel narrows the grid: keep the clicked cell in sight, not under the panel
+  if (el) nextTick(() => el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }))
 }
 function startEdit() { editing.value = cellText(detail.value.row.cells[detail.value.column.id]) }
 function saveEdit() {
@@ -409,7 +411,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
             <tr v-for="(r, i) in t.rows" :key="r.id">
               <td class="num">{{ i + 1 }}</td>
               <td v-for="c in t.columns" :key="c.id" :class="['cell', runOf(r, c)?.state, { picked: detail?.row === r && detail?.column === c }]"
-                  @click="openCell(r, c)">
+                  @click="openCell(r, c, $event.currentTarget)">
                 <a v-if="linkOf(r, c)" class="pill link" href="#" @click.prevent.stop="emit('open', linkOf(r, c))">
                   {{ r.cells[c.id] }} {{ r.cells[c.id] === 1 ? 'person' : 'people' }} →
                 </a>

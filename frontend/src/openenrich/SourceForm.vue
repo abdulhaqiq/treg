@@ -31,6 +31,11 @@ const busy = ref(false)
 const error = ref('')
 const detail = ref(null)           // the preview cell open in the side panel: {i: row, c: column}
 watch(result, () => { detail.value = null })
+function openCell(i, c, el) {
+  detail.value = { i, c }
+  // the panel narrows the preview: keep the clicked cell in sight, not under the panel
+  nextTick(() => el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }))
+}
 const copied = ref(false)
 async function copy(value) {
   try { await navigator.clipboard.writeText(cellText(value)); copied.value = true; setTimeout(() => (copied.value = false), 1200) } catch {}
@@ -315,7 +320,7 @@ function create() {
           <tbody v-if="result">
             <tr v-for="(r, i) in result.rows" :key="i">
               <td class="num">{{ i + 1 }}</td>
-              <td v-for="c in columns" :key="c" :class="['cell', { picked: detail?.i === i && detail?.c === c }]" @click="detail = { i, c }">{{ cellText(r[c]) }}</td>
+              <td v-for="c in columns" :key="c" :class="['cell', { picked: detail?.i === i && detail?.c === c }]" @click="openCell(i, c, $event.currentTarget)">{{ cellText(r[c]) }}</td>
             </tr>
           </tbody>
           <tbody v-else>
