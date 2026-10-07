@@ -298,7 +298,8 @@ async def test_admin_calls_reads_new_rows_after_a_cursor_by_provider(c):
             s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name=f"{prov}.web.scrape", method="POST",
                              path="/call/x", status_code=ok, endpoint_id=f"{prov}.web.scrape", provider=prov,
                              credential_tier="platform", cost_charged_micro=250 * (i + 1), duration_ms=100 + i,
-                             upstream_ms=90 + i, call_ref=f"ref{i}:r0"))
+                             upstream_ms=90 + i, call_ref=f"ref{i}:r0",
+                             error_response='[502] {"ok": false, "reason": "no-answer:dns-failed"}' if ok == 502 else None))
         await s.commit()
     first = (await c.get("/admin/calls?limit=1", headers=_a())).json()
     assert len(first) == 1 and first[0]["provider"] == "crawl4ai" and first[0]["charged_micro"] == 1000
@@ -307,4 +308,5 @@ async def test_admin_calls_reads_new_rows_after_a_cursor_by_provider(c):
     assert [r["status"] for r in rows] == [200, 502, 200]
     assert [r["id"] for r in rows] == sorted(r["id"] for r in rows)
     assert rows[0]["duration_ms"] == 100 and rows[0]["upstream_ms"] == 90 and rows[0]["tier"] == "platform"
+    assert [r["error_reason"] for r in rows] == [None, "no-answer:dns-failed", None]
     assert (await c.get("/admin/calls?provider=crawl4ai", headers=_a())).status_code == 422

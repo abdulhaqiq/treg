@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+import json
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
@@ -185,6 +187,26 @@ async def admin_tools(_: str = Depends(require_superadmin), db: AsyncSession = D
              "host": t.host, "owner": t.owner, "injectors": [b.get("injector") for b in t.bindings]} for t in tools]
 
 
+def _error_reason(text: str | None) -> str | None:
+    """A short failure reason from a stored error answer: the upstream's own `reason`, `error`,
+    `code` or `message` when the body is JSON, else its first characters."""
+    if not text or text == _ERROR_EVIDENCE_EXPIRED:
+        return None
+    body = re.sub(r"^\[[^\]]*\]\s*", "", text).strip()
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict):
+        for key in ("reason", "error", "code", "message"):
+            value = doc.get(key)
+            if isinstance(value, dict):
+                value = value.get("code") or value.get("message")
+            if isinstance(value, str) and value:
+                return value[:120]
+    return body[:120] or None
+
+
 @app.get("/admin/calls")
 async def admin_calls(
     limit: int = 50, since_id: int | None = None, provider: str | None = None,
@@ -192,7 +214,8 @@ async def admin_calls(
 ) -> list[dict]:
     """The newest calls, or with `since_id` the calls after that id, oldest first, so a poller
     advances its cursor to the last id it read. `provider` needs `since_id`: it keeps the read a
-    range over the primary key instead of a walk back through the whole table."""
+    range over the primary key instead of a walk back through the whole table. A failed call carries
+    `error_reason`, the upstream's own short reason from its stored error answer."""
     limit = max(1, min(limit, 1000))
     if provider and since_id is None:
         raise HTTPException(422, "provider needs since_id")
@@ -209,7 +232,8 @@ async def admin_calls(
              "endpoint_id": c.endpoint_id, "provider": c.provider, "tier": c.credential_tier,
              "call_ref": c.call_ref, "charged_micro": c.cost_charged_micro,
              "observed_micro": c.cost_observed_micro, "duration_ms": c.duration_ms,
-             "upstream_ms": c.upstream_ms, "cached": c.cached} for c in rows]
+             "upstream_ms": c.upstream_ms, "cached": c.cached,
+             "error_reason": _error_reason(c.error_response)} for c in rows]
 
 
 _ERROR_EVIDENCE_TTL_DAYS = evidence_retention.ERROR_EVIDENCE_TTL_DAYS
