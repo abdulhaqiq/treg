@@ -160,10 +160,12 @@ sources:
   - src/treg/infra/catalog_observations.py
   - src/treg/application/catalog_stats.py
   - src/treg/alembic/versions/0038_endpoint_day_stats.py
+  - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
   - src/treg/routers/catalog.py
   - tests/test_aigc_pr_b.py
   - tests/test_catalog_api.py
   - tests/test_catalog_validate.py
+  - tests/test_call_verdict.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -1598,8 +1600,9 @@ expired, and again from cold after each deploy: on a large audit table that is t
 pass, each pass evicting the pages the money path needs. The worker instead
 walks the audit table by primary key from a persisted cursor (`EndpointStatCursor`) and folds each
 row into one `EndpointDayStat` bucket per endpoint per UTC day: counts, the newest success, the
-`hit`/per-success tallies, and a uniform reservoir of at most `stats.LATENCY_SAMPLE` successful
-durations. Rows younger than sixty seconds wait for the next run so an audit insert that commits
+`hit`/per-success tallies, the count of each verdict word (`verdicts`, a JSON object; NULL on a
+bucket folded before revision `0066`, read as empty), and a uniform reservoir of at most
+`stats.LATENCY_SAMPLE` successful durations. Rows younger than sixty seconds wait for the next run so an audit insert that commits
 late is never skipped; a plain tool call (no `endpoint_id`) and a treg refusal (`refused_by`) are
 not evidence and are not folded, exactly as the live query excludes them. An entry may declare
 `observed_from: YYYY-MM-DD` when its provider replaced the service behind it: the folded reader
@@ -1857,6 +1860,13 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   the plan with the reason, not ranked down like an ignored filter: a title-only search asked for
   one company's CEO returns title-matched strangers for any company and bills them as a hit. The
   rule is per candidate, so `{q, company_domain}` also drops the `q`-only providers.
+  `verdict` declares the per-call verdict word stored on `CallRecord.verdict`: `from` names the
+  output field it is read from, `words` the closed list a call may be stored with, and `map` the
+  values that become one (`people.email.find`: `verified: true` is `verified`). A verdict is read
+  only from an answer that fills the contract's required output, so a find that found nothing
+  stores none; it is independent of `miss` (ZeroBounce's `unknown` is a routing miss and still the
+  word `unknown`). `people.email.verify` keeps `catch_all` apart from `risky` so catch-all answers
+  can be counted on their own.
   `prefer` is the contract's default provider order, used when the caller sends no
   `X-Treg-Route-Prefer` (a caller's header replaces it). Cost per hit ignores time:
   `ai-search.perplexity.answer` sets `prefer: [dataforseo]` because cost per hit ranked the cheaper
@@ -1868,7 +1878,15 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
 - **Adapters** — `adapters.yaml`, one per endpoint: `accepts` (identity variants), `in` (contract
   field → `queryParams.x` / `body.x`), `const` (fixed provider params), `out` (core field →
   expression over the body), `miss`, and `route: false` for an adapter that only judges hit/miss
-  evidence (results, stats, cache admission) and never joins routing or the arena. The expression language (`domain/catalog/routing/paths.py`)
+  evidence (results, stats, cache admission) and never joins routing or the arena. Where the
+  contract records a verdict, `verdicts` maps the provider's own words (normalized: lower case,
+  spaces and hyphens to `_`) to the contract's (`ok: valid`, `accept_all: catch_all`); a word that
+  is already the contract's maps to itself. `verdict` is an optional expression that reads the
+  provider's word when the contract's `from` field cannot (BounceBan and LimaData report a
+  catch-all domain as a flag next to `risky`). `results.verdict` reads the word at the call's
+  audit step and the async finalizer reads it from the terminal answer; a word the adapter does
+  not map is stored as NULL and logged, and `tests/test_call_verdict.py` holds every verifier's
+  example answer to a mapped word. The expression language (`domain/catalog/routing/paths.py`)
   is deliberately tiny: dotted paths with `[i]` (root `[0]`, `.` = the whole body), `coalesce`
   (first non-empty argument, else the last one),
   `/ N`, `==`/`!=` against literals, and named transforms (`split_first`, `split_last`, `join`,
@@ -1986,6 +2004,13 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   routed child. The poll response does not wait for that best-effort write. A
   confirmed terminal failure counts as a miss; pending and timed-out jobs remain undecided. Its
   `AsyncTaskRecord.hit` keeps the verdict if polling beats the background audit insert.
+  `CallRecord.verdict` (the contract's verdict word, above) travels the same path beside it. The
+  worker folds its counts into `EndpointDayStat.verdicts` (calls per word, e.g. `{"valid": 31,
+  "catch_all": 4, "unknown": 2}`; `unknown` is a word like the others, never folded into a miss),
+  but `stats.publish` does not show them yet: the observation an agent reads carries no verdict
+  counts until the word mappings are proven. Showing them means publishing them under the hit
+  floor and, like `hit`, reading async endpoints live, since an async word can land after the
+  fold cursor has passed its submission.
   Async endpoints read their `CallRecord` observations live: the daily fold may consume a
   submission before its terminal poll changes the hit, and its one-way cursor cannot revise it.
   `stats.observed` publishes `hit_rate`/`hit_samples` (floor 20) and, for synchronous

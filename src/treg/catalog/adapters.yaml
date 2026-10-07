@@ -387,12 +387,14 @@ adapters:
     # unknown as uncharged; treating it as a miss lets the existing generic success settlement
     # release the hold and lets a routed waterfall continue.
     miss: "coalesce(status, 'unknown') == 'unknown'"
+    verdicts: {spamtrap: invalid, abuse: risky, do_not_mail: risky}
   trykitt.people.email.verify:
     accepts: [[email]]
     in: {email: body.email}
     const: {body.realtime: true}
     out: {valid: "validity == 'valid'", status: validity}
     miss: "validity == null"
+    verdicts: {catchall: catch_all}
   contactout.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
@@ -401,12 +403,14 @@ adapters:
     # Require both a successful envelope and a nonempty verdict, using existing expressions.
     # at_least takes the maximum of the two predicates (0/1): either failure is a miss.
     miss: "at_least(status_code != 200, coalesce(data.status) == null)"
+    verdicts: {accept_all: catch_all}
   millionverifier.people.email.verify:
     accepts: [[email]]
     in:  {email: queryParams.email}
     out: {valid: "result == 'ok'", status: result}
     # Like peer verifiers, risky/invalid verdicts are answers; API errors omit quality.
     miss: "quality == null"
+    verdicts: {ok: valid, disposable: risky, unverified: unknown}
   bounceban.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
@@ -414,6 +418,9 @@ adapters:
     # A standard submission can return status=verifying before the verdict exists. It was billed,
     # but it is not a routed answer yet, so the existing waterfall may continue.
     miss: "result == null"
+    # BounceBan reports a catch-all domain as a flag next to `risky`.
+    verdict: "choose(is_accept_all == true, choose(result == 'risky', 'catch_all', result), result)"
+    verdicts: {deliverable: valid, undeliverable: invalid}
   leadmagic.people.email.verify:
     accepts: [[email]]
     in:  {email: body.email}
@@ -424,16 +431,20 @@ adapters:
     in:  {email: queryParams.email}
     out: {valid: "data.email.status == 'valid'", status: data.email.status, score: data.email.score}
     miss: "data.email.status == null"
+    verdicts: {accept_all: catch_all}
   hunter.people.email.verify:
     accepts: [[email]]
     in:  {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status, score: data.score}
     miss: "data.status == null"
+    verdicts: {accept_all: catch_all, webmail: unknown, disposable: risky}
   limadata.people.email.verify:
     accepts: [[email]]
     in: {email: body.email}
     out: {valid: "result == 'Valid'", status: result, score: score}
     miss: "result == null"
+    # LimaData reports a catch-all domain as a flag next to `Risky`.
+    verdict: "choose(is_catch_all == true, choose(result == 'Risky', 'catch_all', result), result)"
 
   # ---- people.enrich ------------------------------------------------------------------------
   dropleads.people.enrich:

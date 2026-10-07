@@ -35,6 +35,8 @@ contracts:
       verified: {type: bool, note: "the provider says it checked the mailbox"}
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
+    # The provider's own claim, stored per call; a finder with no `verified` output stores none.
+    verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider
     # scored, not a delivery check: 2026-09-06 one team sent to catch-all (`accept_all`) and
     # pattern-guessed hits without verifying and bounced on most of them.
@@ -156,6 +158,9 @@ contracts:
       score: {type: int}
     miss: "status == null"
     idempotent: true
+    # Stored per call. Each adapter maps its provider's words (`verdicts`); `unknown` is a word,
+    # not a miss, and catch-all is kept apart from `risky` so it can be counted on its own.
+    verdict: {from: status, words: [valid, invalid, catch_all, risky, unknown]}
 
   people.enrich:
     summary: "Enrich a person from an email, a LinkedIn URL or a name + company domain — treg picks the provider and names the one that served"
