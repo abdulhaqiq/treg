@@ -172,7 +172,13 @@ onUnmounted(() => { window.removeEventListener('popstate', fromPath); window.rem
     <section v-else class="oe-main narrow">
       <div class="hero">
         <div class="hero-top">
-          <h1>Open Enrich</h1>
+          <div class="hero-title">
+            <span class="hero-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path :d="icon('table')" /></svg></span>
+            <div>
+              <h1>Open Enrich</h1>
+              <span class="powered">Powered by <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="currentColor"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="var(--surface)"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="var(--surface)"/></svg><b>treg</b></span>
+            </div>
+          </div>
           <span class="hero-actions">
           <button class="gh-btn setup-btn" type="button" :aria-label="`Setup treg in ${setupFeatured.map((a) => a.name).join(', ')} and more agents`"
                   @click="dash.openAgentSetup('openenrich')">

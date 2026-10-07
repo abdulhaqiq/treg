@@ -12,6 +12,7 @@
   --warn-soft: color-mix(in srgb, var(--red) 10%, transparent);
   --gray-soft: var(--panel2);
   font-size: 13px; line-height: 1.45;
+  font-family: "Google Sans Flex", var(--sans);   /* Enrich Arena's text face */
   color: var(--text);
 }
 .oe, .oe * { box-sizing: border-box; }
@@ -57,14 +58,24 @@
 
 /* start */
 .oe .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.oe .gh-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--rb); background: var(--surface);
-  color: var(--text); font-weight: 500; font-size: 13px; box-shadow: var(--shadow-sm), 0 0 0 1px var(--line2); text-decoration: none; }
-.oe .hero-actions { display: flex; align-items: center; gap: 8px; }
-.oe .setup-btn { gap: 10px; cursor: pointer; border: 0; }
+.oe .gh-btn { display: inline-flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: var(--surface);
+  color: var(--text); font: 500 12px/18px "Google Sans Flex", var(--sans); border: 1px solid var(--line); white-space: nowrap; text-decoration: none;
+  min-height: 40px; box-sizing: border-box; }
+.oe .gh-btn:hover { border-color: var(--line2); background: var(--surface); }
+.oe .setup-btn { cursor: pointer; }
 .oe .setup-logos { display: inline-flex; align-items: center; gap: 5px; }
-.oe .setup-logos img { width: 18px; height: 18px; object-fit: contain; }
-.oe .setup-logos > span { color: var(--muted); font-size: 11.5px; }
-.oe .gh-btn:hover { box-shadow: var(--shadow-md), 0 0 0 1px var(--ink); }
+.oe .setup-logos img { width: 20px; height: 20px; object-fit: contain; }
+.oe .setup-logos > span { color: var(--muted); font-size: 11px; }
+.oe .hero-title { display: flex; align-items: center; gap: 14px; }
+.oe .hero-mark { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--surface); color: var(--muted); }
+.oe .hero-mark svg { width: 22px; height: 22px; }
+.oe .powered { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.oe .powered b { color: var(--text); font-weight: 600; }
+.oe .powered svg { width: 16px; height: 16px; }
+/* Enrich Arena's faint dotted ground, behind the start page */
+.oe:has(.oe-main.narrow) { position: relative; isolation: isolate; }
+.oe:has(.oe-main.narrow)::before { content: ""; position: fixed; inset: 64px 0 0; pointer-events: none; z-index: -1;
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2296%22%20height%3D%2296%22%3E%3Cg%20fill%3D%22%23C6C6C6%22%20fill-opacity%3D%22.36%22%3E%3Crect%20x%3D%224%22%20y%3D%2212%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%2218%22%20y%3D%224%22%20width%3D%223%22%20height%3D%223%22/%3E%3Crect%20x%3D%2240%22%20y%3D%2218%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%2264%22%20y%3D%2210%22%20width%3D%223%22%20height%3D%223%22/%3E%3Crect%20x%3D%2284%22%20y%3D%2230%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%2212%22%20y%3D%2242%22%20width%3D%223%22%20height%3D%223%22/%3E%3Crect%20x%3D%2232%22%20y%3D%2238%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%2254%22%20y%3D%2250%22%20width%3D%223%22%20height%3D%223%22/%3E%3Crect%20x%3D%2272%22%20y%3D%2262%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%226%22%20y%3D%2276%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%2224%22%20y%3D%2268%22%20width%3D%223%22%20height%3D%223%22/%3E%3Crect%20x%3D%2242%22%20y%3D%2288%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%2288%22%20y%3D%2286%22%20width%3D%223%22%20height%3D%223%22/%3E%3Crect%20x%3D%2258%22%20y%3D%2278%22%20width%3D%222%22%20height%3D%222%22/%3E%3Crect%20x%3D%2280%22%20y%3D%224%22%20width%3D%222%22%20height%3D%222%22/%3E%3C/g%3E%3C/svg%3E"); mask-image: radial-gradient(ellipse at 0% 35%, #000, transparent 55%), radial-gradient(ellipse at 100% 10%, #000, transparent 50%); }
 .oe .hero p { color: var(--muted); font-size: 14px; margin: 10px 0 0; max-width: 620px; }
 .oe .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 28px; }
 .oe .card {
