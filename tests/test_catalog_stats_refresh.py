@@ -285,3 +285,20 @@ def test_merging_days_keeps_the_newest_success_and_every_count():
     assert (m.n, m.ok, m.bad, m.last_ok) == (7, 6, 1, datetime(2026, 9, 3))
     assert (m.hits, m.hit_decided, m.paid_hits, m.free_misses) == (1, 2, 2, 1)
     assert m.latency_seen == 6 and sorted(m.latencies) == [10, 20, 30, 40, 50, 60]
+
+
+async def test_observed_from_drops_the_days_before_a_replaced_service(clients, monkeypatch):
+    """An entry's `observed_from` keeps the folded days before it out of the published figures:
+    the provider replaced the service, and those calls measured the old one."""
+    from treg.domain.catalog import store as catalog_store
+    for _ in range(6):
+        await _record(EP, 502, 100, ago=timedelta(days=3))
+    for _ in range(6):
+        await _record(EP, 200, 100, ago=timedelta(minutes=5))
+    await catalog_stats.refresh(session_maker, now=_now())
+    reader = PostgresEndpointObservationReader(session_maker)
+    assert (await reader.get_many([EP]))[EP]["ok_rate"] == 0.5
+    entry = catalog_store.load().by_id[EP]
+    monkeypatch.setitem(entry, "observed_from", (_now() - timedelta(days=1)).strftime("%Y-%m-%d"))
+    after = (await reader.get_many([EP]))[EP]
+    assert after["samples"] == 6 and after["ok_rate"] == 1.0

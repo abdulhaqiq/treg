@@ -1601,7 +1601,11 @@ row into one `EndpointDayStat` bucket per endpoint per UTC day: counts, the newe
 `hit`/per-success tallies, and a uniform reservoir of at most `stats.LATENCY_SAMPLE` successful
 durations. Rows younger than sixty seconds wait for the next run so an audit insert that commits
 late is never skipped; a plain tool call (no `endpoint_id`) and a treg refusal (`refused_by`) are
-not evidence and are not folded, exactly as the live query excludes them. The first run bisects the
+not evidence and are not folded, exactly as the live query excludes them. An entry may declare
+`observed_from: YYYY-MM-DD` when its provider replaced the service behind it: the folded reader
+(`PostgresEndpointObservationReader.get_many`) then drops that endpoint's day buckets before the
+date, so its published reliability describes only the current service. The YAML line carries the
+reason as a comment; the live fallback query does not apply it. The first run bisects the
 primary key to the first row inside the window rather than reading older pages, consumes at most
 `--max-rows` per run, and the reader keeps computing the live aggregate until a run reports it
 has caught up (`caught_up_at`), so a deployment that never schedules the worker behaves as before.
