@@ -157,6 +157,14 @@ Portal-only and does not spend a validation query to read it. The policy records
 auto recharge, manually verified as enabled in the portal, and a documented 10 requests/second
 shared-key pace. treg does not read or change the vendor's auto-top-up setting.
 
+HLR Lookup's collector posts the platform key and secret to the free `/apiv2/balance` route and
+accepts only `Status: OK` with a finite nonnegative `Credits`, which can be fractional because
+cache hits and portability lookups cost half a credit. The policy is `credits / manual / api`:
+bundles are bought by hand and expire 18 months after purchase. The vendor caps concurrency at 210
+requests and throttles per telephone network, so shared-key smoothing uses a conservative 50
+requests per second. An empty balance arrives as a per-result `INSUFFICIENT_CREDIT` inside HTTP 200,
+not a 4xx; it was not forced, so no exhaustion signature or overflow route is claimed.
+
 Adyntel publishes no free balance or usage API. `NO_BALANCE_API` therefore reports PAYG credits as
 dashboard-only instead of the ambiguous "no fetcher written yet" state. `_KNOWN` classifies the
 wallet as manually funded credits, and `_RATE_LIMITS` smooths treg's shared key at the documented
