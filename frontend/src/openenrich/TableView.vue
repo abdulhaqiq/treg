@@ -344,6 +344,9 @@ function show(value) {
   return typeof value === 'object' ? JSON.stringify(value) : value
 }
 
+// a cell of hex colours (a brand's palette) shows them as swatches beside the codes
+const swatches = (v) => (typeof v === 'string' && /^#[0-9a-f]{3,8}(,\s*#[0-9a-f]{3,8})*$/i.test(v.trim()) ? v.split(',').map((x) => x.trim()) : null)
+
 // A job cell that has no value to show says why, as a small status pill.
 function pill(row, col) {
   const state = runOf(row, col)?.state
@@ -476,6 +479,7 @@ onUnmounted(() => window.removeEventListener('focus', reload))
                   {{ r.cells[c.id] }} {{ r.cells[c.id] === 1 ? 'person' : 'people' }} →
                 </a>
                 <span v-else-if="pill(r, c)" :class="['pill', runOf(r, c).state]">{{ pill(r, c) }}</span>
+                <span v-else-if="swatches(r.cells[c.id])" class="swatches"><i v-for="h in swatches(r.cells[c.id])" :key="h" :style="{ background: h }" />{{ show(r.cells[c.id]) }}</span>
                 <template v-else>{{ show(r.cells[c.id]) }}<span v-if="runOf(r, c)?.confidence != null" class="muted small"> · {{ Math.round(runOf(r, c).confidence * 100) }}%</span></template>
                 <button v-if="c.job && !busy(r, c.job.group)" class="rerun" title="Run this row" @click.stop="runGroup(c.job.group, 1, false, [r])">▶</button>
               </td>

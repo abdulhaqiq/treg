@@ -226,6 +226,9 @@
 .oe .oe-grid td .rerun { display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: 0 6px; line-height: 20px; font-size: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); cursor: pointer; }
 .oe .oe-grid td:hover .rerun { display: inline-block; }
 .oe .oe-grid td .rerun:hover { color: var(--accent); border-color: var(--accent); }
+.oe .swatches { display: inline-flex; align-items: center; gap: 3px; }
+.oe .swatches i { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px var(--line2); }
+.oe .swatches i:last-of-type { margin-right: 6px; }
 .oe .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--gray-soft); color: var(--muted); }
 .oe .pill.running, .oe .pill.queued { background: var(--live-soft); color: var(--live); }
 .oe .pill.error { background: var(--warn-soft); color: var(--warn); }
