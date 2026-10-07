@@ -312,3 +312,9 @@
 .oe .menu .menu-type select { width: auto; padding: 3px 6px; font-size: 12px; }
 
 .oe .oe-textarea { width: 100%; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 10px; font: inherit; resize: vertical; }
+
+.oe .text-col { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px; border-radius: 10px; background: var(--hover); }
+.oe .text-col input, .oe .text-col select { width: 100%; box-sizing: border-box; }
+.oe .text-col input { grid-column: 1 / -1; }
+.oe .text-col select { grid-column: 1 / -1; }
+.oe .text-col button { min-width: 0; }

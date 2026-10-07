@@ -7,6 +7,15 @@ import { CATEGORY_ORDER, COLUMN_JOBS, ENRICH_SHELVES, ROUTE_CAP_USD, SETTING_PAR
 // `edit`: a job column's group to change; the panel opens on its saved settings
 const props = defineProps({ table: Object, edit: String })
 const emit = defineEmits(['close', 'add'])
+
+// a free text column: a name and, optionally, what it holds
+const textName = ref(null)
+const textType = ref('')
+function addText() {
+  const label = textName.value.trim()
+  const column = { id: uniqueColumnId(props.table.columns, label), label, ...(textType.value ? { type: textType.value } : {}) }
+  emit('add', { columns: [column], rows: null })
+}
 const api = inject('oeApi')
 
 const tools = reactive({})     // tool id -> /catalog/endpoints answer, for prices and inputs
@@ -269,13 +278,29 @@ function add(rows) {
   <aside class="oe-side">
     <template v-if="!job">
       <header class="side-head">
-        <strong>{{ edit ? 'Edit column' : 'Add enrichment' }}</strong>
+        <strong>{{ edit ? 'Edit column' : 'Add column' }}</strong>
         <button class="icon" title="Close" @click="emit('close')">✕</button>
       </header>
       <form class="side-search" @submit.prevent>
         <input v-model="query" :placeholder="`Search ${COLUMN_JOBS.length + routed.length} enrichments and signals…`" autofocus />
       </form>
       <div class="side-body">
+        <!-- a column of your own: no tool fills it, you type its cells -->
+        <section v-if="!edit">
+          <button v-if="textName == null" class="enrich" @click="textName = ''">
+            <span class="oe-badge"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5h16v2 M9 19h6 M12 5v14" /></svg></span>
+            <span class="enrich-text"><strong>Text column</strong><small>An empty column you fill in yourself</small></span>
+          </button>
+          <form v-else class="text-col" @submit.prevent="addText">
+            <input v-model="textName" placeholder="Column name, e.g. Notes" autofocus @keydown.esc="textName = null" />
+            <select v-model="textType" title="What it holds: a typed column feeds enrichments">
+              <option value="">Any text</option>
+              <option v-for="t in COLUMN_TYPES" :key="t" :value="t">{{ t.replace(/_/g, ' ') }}</option>
+            </select>
+            <button class="primary" :disabled="!textName.trim()">Add</button>
+            <button type="button" class="ghost" @click="textName = null">Cancel</button>
+          </form>
+        </section>
         <section v-for="(list, name) in groups" :key="name">
           <h4>{{ name }}</h4>
           <button v-for="j in list" :key="j.id" class="enrich" :title="j.about || j.note || j.label" @click="pick(j)">
