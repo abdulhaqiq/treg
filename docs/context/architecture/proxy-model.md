@@ -100,10 +100,20 @@ incl. duplicates, headers, cookies, body bytes):
 > - is the exception: `CallRecord.error_request` / `error_response` retain a redacted, truncated copy
 > of what the caller sent and what the provider (or treg-side 502) answered. Without it a failure is a
 > bare status code: `path` holds the catalog URL rather than the caller's parameters and `params_hash`
-> is one-way. `application.call.settle` buffers metered responses with `_buffer_response`, while
-> `_peek_stream_head` reads
-> only the first 8 KiB of a failed unmetered response and replays every consumed byte before the rest
-> of the original iterator, preserving status, raw headers, streaming, and the upstream-close task.
+> is one-way. `application.call.settle` buffers metered responses with `_buffer_response`, while a
+> failed unmetered response is read whole (`_read_whole_if_small`, up to 8 MiB) so the caller-facing
+> masking below sees every byte; one too large is replaced on a credentialed call and streamed
+> untouched (`_peek_stream_head`, 8 KiB of evidence) only when nothing was injected.
+
+> **Credentials echoed in error bodies.** Providers quote the request back in failures (TikHub's 402
+> returns every request header, `Authorization` included). Before a 4xx/5xx body reaches the caller,
+> an idempotent replay or the evidence row, `evidence.redact_error_response` decodes it (gzip/deflate,
+> bounded; own-key calls mirror the caller's `Accept-Encoding`) and replaces every spelling of every
+> injected credential (`_secret_renderings`) with `***`. Masking is exact only: the admin-log pattern
+> nets would rewrite ordinary fields like `"key": "uniqueId"`. A normalised re-check that still finds
+> a credential, credentials that cannot be rendered, or a body that cannot be decoded replaces the
+> whole body with a `response_redacted` JSON error. An unchanged body keeps its bytes and encoding; a
+> masked one is re-sent identity-encoded with a fresh `Content-Length`. 2xx bodies are untouched.
 > Caller bodies on unmetered paths are cached only when `Content-Length` is declared and at most 64
 > KiB; large/chunked uploads stay streaming and retain only their query-param half. See
 > [data-model](data-model.md) for the redaction order, admin-only access, and retention.

@@ -39,6 +39,8 @@ from .evidence import (
     _caller_request_snippet,
     _error_response_evidence,
     _redact_snippet,
+    _ERROR_SCAN_MAX,
+    UNSCANNABLE_ERROR_BODY,
     _safe_secret_renderings,
     redact_error_response,
 )
@@ -324,27 +326,30 @@ async def _drain(response: UpstreamResponse) -> bytes:
     return body
 
 
-def _redact_error_body(
-    response: UpstreamResponse, body: bytes, tool, secrets: dict, provider: str,
-) -> tuple[UpstreamResponse, bytes]:
-    """Redact credentials from an error response body before returning to the caller.
+def _with_body(response: UpstreamResponse, body: bytes) -> UpstreamResponse:
+    """`response` carrying `body` instead, identity-encoded, with its own Content-Length."""
+    headers = tuple((k, v) for k, v in response.raw_headers
+                    if k.lower() not in (b"content-length", b"content-encoding"))
+    return UpstreamResponse(response.status, headers + ((b"content-length", str(len(body)).encode()),),
+                            _one_chunk(body), response.close)
 
-    Returns (new_response, redacted_body). The response is rebuilt with the redacted body
-    if redaction occurred. This prevents platform keys or org secrets from leaking to
-    callers when upstream providers echo request headers in error bodies (e.g. TikHub's
-    402 "Insufficient balance" which echoes the Authorization header).
+
+def _redact_error_body(
+    response: UpstreamResponse, body: bytes, tool, secrets: dict,
+) -> tuple[UpstreamResponse, bytes]:
+    """Mask injected credentials out of a WHOLE error body before the caller receives it.
+
+    Providers echo the request back in errors (TikHub's 402 "Insufficient balance" returns every
+    request header, Authorization included). Unchanged bodies keep their original bytes and
+    encoding; a redacted one is re-sent identity-encoded.
     """
-    redacted_body, was_redacted = redact_error_response(body, tool, secrets, provider=provider)
+    encoding = next((v.decode("latin-1") for k, v in response.raw_headers
+                     if k.lower() == b"content-encoding"), "")
+    redacted, was_redacted = redact_error_response(
+        body, tool, secrets, content_encoding=encoding)
     if not was_redacted:
         return response, body
-    # Rebuild the response with the redacted body
-    new_headers = tuple(
-        (k, v) if k.lower() != b"content-length" else (k, str(len(redacted_body)).encode())
-        for k, v in response.raw_headers
-    )
-    return UpstreamResponse(
-        response.status, new_headers, _one_chunk(redacted_body), response.close,
-    ), redacted_body
+    return _with_body(response, redacted), redacted
 
 
 async def _verify_public_managed_resources(
@@ -1375,14 +1380,17 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         observation=body_observation, origin_org_id=caller.org_id,
                         scope=cache_scopes[0])
             elif response.status >= 400:
-                # Preserve streaming for own-key and own-tool calls while retaining only the small
-                # diagnostic head. The replacement response replays every consumed byte verbatim.
-                response, body = await _peek_stream_head(response, _ERROR_BODY_SLICE)
-                # Redact credentials from error responses before returning to caller. This prevents
-                # platform keys or org secrets from leaking when upstream providers echo request
-                # headers in error bodies (e.g. TikHub's 402 "Insufficient balance").
-                response, body = _redact_error_body(
-                    response, body, tool, secrets, mk.provider if mk else "")
+                # A provider can echo the injected credential anywhere in an error body, so the
+                # caller receives only a body scanned whole (bounded). One too large to scan streams
+                # untouched only when nothing was injected; otherwise it is replaced, never a prefix.
+                response, whole = await _read_whole_if_small(response, _ERROR_SCAN_MAX)
+                if whole is not None:
+                    response, body = _redact_error_body(response, whole, tool, secrets)
+                elif _safe_secret_renderings(tool, secrets) != []:
+                    body = UNSCANNABLE_ERROR_BODY
+                    response = _with_body(response, body)
+                else:
+                    response, body = await _peek_stream_head(response, _ERROR_BODY_SLICE)
         except GatewayFailed:
             raise
         except httpx.RequestError as exc:  # upstream down/timeout is a gateway fault, not treg's 500
@@ -1618,7 +1626,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # Applied after settlement/capacity processing (which need the original body) but before
         # the body reaches the caller or is persisted for replay.
         if response.status >= 400 and spooled_bytes is None:
-            response, body = _redact_error_body(response, body, tool, secrets, mk.provider)
+            response, body = _redact_error_body(response, body, tool, secrets)
         if idem_key:
             # Here, and not earlier: this is the first point where BOTH the response and what it
             # actually cost are known, and a replay has to hand back the real charge rather than the

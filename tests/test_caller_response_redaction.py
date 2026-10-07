@@ -1,23 +1,14 @@
-"""Caller-facing response redaction: credentials must never reach callers in error bodies.
+"""Caller-facing response redaction: an injected credential never reaches the caller in an error body.
 
-Incident context (Oct 7, 2026):
-- TikHub's 402 "Insufficient balance" response echoes request headers including Authorization
-- Treg forwarded these bodies unchanged, exposing platform keys to external orgs
-- This test suite verifies the fix: error response bodies are redacted before reaching callers
-
-The redaction is applied:
-1. After settlement/capacity processing (which need the original body for cost calculation)
-2. Before idempotent storage (so replays don't leak credentials)
-3. Before returning to the caller
-
-Three defenses:
-1. Exact credential masking (primary) - every spelling of every injected credential
-2. Pattern-based masking (secondary) - URL userinfo, query params, known key prefixes
-3. TikHub-specific stripping (belt-and-braces) - removes `detail.headers` entirely
+Providers echo the request back in errors (TikHub's 402 "Insufficient balance" returns every request
+header, Authorization included). The body is redacted after settlement/capacity read it, before
+idempotent storage and before the caller sees it: exact masking of every spelling of
+every injected credential, then a fail-closed normalised re-check that replaces the whole body.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
 
 import pytest
@@ -87,7 +78,7 @@ class TestTikHub402PlatformKeyRedaction:
         assert PLATFORM_KEY not in response_body, "platform key leaked to caller"
         assert "Insufficient balance" in response_body, "the error message should survive"
 
-    async def test_tikhub_headers_echo_is_stripped_entirely(self, clients: AsyncClient, platform_on, monkeypatch):
+    async def test_tikhub_headers_echo_is_masked(self, clients: AsyncClient, platform_on, monkeypatch):
         """TikHub's detail.headers field is removed as belt-and-braces protection."""
         tikhub_402_body = json.dumps({
             "detail": {
@@ -104,9 +95,8 @@ class TestTikHub402PlatformKeyRedaction:
 
         assert r.status_code == 402
         body = r.json()
-        detail = body.get("detail", {})
-        assert detail.get("headers") == {}, "detail.headers should be stripped to empty object"
-        assert detail.get("message") == "Insufficient balance"
+        assert body["detail"]["headers"] == {"Authorization": "***"}
+        assert body["detail"]["message"] == "Insufficient balance"
 
     async def test_all_tikhub_error_statuses_are_redacted(self, clients: AsyncClient, platform_on, monkeypatch):
         """Both 400 and 402 errors from TikHub should have credentials redacted."""
@@ -235,9 +225,7 @@ class TestIdempotentStorageRedaction:
         assert r1.status_code == 402
         # The critical security assertion: the key must not reach the caller
         assert PLATFORM_KEY not in r1.content.decode(), "platform key leaked to caller"
-        # The headers should be stripped entirely for TikHub
-        body1 = r1.json()
-        assert body1.get("detail", {}).get("headers") == {}, "TikHub headers should be stripped"
+        assert r1.json()["detail"]["headers"] == {"Authorization": "***"}
 
         # Second request with the same idempotency key
         r2 = await clients.get(
@@ -247,10 +235,7 @@ class TestIdempotentStorageRedaction:
         assert r2.status_code == 402
         # Whether this is a replay or a new call, the key must never leak
         assert PLATFORM_KEY not in r2.content.decode(), "key leaked in second request"
-        # If idempotent replay occurred, verify the replayed body is also redacted
-        if "X-Treg-Idempotent-Replay" in r2.headers:
-            body2 = r2.json()
-            assert body2.get("detail", {}).get("headers") == {}, "replayed TikHub headers should be stripped"
+        assert r2.json()["detail"]["headers"] == {"Authorization": "***"}
 
 
 class TestStreamingErrorResponse:
@@ -298,6 +283,63 @@ class TestStreamingErrorResponse:
         assert own_key not in r.content.decode(), "credential leaked in streamed error"
 
 
+class TestOwnKeyErrorBodyIsScannedWhole:
+    """Own-key errors stream, so these pin that the WHOLE body is scanned, decoded and kept whole."""
+
+    KEY = "own-key-scan-whole-Z9"
+
+    async def _tool(self, clients: AsyncClient) -> None:
+        secret = (await clients.post("/secrets", json={"name": "whole-key", "value": self.KEY})).json()
+        await clients.post("/tools", json={
+            "name": "whole-tool", "base_url": "https://api.whole.test",
+            "bindings": [{"secret_id": secret["id"], "injector": "env", "location": "header",
+                          "name": "Authorization", "format": "Bearer {secret}"}],
+        })
+
+    async def test_a_gzipped_error_is_decoded_and_masked(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        raw = gzip.compress(json.dumps({"got": f"Bearer {self.KEY}"}).encode())
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            401, raw, headers={"content-encoding": "gzip", "content-length": str(len(raw))}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "gzip"})
+        assert r.status_code == 401
+        assert "content-encoding" not in r.headers
+        assert r.json() == {"got": "***"}
+
+    async def test_a_credential_past_the_evidence_slice_is_masked_and_nothing_is_cut(
+        self, clients: AsyncClient, monkeypatch,
+    ):
+        await self._tool(clients)
+        body = json.dumps({"pad": "y" * 20000, "echo": self.KEY, "end": "TAIL"}).encode()
+        monkeypatch.setattr(call_service, "relay", _fake_relay(402, body))
+        r = await clients.get("/call/whole-tool/x")
+        assert r.json() == {"pad": "y" * 20000, "echo": "***", "end": "TAIL"}
+
+    async def test_an_untouched_gzipped_error_keeps_its_bytes(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        raw = gzip.compress(b'{"error":"quota"}')
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            429, raw, headers={"content-encoding": "gzip"}))
+        r = await clients.get("/call/whole-tool/x", headers={"accept-encoding": "gzip"})
+        assert r.headers["content-encoding"] == "gzip"
+        assert r.json() == {"error": "quota"}
+
+    async def test_an_error_it_cannot_decode_is_replaced(self, clients: AsyncClient, monkeypatch):
+        await self._tool(clients)
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            400, b"\x1b\x00opaque-brotli", headers={"content-encoding": "br"}))
+        r = await clients.get("/call/whole-tool/x")
+        assert r.content == call_evidence.UNSCANNABLE_ERROR_BODY
+
+    def test_benign_key_shaped_fields_are_not_rewritten(self):
+        body = b'{"key":"uniqueId","message":"auth: required"}'
+        assert call_evidence._redact_caller_response(body, [self.KEY]) == (body, False)
+
+    def test_non_utf8_bytes_survive_masking(self):
+        body = b"\xff\xfe " + self.KEY.encode() + b" \xe9"
+        assert call_evidence._redact_caller_response(body, [self.KEY]) == (b"\xff\xfe *** \xe9", True)
+
+
 class TestEvidenceModuleDirectly:
     """Direct tests of the redaction functions in evidence.py."""
 
@@ -326,27 +368,6 @@ class TestEvidenceModuleDirectly:
         assert key.encode() not in redacted
         assert quote(key, safe="").encode() not in redacted
 
-    def test_strip_tikhub_headers_echo_removes_headers_field(self):
-        """TikHub's detail.headers is replaced with empty object."""
-        body = json.dumps({
-            "detail": {
-                "code": 402,
-                "message": "error",
-                "headers": {"Authorization": "Bearer secret"},
-            },
-        }).encode()
-
-        stripped = call_evidence._strip_tikhub_headers_echo(body)
-        doc = json.loads(stripped)
-
-        assert doc["detail"]["headers"] == {}
-        assert doc["detail"]["message"] == "error"
-
-    def test_strip_tikhub_headers_echo_leaves_non_tikhub_bodies_unchanged(self):
-        """Bodies without detail.headers are unchanged."""
-        body = b'{"error":"some other error"}'
-        assert call_evidence._strip_tikhub_headers_echo(body) == body
-
     def test_redact_error_response_fails_closed_when_credentials_unrenderable(self):
         """When credentials cannot be rendered, return a safe placeholder."""
         from types import SimpleNamespace
@@ -358,11 +379,11 @@ class TestEvidenceModuleDirectly:
         secrets = {}
 
         body, was_redacted = call_evidence.redact_error_response(
-            b'{"error":"contains secret"}', tool, secrets, provider="tikhub"
+            b'{"error":"contains secret"}', tool, secrets
         )
 
         assert was_redacted
-        assert b"response could not be safely scanned" in body
+        assert body == call_evidence.UNSCANNABLE_ERROR_BODY
 
     def test_redact_caller_response_empty_body_unchanged(self):
         """Empty bodies are returned unchanged."""
