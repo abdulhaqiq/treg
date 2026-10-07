@@ -166,8 +166,8 @@ export const SOURCE_LOOK = {
   linkedin_posts: ['message', '#0a66c2'], x_posts: ['message', '#111827'], reddit_posts: ['message', '#ff4500'],
 }
 export const SIGNAL_SOURCES = [
-  { id: 'jobs', label: 'Job postings', kind: 'jobs', tool: 'treg.linkedin.search.jobs', hint: 'Companies hiring for a role, from LinkedIn jobs',
-    identity: ['q'], noLimit: true, keep: ['title', 'company', 'location', 'posted_at', 'url', 'company_url'],
+  { id: 'jobs', label: 'Job postings', kind: 'jobs', tool: 'treg.companies.hiring', hint: 'Companies hiring for a role, from LinkedIn and other job boards',
+    identity: ['q'], noLimit: true, keep: ['title', 'company', 'location', 'posted_at', 'url', 'company_url', 'company_website'],
     filters: [
       { name: 'q', label: 'Job title or keywords', icon: 'briefcase', group: 'Job', type: 'text', placeholder: 'Head of Growth', open: true },
       { name: 'location', label: 'Location', icon: 'pin', group: 'Job', type: 'text', placeholder: 'United States', suggested: true },
