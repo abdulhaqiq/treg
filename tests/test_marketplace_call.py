@@ -1334,6 +1334,7 @@ def test_platform_estimate_normalizes_per_result_pricing():
     per_row = {"type": "per_result", "usd": 0.0001}
     assert call_resolution._platform_estimate_micro(per_row, {}) == 0.0001 * call_resolution._PLATFORM_PAGE_DEFAULT * 1_000_000
     assert call_resolution._platform_estimate_micro(per_row, {"limit": "5"}) == 500
+    assert call_resolution._platform_estimate_micro(per_row, {"pastNMonths": "1"}) == 100  # spyfu: a row a month
     assert call_resolution._platform_estimate_micro(per_row, {"limit": "100000"}) == 0.0001 * call_resolution._PLATFORM_PAGE_MAX * 1_000_000
     assert call_resolution._platform_estimate_micro({"type": "per_call", "usd": None}, {}) == 0
     # rounds UP — a sub-micro fraction must never round to free
@@ -3047,6 +3048,13 @@ def _usd_to_micro_for_test(usd) -> int:
     ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[{},{}]}', 2),
     # Findymail employee search: one credit per contact, never above the hold.
     ("findymail.search.employees", None, {"website": "x.io", "job_titles": ["CEO"], "count": 5}, b'[]', 0),
+    # SpyFu: one row per `results` item, an empty list is free, an unknown shape estimates.
+    ("spyfu.google.domain.overview", {"domain": "example.com", "pastNMonths": "1"}, None,
+     b'{"resultCount":1,"domain":"example.com","results":[{}]}', 1),
+    ("spyfu.google.domain.paid_keywords", {"query": "example.com", "pageSize": "10"}, None,
+     b'{"resultCount":0,"totalMatchingResults":0,"results":[]}', 0),
+    ("spyfu.google.domain.paid_keywords", {"query": "example.com", "pageSize": "10"}, None,
+     b'{"message":"unexpected"}', None),
 ])
 def test_per_result_search_settles_on_rows_returned_not_rows_requested(endpoint_id, query, req, body, rows):
     """Each reserves the requested page; the body says how many rows the vendor billed. The unit
