@@ -156,7 +156,7 @@ def email_domain(v: Any) -> str | None:
     return None if d in _FREE_MAIL else d
 
 
-# Mailboxes anyone can open (global and regional free mail, ISP mail, common disposable services):
+# Mailboxes anyone can open (global and regional free mail, ISP mail, common disposable and alias services):
 # their domain says nothing about the person's company.
 _FREE_MAIL = frozenset({
     # global free mail
@@ -182,6 +182,10 @@ _FREE_MAIL = frozenset({
     "mailinator.com", "guerrillamail.com", "10minutemail.com", "temp-mail.org", "tempmail.com",
     "yopmail.com", "trashmail.com", "sharklasers.com", "getnada.com", "dispostable.com",
     "maildrop.cc", "throwawaymail.com", "mohmal.com", "emailondeck.com", "fakeinbox.com",
+    # forwarding aliases: a real company's site, but anyone can get an address there
+    "duck.com", "privaterelay.appleid.com", "mozmail.com", "relay.firefox.com", "simplelogin.com",
+    "simplelogin.co", "simplelogin.fr", "slmail.me", "aleeas.com", "8alias.com", "addy.io", "anonaddy.com",
+    "anonaddy.me", "passmail.net", "passmail.com", "passinbox.com", "33mail.com",
 })
 
 
