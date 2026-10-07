@@ -256,6 +256,7 @@
 .web-layout main{flex:1;min-width:0;max-width:1080px;margin-inline:auto;padding:0 8px 80px}
 .web-page-footer .web-footer-links{display:flex;flex-wrap:wrap;gap:8px 24px}
 .wa-intro{align-items:flex-end;padding:30px 0 20px}
+.wa-intro .wa-setup{margin-left:auto;align-self:center}
 .wa-tagline{margin-left:auto;max-width:330px;color:var(--muted);font-size:13px;line-height:1.5;text-align:right}
 
 /* Command card: task, query and run on top; how and who below. */
@@ -457,12 +458,11 @@
 .web-horizontal-chart .price-amount{white-space:nowrap}
 @media(max-width:720px){.web-leaderboard-grid{grid-template-columns:minmax(0,1fr);gap:16px}.web-leaderboard-filters{grid-column:1;grid-row:1}.web-leaderboard-chart{grid-column:1;grid-row:2}.web-leaderboard-filters .stats-views{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}.web-leaderboard-filters .stats-views .web-view-select{padding:9px 12px}.web-leaderboard-option .web-info-tooltip{top:auto;bottom:calc(100% + 8px);left:0;transform:none}.web-leaderboard-option:nth-child(2) .web-info-tooltip{max-width:230px}.web-leaderboard-option:nth-child(n+3) .web-info-tooltip{left:auto;right:0}.web-leaderboard-filters .leaderboard-source{margin:0 4px 6px}.web-leaderboard-chart{padding:18px 14px 14px}.web-horizontal-chart .price-comparison-row{grid-template-columns:minmax(0,1fr) 110px;gap:8px 10px}.web-horizontal-chart .price-vendor{grid-column:1;grid-row:1}.web-horizontal-chart .price-amount{grid-column:2;grid-row:1}.web-horizontal-chart .price-track{grid-column:1/-1;grid-row:2}}
 @media(max-width:800px){.web-table-detail ol{grid-template-columns:1fr}}
-@media(max-width:900px){.wa-setup>span:first-child{display:none}}
 @media(max-width:800px){.web-layout main{padding-bottom:50px}.wa-links ol{grid-template-columns:1fr}.wa-intro{flex-wrap:wrap}.wa-tagline{margin-left:0;max-width:none;text-align:left;flex-basis:100%}}
 @media(max-width:700px){#web-arena{overflow-x:clip}.web-layout.has-history{flex-direction:column;column-gap:0}.web-layout .session-sidebar{position:static;width:calc(100% - 32px);flex-basis:auto;max-height:none;margin:14px 16px 0;gap:8px}.web-layout .session-list{flex-direction:row;overflow-x:auto;overflow-y:hidden}.web-layout .session-item{width:180px}.web-layout main{padding:0 16px 50px}
   .wa-query{flex-wrap:wrap;padding:7px 7px 7px 14px}.wa-query-input{flex-basis:calc(100% - 40px)}.wa-run{flex:1 1 100%;height:44px}
   .wa-price-note{margin-left:0;flex-basis:100%}.wa-mode-note{display:none}}
-@media(max-width:760px){#web-arena .masthead .wa-setup{display:none}}
+@media(max-width:560px){.wa-intro .wa-setup{margin-left:0}}
 @media(max-width:540px){.wa-tasks .t-tab{height:40px}.wa-tasks .t-tabs-pill{height:40px}.wa-chip{height:40px}.web-info-tooltip,.web-intent-info .web-info-tooltip{left:-130px;right:auto}.web-result-actions .rating-button,.wa-lane-actions .rating-button{min-width:44px;min-height:44px}}
 @media(prefers-reduced-motion:reduce){.web-info-tooltip,.wa-chip,.wa-chip-tip,.wa-progress span,.wa-query{transition:none!important}.wa-lane-track,.wa-pop,.wa-stage.is-finale .fighter.won .fighter-sprite{animation:none!important}}
 /* Live board: every provider's state at a glance, pinned while the run is live. */
