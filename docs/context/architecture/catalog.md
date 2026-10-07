@@ -1893,7 +1893,10 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   `treg.<capability>` (`store.load` skips a `routed: false` contract) (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
   contract, `cost` = the children's range, `routed_children`, `miss_billed_by` = the children priced
   per call or per result, whose provider bills an answer treg judges a miss: the caller pays those
-  too, and the cost note says so). Never hand-written; not in any
+  too, and the cost note says so). When `miss_billed_by` is non-empty the cost carries `varies:
+  true` and `advertised_usd` quotes `usd_per_call: null`: the $0 floor of the range read as "free"
+  to an agent that then paid for hundreds of billed misses. The note leads with "NOT free" and
+  carries the range. Never hand-written; not in any
   provider file.
   `catalog_get` on it returns the contract and the ranked **plan** (the quote) —
   nothing is reserved.
@@ -2005,7 +2008,9 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   Francisco — reported as a hit, $0.0025, no signal to the caller. `ignored_filters()` is pure and
   computed at PLANNING time (`routing/plan.py`), so the ranking and the per-attempt report read the
   same set. The provider stays reachable: it still wins when nothing better is callable, and price
-  still decides among candidates that ignore equally much.
+  still decides among candidates that ignore equally much. `limit` never counts: it is a page size,
+  not a narrowing filter, and the contract defaults it, so counting it demoted every limit-less
+  child (a free-on-miss role finder fell behind a search that bills its empty pages).
   **Coverage caveat**: of 16 `people.search` children, only icypeas maps geo today, so the rule
   currently floats one provider. lusha, crustdata, companyenrich and leadmagic all filter on
   location upstream — their adapters just do not map it. Until they do, the rule is doing more work
