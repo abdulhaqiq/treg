@@ -464,7 +464,9 @@ later for the timers; it complements `/admin/reconcile/repeats`, which prices wh
 
 Hooked in `call_tool` immediately after `_buffer_response` — the one line where "metered platform
 call, body already in memory" is a fact, which IS eligibility gate 3. Metered 2xx only, and never a 2xx the capacity
-signature table reads as our own account running dry (Icypeas' 200 "insufficient credits"); the
+signature table reads as our own account running dry (Icypeas' 200 "insufficient credits"), nor a
+"still working" submission on an async row whose first answer may be finished
+(`terminal_on_submission`): that is a task id, not an answer to replay; the
 serve path already emits `X-Treg-Cache: hit`. The call context also carries `cached` from
 `served_hit`, so review invitations can exclude archive hits independently of response headers. `archive.record()` is fire-and-forget with
 audit's discipline: bounded pending set (512), failures swallowed but logged at **ERROR** (a lost

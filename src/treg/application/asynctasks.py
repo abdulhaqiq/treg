@@ -51,7 +51,7 @@ async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = 
     # (`_submission_accepted`); a failure here is a programming error and surfaces as one.
     extracted = asynctasks.extract_submission(mk.async_descriptor or {}, json.loads(body))
     task_id, poll_url, error = extracted.task_id, extracted.poll_url, ""
-    due = now + timedelta(seconds=60)
+    due = now + min(timedelta(seconds=60), asynctasks.max_age(mk.async_descriptor))
     async with session_maker() as db:
         hold = await db.get(Hold, mk.call_id)
         if hold is None:
@@ -315,6 +315,8 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
             return "noop"
         if expected_attempt is not None and row.attempts != expected_attempt:
             return "noop"
+        # The 24-hour bound, not a descriptor's shorter `max_age`: that one only ends polling. A
+        # finished answer seen while the row is still pending is a delivered answer and settles.
         if outcome in ("success", "failure", "billed_failure") and asynctasks.expired(row.created_at, now):
             outcome = "timed_out"
         if outcome in ("success", "failure", "billed_failure", "timed_out") \
@@ -365,17 +367,18 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
             row.status = asynctasks.RELEASED
             row.hit = terminal_hit
         elif outcome == "timed_out":
-            # No terminal state in 24 hours means treg does not know whether the caller got
-            # anything. The platform absorbs that uncertainty: the hold goes back to the team in
-            # full, the upstream charge (if any) is treg's, and the row is flagged for a human.
+            # No terminal state within the task's window (24 hours, or the descriptor's `max_age`)
+            # means treg does not know whether the caller got anything. The platform absorbs that
+            # uncertainty: the hold goes back to the team in full, the upstream charge (if any) is
+            # treg's, and the row is flagged for a human.
             # Charging the reserve here would bill a customer for an outcome nobody observed.
             await ledger.release_in_transaction(db, row.call_id, reason="async_task_timed_out",
                                                 meta={"provider": row.provider, "async_task": True,
                                                       "reconcile_review": True})
             row.settled_micro = 0
             row.status = asynctasks.TIMED_OUT
-            row.error = "terminal state not observed within 24 hours; hold released, platform absorbs"
-            log.error("ASYNC TASK TIMED OUT: call %s on %s (%s) had no terminal state in 24h; "
+            row.error = "terminal state not observed within the polling window; hold released, platform absorbs"
+            log.error("ASYNC TASK TIMED OUT: call %s on %s (%s) had no terminal state in its window; "
                       "released %d micro-USD to the team, platform absorbs the upstream charge - "
                       "check whether the provider changed its status field",
                       row.call_id, row.provider, row.endpoint_id, row.reserved_micro)
@@ -383,7 +386,7 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
             row.consecutive_failures = row.consecutive_failures + 1 if outcome == "poll_error" else 0
             due = (asynctasks.next_failure_check(now, row.consecutive_failures)
                    if row.consecutive_failures else asynctasks.next_check(now, row.attempts))
-            row.next_check_at = min(due, row.created_at + asynctasks.MAX_AGE)
+            row.next_check_at = min(due, row.created_at + asynctasks.max_age(row.descriptor))
             await db.commit()
             return "backed_off"
         row.completed_at = now
@@ -428,10 +431,10 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int) -> str
         if row is None or row.status != asynctasks.PENDING or row.attempts != attempt:
             return "noop"
         if row.error:
-            if not asynctasks.expired(row.created_at, now):
+            if not asynctasks.expired(row.created_at, now, row.descriptor):
                 return "backed_off"
         snapshot = row.model_copy()
-    if asynctasks.expired(snapshot.created_at, now):
+    if asynctasks.expired(snapshot.created_at, now, snapshot.descriptor):
         return await _finish(call_id, "timed_out", None, now, expected_attempt=attempt)
     try:
         async with asyncio.timeout(POLL_TIMEOUT_S):
