@@ -374,7 +374,7 @@ class Settings(BaseSettings):
     onboarding_v2: bool = False
     # Off for everyone else, on for these: comma-separated addresses or `@domain`s.
     onboarding_v2_emails: str = ""
-    # The experiment: a new user with a work address (onboard.work_email) is offered to the
+    # The experiment: a new user whose address is not free, ISP, alias or school mail is offered to the
     # dashboard's PostHog flag `onboarding-v2`, whose `test` arm gets this flow and `control` the
     # team-name modal. Off = nobody outside the two settings above sees the flow.
     onboarding_v2_experiment: bool = False
