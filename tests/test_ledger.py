@@ -79,6 +79,20 @@ async def test_grant_is_idempotent_per_kind(c: AsyncClient):
     assert await _assert_invariant(org_id) == get_settings().promo_grant_micro
 
 
+async def test_large_promotional_grant_exceeds_int32_micro_usd(c: AsyncClient):
+    """A $5,000 wallet must not hit PostgreSQL's old $2,147.48 INTEGER ceiling."""
+    org_id, _ = await _org(c)
+    amount = 4_999_000_000
+    async with session_maker() as db:
+        block = await ledger.grant(db, org_id, amount_micro=amount, once=False)
+        await db.commit()
+    assert block is not None and block.amount_micro == amount
+    assert await _assert_invariant(org_id) == get_settings().promo_grant_micro + amount
+    async with session_maker() as db:
+        entries = await ledger.entries_of(db, org_id)
+    assert [entry.amount_micro for entry in entries] == [amount, get_settings().promo_grant_micro]
+
+
 async def test_topup_credits_purchased_and_is_idempotent_on_payment_ref(c: AsyncClient):
     """Stripe redelivers webhooks; a second call with the same payment ref must move no money."""
     org_id, _ = await _org(c)

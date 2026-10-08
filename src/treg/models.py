@@ -54,7 +54,8 @@ class Org(SQLModel, table=True):
     # open Holds. It exists as a column, not a query, because it is the hot-path spend gate: one
     # conditional UPDATE against this integer is what stops concurrent agent calls racing past zero
     # (see ledger.reserve). Only `domain/money` may write it.
-    balance_micro: int = Field(default=0)
+    balance_micro: int = Field(
+        default=0, sa_column=Column("balance_micro", BigInteger, nullable=False))
     # "Committed since midnight UTC": everything settled today plus everything still held from
     # today - the number the fail-closed daily cap is checked against on EVERY metered call. Kept
     # here, in the same UPDATE that moves the balance, because the equivalent aggregate over
@@ -778,8 +779,10 @@ class CreditBlock(SQLModel, table=True):
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id", index=True)
     kind: str = Field(default="promotional", index=True)  # promotional | purchased
-    amount_micro: int  # granted amount, micro-USD (1e-6 USD) — never mutated
-    remaining_micro: int  # what's left to spend from this block
+    amount_micro: int = Field(
+        sa_column=Column("amount_micro", BigInteger, nullable=False))  # granted amount, micro-USD
+    remaining_micro: int = Field(
+        sa_column=Column("remaining_micro", BigInteger, nullable=False))  # what's left to spend
     currency: str = Field(default="USD")
     expires_at: NaiveUTC | None = Field(default=None)
     # The already-authorized payment this block was funded by (phase 4). Doubles as the idempotency
@@ -820,7 +823,8 @@ class LedgerEntry(SQLModel, table=True):
     block_id: str | None = Field(default=None, index=True)
     # grant | topup | reserve | settle | release | refund | adjustment | expiry
     kind: str = Field(index=True)
-    amount_micro: int  # signed (see docstring)
+    amount_micro: int = Field(
+        sa_column=Column("amount_micro", BigInteger, nullable=False))  # signed (see docstring)
     call_id: str | None = Field(default=None, index=True)
     endpoint_id: str | None = Field(default=None)
     # Free-form provenance: estimated vs observed cost, the margin applied, payment ref, shortfalls.
