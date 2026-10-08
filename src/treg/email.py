@@ -1,17 +1,24 @@
-"""Transactional email via Resend — the two sends the registry needs:
+"""Transactional email via SMTP or Resend — the sends the registry needs:
 
   1. send_otp    — the 6-digit sign-in code (POST /auth/email/start)
   2. send_invite — a team invitation with its one-time code (POST /orgs/{id}/invites)
 
 Best-effort by design: every send is wrapped so a mail outage can NEVER break sign-in or invite
-creation (the code still exists server-side; the CLI/dashboard flows keep working). If no
-`TREG_RESEND_API_KEY` is set, sends are skipped (logged), so local/dev without a key is fine.
+creation (the code still exists server-side; the CLI/dashboard flows keep working). SMTP is used
+when `TREG_SMTP_HOST` is configured, otherwise Resend is used when `TREG_RESEND_API_KEY` is set.
+With neither backend, sends are skipped (logged), so local/dev without mail credentials is fine.
 """
 from __future__ import annotations
 
+import asyncio
+import smtplib
+import ssl
+from email.message import EmailMessage
+from email.utils import parseaddr
+
 import httpx
 
-from .config import get_settings
+from .config import Settings, get_settings
 
 RESEND_URL = "https://api.resend.com/emails"
 
@@ -34,13 +41,16 @@ _WRAP = (
 
 
 async def _send(to: str, subject: str, html: str, text: str) -> bool:
-    """POST one email to Resend. Returns True on 2xx; never raises."""
+    """Send one email using the configured backend. Returns success; never raises."""
     s = get_settings()
-    if not s.resend_api_key:
-        print(f"[email] no TREG_RESEND_API_KEY — skipping send to {to} ({subject!r})")
+    if not s.smtp_host and not s.resend_api_key:
+        print(f"[email] no SMTP host or TREG_RESEND_API_KEY — skipping send to {to} ({subject!r})")
         return False
-    payload = {"from": s.email_from, "to": [to], "subject": subject, "html": html, "text": text}
     try:
+        if s.smtp_host:
+            return await asyncio.to_thread(_send_smtp, s, to, subject, html, text)
+
+        payload = {"from": s.email_from, "to": [to], "subject": subject, "html": html, "text": text}
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
                 RESEND_URL,
@@ -54,6 +64,39 @@ async def _send(to: str, subject: str, html: str, text: str) -> bool:
     except Exception as e:  # noqa: BLE001 — mail must never break the calling flow
         print(f"[email] send to {to} failed: {e}")
         return False
+
+
+def _send_smtp(s: Settings, to: str, subject: str, html: str, text: str) -> bool:
+    """Blocking SMTP send, called in a worker thread by `_send`."""
+    message = EmailMessage()
+    message["From"] = s.email_from
+    message["To"] = to
+    message["Subject"] = subject
+    message.set_content(text)
+    message.add_alternative(html, subtype="html")
+
+    envelope_from = parseaddr(s.email_from)[1]
+    if not envelope_from:
+        raise ValueError("TREG_EMAIL_FROM must contain an email address")
+
+    context = ssl.create_default_context()
+    smtp_class = smtplib.SMTP_SSL if s.smtp_ssl else smtplib.SMTP
+    kwargs = {"host": s.smtp_host, "port": s.smtp_port, "timeout": s.smtp_timeout_s}
+    if s.smtp_ssl:
+        kwargs["context"] = context
+
+    with smtp_class(**kwargs) as server:
+        if s.smtp_starttls and not s.smtp_ssl:
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
+        if s.smtp_username:
+            server.login(s.smtp_username, s.smtp_password)
+        refused = server.send_message(message, from_addr=envelope_from, to_addrs=[to])
+    if refused:
+        print(f"[email] SMTP refused recipient {to}")
+        return False
+    return True
 
 
 async def send_otp(email: str, code: str, ttl_minutes: int = 10) -> bool:

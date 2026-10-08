@@ -211,8 +211,12 @@ Cron job's workload. Configure it in a private local `.env` or the hosting servi
 - `claude_connector_enabled` gates the catalog-only connector at `/mcp/v2/`.
 - `connect_demo_enabled` gates the developer OAuth test page. Leave it off on public deployments.
 - `intercom_app_id` and `intercom_secret` enable optional support chat. Empty disables it.
-- `resend_api_key` and `email_from` enable transactional email. The sender must use a domain verified
-  with the operator's mail provider.
+- `smtp_host` enables the SMTP transactional-email backend; `smtp_port`, `smtp_username`,
+  `smtp_password`, `smtp_starttls`, `smtp_ssl` and `smtp_timeout_s` control its connection. STARTTLS
+  is skipped when implicit TLS is enabled, and authentication is skipped when the username is empty.
+  A configured SMTP host takes precedence over Resend.
+- `resend_api_key` enables the Resend fallback when no SMTP host is configured. `email_from` is shared
+  by both backends, and its sender address or domain must be verified with the selected provider.
 
 Registry-owned OAuth applications, advertising conversion credentials and platform provider keys are
 optional deployment capabilities. Their names and binding behavior are documented with their owning

@@ -832,10 +832,17 @@ class Settings(BaseSettings):
         real (Postgres) deploy. So even a stray TREG_EMAIL_DEV_MODE=true in production can't leak codes."""
         return self.email_dev_mode and "sqlite" in self.database_url
 
-    # Transactional email via Resend (OTP sign-in codes + team invitations). Empty key = no real
-    # send (dev mode still returns the code; prod without a key silently skips the send). From must
-    # be a Resend-verified domain — treg.to is verified (DKIM + SPF); treg.superdesign.dev remains
-    # verified as a fallback.
+    # Transactional email (OTP sign-in codes + team invitations). SMTP takes precedence when a host
+    # is configured; otherwise Resend is used when its key is present. With neither backend, sends
+    # are skipped (dev mode can still return the code on guarded local SQLite deployments). The From
+    # address must be verified with the selected mail provider.
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = Field(default="", repr=False)
+    smtp_password: str = Field(default="", repr=False)
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    smtp_timeout_s: float = Field(default=15.0, gt=0, le=120)
     resend_api_key: str = ""
     email_from: str = "tools-registry <no-reply@treg.to>"
 

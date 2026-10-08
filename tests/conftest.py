@@ -66,6 +66,7 @@ os.environ["TREG_DATABASE_URL"] = _test_db_url or _default
 os.environ["TREG_READ_DATABASE_URL"] = ""
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
+os.environ["TREG_SMTP_HOST"] = ""  # never connect to an SMTP server from the test suite
 os.environ["TREG_RUN_ALLOWED_BINS"] = "sh,echo,true,false,cat,sleep,treg-nonexistent-bin-xyz"  # allow the test CLIs for --server run tests
 os.environ["TREG_PROXY_SSRF_CHECK"] = "false"
 # The production default is OFF. The established connector tests and committed route snapshots test
