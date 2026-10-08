@@ -18,7 +18,11 @@ WORKDIR /app
 COPY . .
 COPY --from=dashboard /app/src/treg/web/dashboard ./src/treg/web/dashboard
 
-RUN uv sync --locked --no-dev --extra server \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && uv sync --locked --no-dev --extra server \
+    && apt-get purge -y --auto-remove build-essential \
+    && rm -rf /var/lib/apt/lists/* \
     && groupadd --system treg \
     && useradd --system --gid treg --home-dir /app treg \
     && chown -R treg:treg /app
