@@ -211,7 +211,7 @@ async def start_email_login(email: str, client_ip: str) -> dict:
         raise EmailAuthError("demo_address")
     if _is_machine_email(email):
         raise EmailAuthError("machine_identity")
-    if signup.blocked_email(email, "otp_start"):  # refuse early: no code, no mail, no rate window
+    if signup.email_refused(email, "otp_start"):  # refuse early: no code, no mail, no rate window
         raise EmailAuthError("blocked_domain")
 
     async with database.session_maker() as db:

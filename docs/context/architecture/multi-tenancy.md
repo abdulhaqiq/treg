@@ -164,9 +164,15 @@ Team deletion removes evaluations before their runs through `ORG_SCOPED_MODELS`.
   Every identity door is blocked at the shared choke point `_find_or_create_user`, plus `register_user`
   (which predates it and creates a `User` directly) and `auth_email_start` (refuse early, mint no code).
   `list_members` carries `is_agent` so one roster can show people and machines apart.
-- **Email-domain blocklist.** The same choke points, for throwaway mail and domains used for bulk
-  registration. New verified accounts can receive one promotional balance, so farming verified inboxes
-  remains an abuse path even though repeated team creation no longer earns credit. **Entirely configuration**: the classifier
+- **Human-email access policy.** `signup.email_refused(email, door)` applies two deployment settings
+  at the same identity choke points. `TREG_ALLOWED_LOGIN_EMAILS` is an optional comma-separated list
+  of normalized exact addresses for private registries. Empty preserves the public default and allows
+  every human address; non-empty refuses every address not listed, logs
+  `event=signup_email_not_allowed door=<door> domain=<domain>`, and **fails closed** on policy errors.
+  It is an access boundary, so a broken allowlist can never widen access. The domain blocklist handles
+  throwaway mail and domains used for bulk registration. New verified accounts can receive one
+  promotional balance, so farming verified inboxes remains an abuse path even though repeated team
+  creation no longer earns credit. **Entirely configuration**: the classifier
   (`_is_blocked_email` in `domain/identity/access.py`, pure — it only answers) reads
   `TREG_BLOCKED_EMAIL_DOMAINS` and nothing else, parsed once per distinct value in `config.py`
   (trim, drop a leading `@`/`.`, lowercase, and drop any dotless entry so a typed `com` cannot
@@ -182,7 +188,8 @@ Team deletion removes evaluations before their runs through `ORG_SCOPED_MODELS`.
   because registering `<random>.<listed-domain>` is otherwise a one-line bypass; **sign-in as well
   as sign-up** (an account that predates the listing gets no new session; existing accounts are
   suspended out of band). The DECISION lives in the application
-  layer, `signup.blocked_email(email, door)`: it refuses, writes one structured line per block
+  layer, `signup.blocked_email(email, door)`, called after the allowlist decision: it refuses, writes
+  one structured line per block
   (`event=signup_blocked_domain door=<door> domain=<domain>` — the refusal reveals nothing, so the
   log is the only detection a burst has), and **fails open**, logging `event=blocklist_error`
   and letting the sign-in through if the classifier ever raises, because a misconfiguration must
@@ -194,11 +201,11 @@ Team deletion removes evaluations before their runs through `ORG_SCOPED_MODELS`.
   door, reachable with a token minted before the listing) and the code-based `POST /invites/accept`
   (which constructs a `User` directly, so it guards itself). Every refusal is the `machine_identity`
   sibling's exact 403 `this address cannot be used to sign in` (a brand page on the browser doors,
-  like `suspended`): the caller learns neither that a list exists nor what is on it. Deliberately a
-  blocklist and nothing more: no allowlist, no table, no admin UI. Not covered: a session or identity
-  token already live when the domain was listed keeps working until suspension or expiry (the
-  out-of-band suspension); the promo grant and referral bonus are not separately gated, since with
-  the doors closed no promo-funded team on a blocked domain can come into existence; and vendoring a
+  like `suspended`): the caller learns neither which policy refused it nor what either policy contains.
+  There is no table or admin UI. Not covered: a session or identity token already live when either
+  policy changes keeps working until suspension or expiry (the out-of-band suspension); the promo
+  grant and referral bonus are not separately gated, since with the doors closed no promo-funded team
+  on a refused address can come into existence; and vendoring a
   full public disposable-domain list is a follow-up (megabytes of package data in the base wheel,
   which also ships the light CLI, and not yet checked against real users).
   **A rotate replaces the TOKEN, never the limits.** Because rotate is the same endpoint as create, an

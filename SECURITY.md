@@ -45,10 +45,13 @@ provider account and bypass this platform ownership table.
   eligibility in the same transaction as the money grant; team deletion never restores it. Accounts
   predating revision `0033` receive no new automatic grant; their existing balances are unchanged.
   New identities can still be farmed through verified inboxes, so this is not a one-human guarantee.
-  `TREG_PROMO_GRANT_MICRO=0` stops new automatic grants after deployment. The domain blocklist
-  (`TREG_BLOCKED_EMAIL_DOMAINS`, unset means no blocks) remains a configurable speed bump at every
-  sign-in/sign-up door and both team-creating endpoints; it fails open on classifier errors.
-  Suspend abusive users and teams separately, retaining their records for investigation.
+  `TREG_PROMO_GRANT_MICRO=0` stops new automatic grants after deployment. Private deployments may
+  set `TREG_ALLOWED_LOGIN_EMAILS` to an exact comma-separated human-email allowlist enforced at every
+  sign-in/sign-up door; a configured allowlist fails closed. The domain blocklist
+  (`TREG_BLOCKED_EMAIL_DOMAINS`, unset means no blocks) remains a configurable abuse speed bump at
+  the same doors and both team-creating endpoints; its classifier fails open. Neither policy revokes
+  an already-live credential, so suspend excluded users to invalidate their access while retaining
+  their records for investigation.
 - **Designated sign-in codes are a password, stored only as a hash.** `TREG_FIXED_LOGIN_CODES`
   (unset by default) maps an email with no inbox, such as an app directory reviewer's demo account,
   to the SHA-256 of a fixed code. The email-code door then sends nothing and accepts only that code,

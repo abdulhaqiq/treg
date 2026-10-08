@@ -528,7 +528,7 @@ async def accept_invite(
     org = await db.get(Org, invite.org_id)
     if org is not None and org.suspended:  # don't let anyone join a platform-locked org
         raise HTTPException(status_code=403, detail="org suspended")
-    if signup_use_cases.blocked_email(email, "invite_code"):  # creates a User directly: guards itself
+    if signup_use_cases.email_refused(email, "invite_code"):  # creates a User directly: guards itself
         raise HTTPException(status_code=403, detail="this address cannot be used to sign in")
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is not None and user.suspended:  # a banned user must not accrue new memberships

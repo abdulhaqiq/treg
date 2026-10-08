@@ -200,6 +200,9 @@ Cron job's workload. Configure it in a private local `.env` or the hosting servi
   is operational state and is maintained privately.
 - `promo_grant_micro` controls the once-per-verified-user signup grant. Zero pauses new automatic
   grants without changing existing balances.
+- `allowed_login_emails` is an optional comma-separated exact-email allowlist for private
+  deployments. Empty permits every human address; non-empty is enforced at every identity and
+  registration door and fails closed on policy errors.
 - `blocked_email_domains` is the complete comma-separated blocklist. Empty blocks no domains. It is
   a sign-in and team-creation speed bump, not a substitute for suspending an existing abusive user.
 - `run_proof` gates release of a shared key to the root-installed local runner. Empty refuses shared

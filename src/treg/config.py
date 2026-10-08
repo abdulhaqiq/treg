@@ -53,6 +53,12 @@ def _blocked_email_domains(raw: str) -> frozenset[str]:
     )
 
 
+@lru_cache
+def _allowed_login_emails(raw: str) -> frozenset[str]:
+    """Parse the exact human-email allowlist. Empty keeps the public default (allow everyone)."""
+    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+
+
 # How treg introduces itself to a provider: on every call on its shared key (the relay's rewrite 5)
 # and as the default of the clients it calls providers with, never a library's own default.
 TREG_USER_AGENT = "treg/1.0 (+https://treg.to)"
@@ -701,9 +707,22 @@ class Settings(BaseSettings):
     # sign-up and sign-in door and at the two doors that create a promo-funded team (POST /users,
     # POST /orgs). Configuration rather than code because bulk registration moves to a new domain in
     # minutes, and a defence that needs a deploy to keep up is always behind. Existing accounts on a
-    # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
-    # deliberately: no allowlist, no table, no admin UI.
+    # listed domain are suspended out of band, so listing one strands nobody legitimate. This abuse
+    # blocklist remains separate from the optional exact-email access allowlist below.
     blocked_email_domains: str = ""
+
+    # Optional exact allowlist for private deployments. Empty preserves the public registry's normal
+    # behavior; once set, every human identity/signup door refuses all other addresses.
+    allowed_login_emails: str = ""
+
+    @field_validator("allowed_login_emails")
+    @classmethod
+    def _allowed_login_emails_shape(cls, v: str) -> str:
+        for part in (p.strip() for p in v.split(",") if p.strip()):
+            local, separator, domain = part.rpartition("@")
+            if not separator or not local or not domain or any(c.isspace() for c in part):
+                raise ValueError("allowed_login_emails entries must be complete email addresses")
+        return v
 
     # Sign-in codes for designated accounts that cannot receive email, such as the demo account an
     # app directory's reviewers use: `email=<sha256 hex of the code>,...`. For a listed email the
@@ -730,6 +749,11 @@ class Settings(BaseSettings):
     def blocked_email_domain_set(self) -> frozenset[str]:
         """The normalised `TREG_BLOCKED_EMAIL_DOMAINS` entries; empty = nothing is blocked."""
         return _blocked_email_domains(self.blocked_email_domains)
+
+    @property
+    def allowed_login_email_set(self) -> frozenset[str]:
+        """Exact normalized `TREG_ALLOWED_LOGIN_EMAILS`; empty = no allowlist restriction."""
+        return _allowed_login_emails(self.allowed_login_emails)
 
     # Frictionless local mode: `curl … | sh` brings up a server you are already signed into, with no
     # account, email or password. Only takes effect when `single_user_ok` allows it (see below).

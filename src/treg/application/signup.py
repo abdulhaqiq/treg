@@ -42,7 +42,28 @@ class MachineIdentityError(Exception):
 
 
 class BlockedEmailError(Exception):
-    """An address on a blocked email domain reached an identity door."""
+    """An address refused by the deployment's email policy reached an identity door."""
+
+
+def email_refused(email: str, door: str) -> bool:
+    """Apply the exact-email allowlist first, then the disposable-domain blocklist.
+
+    The allowlist fails closed because operators use it as an access boundary. The blocklist keeps
+    its fail-open behavior because it is only an abuse speed bump. Both return the same generic
+    caller-facing refusal; structured logs retain the operational reason.
+    """
+    log = logging.getLogger("treg.auth")
+    try:
+        allowed = get_settings().allowed_login_email_set
+        if allowed and _norm_email(email) not in allowed:
+            log.warning(
+                "event=signup_email_not_allowed door=%s domain=%s", door, _email_domain(email),
+            )
+            return True
+    except Exception as exc:  # noqa: BLE001 - an allowlist failure must deny, never widen access
+        log.error("event=allowlist_error door=%s error=%s", door, exc)
+        return True
+    return blocked_email(email, door)
 
 
 def blocked_email(email: str, door: str) -> bool:
@@ -79,9 +100,9 @@ async def find_or_create_user(
     # (The domains are unroutable, so a code could never be delivered anyway; this makes it explicit.)
     if _is_machine_email(email):
         raise MachineIdentityError
-    # Same choke point for the domain blocklist, and BEFORE the lookup on purpose: a blocked domain
-    # gets no session whether or not it already has a row (sign-in, not just sign-up).
-    if blocked_email(email, door):
+    # Same choke point for deployment email policy, and BEFORE the lookup on purpose: a refused
+    # address gets no session whether or not it already has a row (sign-in, not just sign-up).
+    if email_refused(email, door):
         raise BlockedEmailError
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
@@ -213,7 +234,7 @@ async def register_user(
         # otherwise a caller could squat an agent address before an admin mints that agent.
         if _is_machine_email(email):
             raise SignupError("machine_identity")
-        if blocked_email(email, "register"):  # unverified registration still checks the domain
+        if email_refused(email, "register"):  # unverified registration still checks email policy
             raise SignupError("blocked_domain")
         if webhook_url and not health.safe_webhook_url(webhook_url):  # SSRF guard on the alert URL
             raise SignupError("unsafe_webhook")
@@ -264,7 +285,7 @@ async def create_org(
         if demo_sandbox.is_sandbox_user(user):  # anonymous sandbox visitors cannot mint real teams
             raise SignupError("sandbox_user")
         # Previously registered identities may still hold tokens, so check this door too.
-        if blocked_email(user.email, "create_org"):
+        if email_refused(user.email, "create_org"):
             raise SignupError("blocked_domain")
         if not user.is_superadmin and reserved_reason(name, reserved_team_names()):
             raise SignupError("reserved_name")
